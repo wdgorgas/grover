@@ -1,0 +1,19 @@
+{
+  "name": "grover",
+  "version": "0.3.0",
+  "description": "GROVER — General of Resource Optimization and Varying Expertise Requests. A private, server-hosted AI command center.",
+  "type": "module",
+  "main": "grover.mjs",
+  "scripts": {
+    "start": "node grover.mjs",
+    "dev": "node grover.mjs",
+    "verify": "node scripts/verify.mjs",
+    "verify:server": "node scripts/verify.mjs --server-only"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {},
+  "license": "UNLICENSED",
+  "private": true
+}

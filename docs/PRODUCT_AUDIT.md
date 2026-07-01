@@ -1,0 +1,56 @@
+# PRODUCT AUDIT — before Product Quality Pass 1 (2026-07-01)
+
+Brutally honest snapshot of v0.2.0, written before changing anything.
+
+## Feature honesty
+
+- **Greenlight is a lie by implication.** The ✓ button flips a status column
+  and shows a toast. No proposal, no scope, no risk assessment, no autonomy
+  surface, nothing tracked afterward. The master prompt's core idea — "a
+  reliable loop beats a perfect prompt" — has zero code behind it. This is
+  the app's biggest gap between what it looks like and what it does.
+- **No loop primitive exists.** There is no way for Grover to represent
+  "work in progress with a goal, steps, and a stop condition." Without it,
+  self-improvement passes like this one live only in chat history.
+- **Briefs and workshops are good but disconnected** — a brief doesn't
+  become a plan-of-record; a workshop conclusion doesn't update anything.
+
+## Beginner clarity
+
+- Desks open into an empty chat. A new user has no idea what a "Research
+  Desk" wants from them. No starter prompts, no examples.
+- Nothing explains the product's central loop (log → greenlight → build).
+  The Builder callout added in v0.2 helps; it is not enough.
+- System state is fragmented: autonomy/spend live in the Command Center
+  side panel only; nothing anywhere shows "what is Grover working on now
+  and what should happen next."
+
+## Visual / identity
+
+- v0.2's professional themes (Obsidian/Slate/Porcelain) and motion pass
+  are real improvements; remaining issues are narrower:
+  - Orb idle state is uniform — constant rotation, no micro-events. Alive
+    things have irregularity (heartbeats, glints, drift). It reads as a
+    screensaver after 30 seconds.
+  - Empty views (no memories, no calls) are dead ends with one grey line,
+    not instructive states.
+  - Tables (Costs, Audit) are unstyled data dumps compared to the rest.
+
+## Architecture / robustness
+
+- **No automated verification.** No lint, no tests, no build check, no
+  smoke script. Every change so far was verified by hand-run curl
+  batteries that live nowhere.
+- messages table grows unboundedly; no retention policy (acceptable at
+  this scale, must be a logged decision, not an accident).
+- Chat SSE has no client reconnect story (acceptable for local single
+  user; log it).
+- Error surfaces are decent (budget gates, no_key flow) — genuinely OK.
+
+## Verdict
+
+The kernel plumbing (router, governor, memory, namespaces, audit) is
+solid and tested. The product sitting on top of it under-delivers on its
+own thesis: it cannot yet run a loop, and it doesn't teach its user. PQ1
+therefore targets the Greenlight Build Loop as the vertical slice, plus
+the minimum clarity/liveliness fixes that make the app self-explanatory.

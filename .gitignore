@@ -1,0 +1,17 @@
+# Runtime data — never commit. Contains the database, secrets, and logs.
+/data/
+
+# Memory vault — personal/business memory lives here, not in git.
+# (Back it up separately; see MEMORY_POLICY.md)
+/vault/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor noise
+.vscode/
+.idea/
+
+# Node (no deps in v1, but keep this for the future)
+node_modules/
