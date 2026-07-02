@@ -56,3 +56,14 @@ only if every bullet holds. Grade honestly; the audit is worthless otherwise.
 ## Scoring — PQ1 target
 Must flip §7 from total fail to full pass, §6 and §2 to pass, §9 to pass.
 §1/§3/§5 improved measurably; residuals logged in TASKS.md for PQ2.
+
+## Grades after PQ2 (2026-07-01, honest)
+§1 polish: PASS (tables carded, empty states designed; residual: no visual
+regression tooling). §2 beginner clarity: PASS. §3 orb: PASS with note —
+ambient loop states + micro-life land "presence"; transition flourishes
+still wanted. §4 themes: PASS. §5 desks: PASS (purpose/status/starters/
+honest "later"; still chat-only by design). §6 Builder: PASS. §7 loop:
+PASS (unchanged from PQ1, regression-tested). §8 a11y: PASS at basics
+(Esc, focus-visible, aria-modal, labels); full keyboard nav of cards not
+done. §9 maintainability: PASS server-side; client machine-verification
+depends on running `npm run verify` on the host machine.

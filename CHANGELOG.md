@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 0.4.0 — 2026-07-01 — Product Quality Pass 2: presence and polish
+
+- **Orb as presence:** while idle, the orb carries the active loop's state —
+  Loop queued / running / verifying ambients (label included), fed by
+  /api/status polling. Micro-life from PQ1 retained.
+- **Interaction polish:** Esc closes modals; visible :focus-visible rings
+  everywhere; aria-modal dialogs that focus their first control; browser
+  prompt() replaced by an in-app modal for loop summaries/kill reasons.
+- **Instructive empty states:** Memory, Costs, Audit, and fresh Desks now
+  explain what belongs there, current status, the next action, and (desks)
+  an honest "coming later" line. Tables moved into cards.
+- **Loop → Workshop ↗** on every loop card jumps to the source item expanded.
+- **Visual QA:** docs/VISUAL_QA.md manual checklist; automated screenshots
+  rejected on zero-dependency grounds (rationale documented).
+- Docs regraded honestly: rubric grades + audit addendum + PQ3 proposal.
+
 ## 0.3.0 — 2026-07-01 — Product Quality Pass 1: the loop is real
 
 - **Greenlight Build Loop (functional):** greenlight now generates a build

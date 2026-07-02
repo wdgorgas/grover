@@ -21,6 +21,16 @@ const STATES = {
   success:   { turb: 0.12, speed: 0.16, pulse: 0.20,  heat: 0.75, band: 0.6, label: 'Done' },
 };
 
+/**
+ * Ambient overlays: when idle, the orb reflects what Grover is *working on*
+ * (the active loop's status from /api/status) — a presence, not a screensaver.
+ */
+const AMBIENTS = {
+  approved:  { turb: 0.20, speed: 0.14, pulse: 0.05,  heat: 0.62, band: 0.7, label: 'Loop queued' },
+  running:   { turb: 0.30, speed: 0.22, pulse: 0.06,  heat: 0.72, band: 1.0, label: 'Loop running' },
+  verifying: { turb: 0.22, speed: 0.18, pulse: 0.10,  heat: 0.85, band: 0.9, gold: true, label: 'Loop verifying' },
+};
+
 function cssColor(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;
@@ -107,7 +117,28 @@ export class GroverOrb {
     return [P.core, P.mid, P.hot, P.edge];
   }
 
+  /** Reflect the active loop's status while idle (called from /api/status polling). */
+  setAmbient(loopStatus) {
+    this.ambient = AMBIENTS[loopStatus] ? loopStatus : null;
+    if (this.state === 'idle') this.setState('idle');
+  }
+
   setState(name, detail) {
+    // Idle inherits the ambient overlay if a loop is in flight.
+    if ((name === 'idle' || !STATES[name]) && this.ambient) {
+      this.def = AMBIENTS[this.ambient];
+      this.state = 'idle';
+      this.ramp = this.currentRamp();
+      const label = document.getElementById('orb-state-label');
+      const det = document.getElementById('orb-state-detail');
+      if (label) {
+        label.textContent = this.def.label;
+        const c = this.ramp[2];
+        label.style.color = `rgb(${c.map(Math.round).join(',')})`;
+      }
+      if (det) det.textContent = detail || '';
+      return;
+    }
     this.def = STATES[name] || STATES.idle;
     this.state = STATES[name] ? name : 'idle';
     this.ramp = this.currentRamp();

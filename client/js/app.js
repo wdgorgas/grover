@@ -58,6 +58,8 @@ async function refreshSystemMini() {
       ? `Loop #${s.activeLoop.id} <span class="badge">${s.activeLoop.status}</span><br>${escText(s.activeLoop.goal.slice(0, 70))}`
       : '<span class="faint">No active loop</span>';
     el.innerHTML = `${loop}<div style="margin-top:6px" class="faint">${s.nextActions.map(escText).join('<br>')}</div>`;
+    // The orb is a presence: while idle it carries the active loop's state.
+    orb?.setAmbient(s.activeLoop?.status || null);
   } catch { el.textContent = ''; }
 }
 

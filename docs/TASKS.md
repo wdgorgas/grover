@@ -27,17 +27,28 @@ Partial: §1 (Costs/Audit tables still plain; some empty states remain bare),
 Not re-verified visually — sandbox cannot render the client; needs a human
 pass or future screenshot tooling.
 
-## PQ2 — planned
+## PQ2 — done (2026-07-01)
 
-- [ ] Esc closes modals; visible focus rings; aria labels on icon buttons.
-- [ ] Style Costs/Audit tables to match card language; design all remaining
-      empty states (Memory, Costs, Audit).
-- [ ] Loop → Workshop link: open the source item's workshop from a loop card.
-- [ ] Verify script: mutation battery against a throwaway data dir
+- [x] Esc closes modals; :focus-visible rings; aria-modal; in-app promptModal
+      replaces browser prompt() for loop summaries.
+- [x] Costs/Audit/Memory tables in cards; designed empty states for Memory,
+      Costs, Audit, and fresh Desks (purpose, status, starters, honest "later").
+- [x] Loop → Workshop ↗ link expands the source item.
+- [x] Orb ambient presence: idle carries the active loop's status
+      (queued / running / verifying) via /api/status polling.
+- [x] docs/VISUAL_QA.md — manual visual checklist (automated screenshots
+      rejected on zero-dep grounds; rationale documented there).
+- [x] Rubric regraded post-PQ2; audit addendum written.
+
+## PQ3 — proposed
+
+- [ ] Orb state-transition flourishes (brief scatter/refocus on change).
+- [ ] First-run guided moment ("log → greenlight → loop" in 3 steps).
+- [ ] Verify script mutation mode against throwaway data dir
       (needs GROVER_DATA env override in config.mjs).
-- [ ] Orb state-transition flourishes (brief particle scatter on state change).
-- [ ] First-run guided moment in Command Center ("log → greenlight → loop" tour).
+- [ ] Full keyboard navigation of ledger cards + loop actions.
 - [ ] messages retention decision (log in DECISIONS once made).
+- [ ] Consider screenshot CI once the Ubuntu deployment exists.
 
 ## Standing (from v0.1/0.2)
 

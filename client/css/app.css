@@ -291,6 +291,32 @@ select { cursor: pointer; }
 .pill-select { font-size: 12.5px; padding: 6px 10px; border-radius: 999px; background: var(--surface); color: var(--text-dim); }
 label.f { display: block; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); margin: 14px 0 5px; }
 
+/* Keyboard accessibility: consistent, visible focus rings everywhere. */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Instructive empty states — never a bare grey line (docs/UI_STYLE_GUIDE.md). */
+.empty-state {
+  border: 1px dashed var(--border-bright);
+  border-radius: var(--radius-lg);
+  padding: 26px 28px;
+  max-width: 560px;
+  margin: 18px 0;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+.empty-state b { font-family: var(--font-display); font-size: 15px; }
+.empty-state p { margin: 8px 0 14px; }
+
+/* Tables live in cards, not floating in space. */
+.table-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 6px 14px 10px; margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  overflow-x: auto;
+}
 table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.grid th {
   text-align: left; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;

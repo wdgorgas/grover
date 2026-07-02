@@ -60,15 +60,43 @@ export function toast(msg, kind = '') {
   setTimeout(() => el.remove(), 3600);
 }
 
+let escHandler = null;
+
 export function modal(html) {
   const root = document.getElementById('modal-root');
-  root.innerHTML = `<div class="modal">${html}</div>`;
+  root.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
   root.onclick = (e) => { if (e.target === root) closeModal(); };
-  return root.querySelector('.modal');
+  if (escHandler) document.removeEventListener('keydown', escHandler);
+  escHandler = (e) => { if (e.key === 'Escape') closeModal(); };
+  document.addEventListener('keydown', escHandler);
+  const m = root.querySelector('.modal');
+  // Focus the first interactive element so keyboard users land inside.
+  setTimeout(() => m.querySelector('input, textarea, select, button')?.focus(), 30);
+  return m;
 }
 
 export function closeModal() {
   document.getElementById('modal-root').innerHTML = '';
+  if (escHandler) { document.removeEventListener('keydown', escHandler); escHandler = null; }
+}
+
+/** In-app replacement for window.prompt(): resolves string or null. */
+export function promptModal(title, label, placeholder = '') {
+  return new Promise((resolve) => {
+    const m = modal(`
+      <h2>${esc(title)}</h2>
+      <label class="f">${esc(label)}</label>
+      <input type="text" id="pm-input" style="width:100%" placeholder="${esc(placeholder)}">
+      <div class="row">
+        <button class="ghost" id="pm-cancel">Cancel</button>
+        <button class="primary" id="pm-ok">Confirm</button>
+      </div>`);
+    const input = m.querySelector('#pm-input');
+    const finish = (val) => { closeModal(); resolve(val); };
+    m.querySelector('#pm-cancel').onclick = () => finish(null);
+    m.querySelector('#pm-ok').onclick = () => finish(input.value.trim());
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(input.value.trim()); });
+  });
 }
 
 export const fmt$ = (n) => `$${(n ?? 0).toFixed(n >= 100 ? 0 : n >= 1 ? 2 : 4)}`;

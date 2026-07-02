@@ -191,7 +191,10 @@ export async function renderBuilder(state) {
   mountHeaderFx();
   stagger($view(), ':scope > .card, :scope > h2');
   renderSystemStrip($view().querySelector('#sys-strip'));
-  renderLoopsPanel($view().querySelector('#loops-panel'), () => renderBuilder(state));
+  renderLoopsPanel($view().querySelector('#loops-panel'), () => renderBuilder(state), (ledgerId) => {
+    expanded.add(ledgerId);
+    renderBuilder(state);
+  });
   $view().querySelector('#quick-add').onclick = () => ledgerForm({ domain: 'grover-dev' }, () => renderBuilder(state));
   bindItemCards($view(), () => renderBuilder(state), state);
 
@@ -356,7 +359,16 @@ export async function renderDesk(state, skillId) {
     }
   }
   if (!pane.o.log.childElementCount) {
-    pane.addCard(`<h4>${esc(deskName)} desk.</h4><div class="dim small">${esc(skill.purpose)} This desk keeps its own thread, separate from the Command Center.</div>`);
+    pane.addCard(`<h4>${esc(deskName)} desk.</h4>
+      <div class="dim small">${esc(skill.purpose)}</div>
+      <div class="small" style="margin-top:8px">
+        <span class="badge">status: new thread</span>
+        <span class="badge">expertise: loaded</span>
+        <span class="badge">memory: your namespaces</span>
+      </div>
+      <div class="faint small" style="margin-top:8px">Today this desk is expert conversation with its own thread.
+      Coming later: desk-specific dashboards and tools (experiments board here for Business, source maps for
+      Research) — they'll be built through the Builder's greenlight loop, not promised silently.</div>`);
     pane.o.log.appendChild(deskStarters(deskName, pane.o.input));
   }
 }
@@ -390,7 +402,7 @@ async function renderMemoriesTab(state, query = '') {
       <span class="spacer"></span>
       <button class="primary" id="mem-add">＋ Remember something</button>
     </div>
-    <table class="grid">
+    <div class="table-card"><table class="grid">
       <thead><tr><th>Memory</th><th>Namespace</th><th>Category</th><th>Conf</th><th>Imp</th><th></th></tr></thead>
       <tbody>
         ${rows.map((r) => `
@@ -403,8 +415,15 @@ async function renderMemoriesTab(state, query = '') {
             <td><button class="danger" data-del="${r.id}" title="Forget">✕</button></td>
           </tr>`).join('')}
       </tbody>
-    </table>
-    ${rows.length === 0 ? '<p class="dim">No memories yet. Try Brain Dump mode in the Command Center.</p>' : ''}`;
+    </table></div>
+    ${rows.length === 0 && !query ? `
+      <div class="empty-state">
+        <b>Nothing remembered yet.</b>
+        <p class="dim small">Memories are durable facts, preferences, and decisions Grover injects into every
+        relevant conversation. Two ways to create them: switch the Command Center to <b>Brain Dump</b> mode and
+        think out loud (Grover proposes, you approve), or add one directly.</p>
+        <button class="primary" id="mem-add-2">＋ Remember something now</button>
+      </div>` : rows.length === 0 ? '<p class="dim">No matches for that search.</p>' : ''}`;
 
   let t;
   body.querySelector('#mem-q').oninput = (e) => {
@@ -412,6 +431,7 @@ async function renderMemoriesTab(state, query = '') {
     t = setTimeout(() => renderMemoriesTab(state, e.target.value.trim()), 300);
   };
   body.querySelector('#mem-add').onclick = () => memoryForm(state, () => renderMemoriesTab(state, query));
+  body.querySelector('#mem-add-2')?.addEventListener('click', () => memoryForm(state, () => renderMemoriesTab(state, query)));
   body.querySelectorAll('[data-del]').forEach((b) => {
     b.onclick = async () => {
       await api(`/api/memory/${b.dataset.del}`, { method: 'DELETE' });
@@ -513,21 +533,21 @@ export async function renderCosts() {
       <div class="stat"><label>Failed-call cost</label><div class="v">${fmt$(s.totals.failed_cost)}</div></div>
     </div>
     <h2>Spend by model (this month)</h2>
-    <table class="grid">
+    <div class="table-card"><table class="grid">
       <thead><tr><th>Model</th><th>Tier</th><th>Calls</th><th>In tokens</th><th>Out tokens</th><th>Cost</th></tr></thead>
       <tbody>${s.byModel.map((r) => `<tr>
         <td class="mono small">${esc(r.model)}</td><td><span class="badge">${esc(r.tier)}</span></td>
         <td>${r.calls}</td><td>${(r.input_tokens || 0).toLocaleString()}</td>
         <td>${(r.output_tokens || 0).toLocaleString()}</td><td class="mono">${fmt$(r.cost)}</td></tr>`).join('')}
       </tbody>
-    </table>
+    </table></div>
     <h2>Spend by task type</h2>
-    <table class="grid">
+    <div class="table-card"><table class="grid">
       <thead><tr><th>Task</th><th>Calls</th><th>Cost</th></tr></thead>
       <tbody>${s.byTask.map((r) => `<tr><td>${esc(r.task_type)}</td><td>${r.calls}</td><td class="mono">${fmt$(r.cost)}</td></tr>`).join('')}</tbody>
-    </table>
+    </table></div>
     <h2>Recent calls</h2>
-    <table class="grid">
+    <div class="table-card"><table class="grid">
       <thead><tr><th>When</th><th>User</th><th>Task</th><th>Tier</th><th>Tokens in/out</th><th>ms</th><th>Cost</th><th>Err</th></tr></thead>
       <tbody>${calls.slice(0, 40).map((c) => `<tr>
         <td class="small dim">${fmtDate(c.created_at)}</td><td class="small">${esc(c.user_name || '—')}</td>
@@ -537,8 +557,14 @@ export async function renderCosts() {
         <td class="mono small">${fmt$(c.cost)}</td>
         <td class="small" style="color:var(--state-err)">${esc(c.error || '')}</td></tr>`).join('')}
       </tbody>
-    </table>
-    ${calls.length === 0 ? '<p class="dim">No model calls yet.</p>' : ''}`;
+    </table></div>
+    ${calls.length === 0 ? `
+      <div class="empty-state">
+        <b>No model calls yet.</b>
+        <p class="dim small">Every conversation turn, memory extraction, title, proposal, and brief lands here
+        with its real token counts and cost. Send Grover a message in the Command Center and this page starts
+        earning its keep. Budgets live in Settings; the governor blocks overspend before it happens.</p>
+      </div>` : ''}`;
   mountHeaderFx();
   stagger($view().querySelector('.cards-row'));
   $view().querySelectorAll('[data-count]').forEach((el) => {
@@ -622,7 +648,7 @@ export async function renderAudit() {
   const rows = await api('/api/audit');
   $view().innerHTML = `
     ${header('accountability', 'Audit Log', 'Every consequential action, attributable and timestamped. Model calls live in Costs.')}
-    <table class="grid">
+    <div class="table-card"><table class="grid">
       <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td class="small dim">${fmtDate(r.created_at)}</td>
@@ -630,8 +656,14 @@ export async function renderAudit() {
         <td><span class="badge">${esc(r.action)}</span></td>
         <td class="small dim">${esc(r.detail || '')}</td></tr>`).join('')}
       </tbody>
-    </table>
-    ${rows.length === 0 ? '<p class="dim">Nothing audited yet.</p>' : ''}`;
+    </table></div>
+    ${rows.length === 0 ? `
+      <div class="empty-state">
+        <b>Nothing audited yet.</b>
+        <p class="dim small">Every consequential action — greenlights, loop transitions, memory writes, settings
+        changes, budget overrides — is recorded here with who did it and when. It fills up the moment you start
+        using Grover; it can't be edited from the UI, by design.</p>
+      </div>` : ''}`;
   mountHeaderFx();
 }
 

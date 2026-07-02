@@ -4,7 +4,7 @@
  * greenlightFlow(): proposal → human approval → tracked loop. Honest about
  * autonomy: at L1 nothing executes — approving creates the plan-of-record.
  */
-import { api, esc, toast, modal, closeModal } from './api.js';
+import { api, esc, toast, modal, closeModal, promptModal } from './api.js';
 
 const RISK_COLOR = { low: 'var(--state-ok)', medium: 'var(--state-warn)', high: 'var(--state-err)' };
 
@@ -97,7 +97,7 @@ const LOOP_ACTIONS = {
   verifying: [['done', '✓ Done', 'ok'], ['running', '↩ Reopen', 'ghost']],
 };
 
-export async function renderLoopsPanel(el, onChange) {
+export async function renderLoopsPanel(el, onChange, onOpenItem) {
   if (!el) return;
   let loops;
   try { loops = await api('/api/loops'); } catch { el.innerHTML = ''; return; }
@@ -127,7 +127,8 @@ export async function renderLoopsPanel(el, onChange) {
         <div style="display:flex;gap:6px;flex-shrink:0">
           ${(LOOP_ACTIONS[l.status] || []).map(([st, label, cls]) =>
             `<button class="${cls}" data-loop="${l.id}" data-st="${st}">${label}</button>`).join('')}
-          <button class="danger" data-loop="${l.id}" data-st="killed" title="Kill this loop">✕</button>
+          <button class="ghost" data-open="${l.ledger_id}" title="Open the source item's brief and workshop">Workshop ↗</button>
+          <button class="danger" data-loop="${l.id}" data-st="killed" title="Kill this loop" aria-label="Kill loop">✕</button>
         </div>
       </div>
       <details style="margin-top:8px"><summary class="small dim" style="cursor:pointer">Plan (${l.steps.length} steps)</summary>
@@ -137,15 +138,18 @@ export async function renderLoopsPanel(el, onChange) {
     </div>`).join('')
     + (closed ? `<p class="small faint">${closed} closed loop${closed === 1 ? '' : 's'} in history (Audit has the trail).</p>` : '');
 
+  el.querySelectorAll('button[data-open]').forEach((b) => {
+    b.onclick = () => onOpenItem?.(Number(b.dataset.open));
+  });
   el.querySelectorAll('button[data-loop]').forEach((b) => {
     b.onclick = async () => {
       let summary;
       if (b.dataset.st === 'killed') {
-        summary = prompt('One line: why is this loop being killed?');
+        summary = await promptModal('Kill this loop', 'One line: why is it being killed?', 'superseded / not worth it / …');
         if (summary === null) return;
       }
       if (b.dataset.st === 'done') {
-        summary = prompt('One line: what changed? (stored as the loop summary)') || undefined;
+        summary = (await promptModal('Close the loop', 'One line: what changed? (stored as the loop summary)', 'shipped X, verified by Y')) || undefined;
       }
       try {
         await api(`/api/loops/${b.dataset.loop}/status`, {

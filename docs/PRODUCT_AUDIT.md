@@ -1,4 +1,21 @@
-# PRODUCT AUDIT — before Product Quality Pass 1 (2026-07-01)
+# PRODUCT AUDIT
+
+## Post-PQ2 addendum (2026-07-01)
+
+PQ2 closed the interaction-polish and honesty gaps: Esc/focus-ring/keyboard
+basics now pass; browser `prompt()` is gone (in-app modals); Costs/Audit/
+Memory/Desk empty states teach and offer actions; tables sit in cards; the
+orb carries the active loop's status while idle (queued/running/verifying
+ambients) so it reads as presence, not decoration; loops link back to their
+item's workshop. Automated screenshots rejected on zero-dep grounds —
+docs/VISUAL_QA.md is the standing manual checklist. Honest residuals for
+PQ3: state-transition flourishes on the orb, a first-run guided moment,
+mutation-mode verify script, messages retention decision, and a real visual
+regression story if/when a CI host exists.
+
+---
+
+# Original audit — before Product Quality Pass 1 (2026-07-01)
 
 Brutally honest snapshot of v0.2.0, written before changing anything.
 
