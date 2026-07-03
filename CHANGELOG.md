@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.5.0 — 2026-07-02 — Command Center v2 design, stage one
+
+Implemented from `GROVER Command Center v2.dc.html` (Claude Design):
+
+- **Orb v3 engine** (faithful port): solid occluding body with volumetric
+  interior (1,500 drifting particles + embers + nucleus glow), dot-lattice
+  skin, surface mesh (latitude rings + sparse meridians), radial spikes
+  where turbulence runs hot, mic-modulated Listening, amber Approval hold,
+  Coding state, light-theme compositing, per-skin ramps, spring pointer.
+  PQ2 ambient loop states preserved.
+- **Atelier skin** — the design's signature palette (teal #7cc7bc, violet
+  #9a8cf2, apricot #eeb069; orb ramp #292350→#7a68c9→#d9799d→#f0b46f).
+- **Design typography**: Bricolage Grotesque (display) / Hanken Grotesk
+  (UI) / Spline Sans Mono via Google Fonts with system fallbacks.
+- Deferred to next pass (logged in docs/TASKS.md): the full three-column
+  desk-merged stage, drag-queue-to-orb, telemetry footer strip. The
+  design's simulated sequences were intentionally NOT ported — Grover's
+  UI only shows real state.
+
 ## 0.4.0 — 2026-07-01 — Product Quality Pass 2: presence and polish
 
 - **Orb as presence:** while idle, the orb carries the active loop's state —

@@ -671,6 +671,7 @@ export async function renderAudit() {
 
 export async function renderSettings(state, onThemeChange, onUserChange) {
   const themes = [
+    { id: 'atelier', name: 'Atelier', kind: 'command center v2', dots: ['#7cc7bc', '#9a8cf2', '#eeb069'] },
     { id: 'default', name: 'Default', kind: 'signature neon', dots: ['#4cc9f0', '#7b2ff7', '#f72585'] },
     { id: 'arcane', name: 'Arcane', kind: 'painterly', dots: ['#3de8f0', '#b14aed', '#f2b34c'] },
     { id: 'pulse', name: 'Pulse', kind: 'electric', dots: ['#00e5ff', '#ff2d78', '#ffd166'] },

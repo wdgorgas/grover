@@ -40,6 +40,19 @@ pass or future screenshot tooling.
       rejected on zero-dep grounds; rationale documented there).
 - [x] Rubric regraded post-PQ2; audit addendum written.
 
+## Design v2 — stage two (from GROVER Command Center v2.dc.html)
+
+- [ ] Merge desks into the Command stage: sidebar desk switch swaps title/
+      typed sub/meta/context in place; orb never remounts; desk-tinted halo.
+- [ ] Context panel v2: ACTIVE TASK, QUEUE (approved loops, expandable
+      steps, RUN NOW → loop running), MODEL / EST COST, TOOLS ALLOWED,
+      MEMORY bar, NS/UPTIME row.
+- [ ] Telemetry footer strip: tok in/out, latency, session cost, orb state
+      preview chips (wired to real /api/costs + last turn, not simulated).
+- [ ] Drag queue card onto the orb to start the loop (RELEASE TO START ring).
+- [ ] Approval interrupt banner keyed to budget gates + future privileged
+      actions (design's amber APPROVE/DENY bar).
+
 ## PQ3 — proposed
 
 - [ ] Orb state-transition flourishes (brief scatter/refocus on change).

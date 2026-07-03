@@ -45,9 +45,44 @@
   --radius: 10px;
   --radius-lg: 16px;
 
-  --font: "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, Roboto, Helvetica, Arial, sans-serif;
-  --font-display: "Segoe UI Variable Display", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-  --mono: "Cascadia Code", ui-monospace, "SF Mono", Consolas, monospace;
+  /* Design v2 type stack (Google Fonts, graceful system fallbacks) */
+  --font: "Hanken Grotesk", "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Segoe UI Variable Display", "Segoe UI", ui-sans-serif, sans-serif;
+  --mono: "Spline Sans Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+}
+
+/* --- Atelier: the Command Center v2 signature — teal, violet, apricot ------ */
+[data-theme="atelier"] {
+  --bg: #0e0d13;
+  --bg-2: #121017;
+  --surface: #18151f;
+  --surface-2: #1e1a28;
+  --border: #252131;
+  --border-bright: #332e42;
+
+  --text: #eae7ee;
+  --text-dim: #a29aae;
+  --text-faint: #6c6580;
+
+  --accent: #7cc7bc;
+  --accent-2: #9a8cf2;
+  --accent-3: #e88aa8;
+
+  --state-idle: #7cc7bc;
+  --state-think: #9a8cf2;
+  --state-create: #e88aa8;
+  --state-frontier: #eeb069;
+  --state-ok: #8fca9c;
+  --state-warn: #e0a566;
+  --state-err: #e0705f;
+
+  --orb-core: #292350;
+  --orb-mid: #7a68c9;
+  --orb-hot: #d9799d;
+  --orb-edge: #f0b46f;
+
+  --glow-strength: 14px;
+  --edge-glow: 0.35;
 }
 
 /* --- Arcane: hextech teal, rich magenta, aged gold — painterly depth ------ */

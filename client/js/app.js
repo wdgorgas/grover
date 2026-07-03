@@ -44,23 +44,122 @@ async function boot() {
   refreshSystemMini();
   setInterval(refreshSystemMini, 60_000);
 
+  typeSub('everything, routed');
+  startClock();
+  renderSkinChips(theme);
+  renderStateChips();
+
   window.addEventListener('hashchange', route);
   route();
 }
 
-/** Command Center "System" readout: active loop + next actions (/api/status). */
+/** Context panel "Active task" + "Next actions" readout (/api/status). */
 async function refreshSystemMini() {
-  const el = document.getElementById('sys-mini');
-  if (!el) return;
+  const taskEl = document.getElementById('ctx-task');
+  const statusEl = document.getElementById('ctx-task-status');
+  const queueEl = document.getElementById('ctx-queue');
+  if (!taskEl) return;
   try {
     const s = await api('/api/status');
-    const loop = s.activeLoop
-      ? `Loop #${s.activeLoop.id} <span class="badge">${s.activeLoop.status}</span><br>${escText(s.activeLoop.goal.slice(0, 70))}`
-      : '<span class="faint">No active loop</span>';
-    el.innerHTML = `${loop}<div style="margin-top:6px" class="faint">${s.nextActions.map(escText).join('<br>')}</div>`;
+    if (s.activeLoop) {
+      taskEl.textContent = s.activeLoop.goal.slice(0, 90);
+      statusEl.textContent = `LOOP #${s.activeLoop.id} · ${s.activeLoop.status}`;
+    } else {
+      taskEl.textContent = 'No active task';
+      statusEl.textContent = 'STANDING BY';
+    }
+    queueEl.innerHTML = s.nextActions.length
+      ? s.nextActions.map(escText).join('<br>')
+      : '<span class="faint">nothing queued</span>';
     // The orb is a presence: while idle it carries the active loop's state.
     orb?.setAmbient(s.activeLoop?.status || null);
-  } catch { el.textContent = ''; }
+  } catch { queueEl.textContent = ''; }
+}
+
+/** Desk subtitle typewrites once (UI_STYLE_GUIDE: subtitles typewrite). */
+function typeSub(full) {
+  const el = document.getElementById('desk-sub-text');
+  const caret = document.getElementById('desk-sub-caret');
+  if (!el) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.textContent = full;
+    caret.classList.add('done');
+    return;
+  }
+  let i = 0;
+  const t = setInterval(() => {
+    el.textContent = full.slice(0, ++i);
+    if (i >= full.length) { clearInterval(t); caret.classList.add('done'); }
+  }, 30);
+}
+
+/** Sidebar clock + context-panel uptime (since page load). */
+function startClock() {
+  const t0 = performance.now();
+  const hh = (n) => String(n | 0).padStart(2, '0');
+  const tick = () => {
+    const d = new Date();
+    const clock = document.getElementById('clock');
+    if (clock) clock.textContent = `${hh(d.getHours())}:${hh(d.getMinutes())}`;
+    const up = (performance.now() - t0) / 1000;
+    const upEl = document.getElementById('ctx-uptime');
+    if (upEl) upEl.textContent = `${hh(up / 3600)}:${hh((up % 3600) / 60)}:${hh(up % 60)}`;
+  };
+  tick();
+  setInterval(tick, 1000);
+}
+
+/** Skin swatches (theme definition data, mirrors tokens.css palettes). */
+const SKIN_SWATCHES = {
+  default: 'linear-gradient(135deg,#4cc9f0,#7b2ff7 55%,#f72585)',
+  atelier: 'linear-gradient(135deg,#7cc7bc,#9a8cf2 50%,#eeb069)',
+  arcane: 'linear-gradient(135deg,#3de8f0,#b14aed 55%,#ffd27a)',
+  pulse: 'linear-gradient(135deg,#00e5ff,#ff2d78 55%,#ffd166)',
+  obsidian: 'linear-gradient(135deg,#7a6a4a,#d4a94f 60%,#f4e3b2)',
+  slate: 'linear-gradient(135deg,#48708f,#c98d5f 60%,#ecd3a8)',
+  porcelain: 'linear-gradient(135deg,#34506b,#8c3041 55%,#d9964a)',
+  light: 'linear-gradient(135deg,#0e86c4,#6425d0 55%,#d61f74)',
+};
+
+function renderSkinChips(active) {
+  const root = document.getElementById('skin-chips');
+  if (!root) return;
+  root.innerHTML = '';
+  for (const [id, swatch] of Object.entries(SKIN_SWATCHES)) {
+    const b = document.createElement('button');
+    b.title = id[0].toUpperCase() + id.slice(1);
+    b.style.background = swatch;
+    b.classList.toggle('on', id === active);
+    b.onclick = () => {
+      document.documentElement.dataset.theme = id;
+      state.settings.theme = id;
+      api('/api/settings', { method: 'PUT', body: { theme: id } }).catch(() => {});
+      orb.refreshTheme();
+      renderSkinChips(id);
+    };
+    root.appendChild(b);
+  }
+}
+
+/** Footer orb-state preview chips — click to audition a state. */
+function renderStateChips() {
+  const root = document.getElementById('state-chips');
+  if (!root) return;
+  const stateVar = {
+    idle: '--state-idle', listening: '--state-idle', thinking: '--state-think',
+    memory: '--state-think', tools: '--state-idle', agents: '--state-think',
+    coding: '--state-create', frontier: '--state-frontier', approval: '--state-warn',
+    error: '--state-err', success: '--state-ok',
+  };
+  root.innerHTML = '';
+  for (const [id, v] of Object.entries(stateVar)) {
+    const b = document.createElement('button');
+    b.dataset.state = id;
+    b.title = id;
+    b.style.background = `var(${v})`;
+    b.onclick = () => orb.setState(id, 'manual preview');
+    root.appendChild(b);
+  }
 }
 
 function escText(s) {

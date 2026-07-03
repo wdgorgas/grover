@@ -47,7 +47,7 @@ export class Chat {
       document.querySelectorAll('#mode-seg button').forEach((b) => b.classList.toggle('on', b === btn));
       this.input.placeholder = this.mode === 'brain_dump'
         ? 'Brain dump — think out loud, Grover extracts the memories…'
-        : 'Talk to Grover…';
+        : 'Talk to Grover — routed, budgeted, remembered';
     });
     document.getElementById('new-chat').onclick = () => this.newConversation();
   }
