@@ -1,5 +1,26 @@
 # PRODUCT AUDIT
 
+## Post-PQ3 addendum (2026-07-03) — Builder Workflow Pass
+
+PQ3 attacked the audit's oldest complaint: the loop primitive existed but
+Builder was still a display surface. Now it is the control center the
+thesis demands. The path "I want X" → structured proposal (goal, scope,
+files touched, risk, verification plan, rollback, cost estimate) →
+edit/approve/save/reject → tracked loop exists end-to-end, shares one code
+path with Greenlight, and works honestly offline. Loops gained a
+server-enforced state machine (ready/blocked/rejected added; blocking
+requires a reason) and per-loop event timelines, so every loop's history
+is inspectable where the loop lives. Verify grew mutation coverage on a
+throwaway data dir (66 checks).
+
+Honest residuals for PQ4: loops still *track* work rather than *do* it —
+the loop runner (supervised pickup of a `ready` loop) is the next real
+step toward self-development; verification is a human checklist, not a
+gate on `done`; cost estimates are labeled placeholders; step-level
+progress doesn't exist; the Greenlight door's proposal isn't editable.
+
+---
+
 ## Post-PQ2 addendum (2026-07-01)
 
 PQ2 closed the interaction-polish and honesty gaps: Esc/focus-ring/keyboard

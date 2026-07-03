@@ -2,6 +2,35 @@
 
 Significant decisions: context → decision → why. Newest first.
 
+## 11. Verify runs against a throwaway data dir and mutates freely (PQ3)
+`GROVER_DATA` env override (config.mjs) lets scripts/verify.mjs boot on a
+temp dir, so the battery exercises the full improvement→proposal→loop
+lifecycle — approvals, illegal transitions, blocking, events — with zero
+risk to the real database. Read-only smoke tests can't verify a workflow
+product; this closes the PQ2/PQ3 "mutation mode" leftover. Still zero
+dependencies.
+
+## 10. Loops carry their own event history; transitions are a state machine (PQ3)
+`loop_events` records every transition (actor, from→to, note) per loop;
+`LOOP_TRANSITIONS` rejects illegal moves server-side instead of trusting
+the UI. New statuses: `ready` (clear to start), `blocked` (requires a
+reason, shown until unblocked), `rejected` (the human said no, on the
+record). The global audit table stays as the cross-cutting trail; the
+per-loop timeline is what makes a loop inspectable in place. Blocking
+without a reason is an error by design — an unexplained blocker is a
+lost blocker.
+
+## 9. Improvement Requests are Greenlight's second door, not a new system (PQ3)
+Builder's "✦ Request improvement" turns free text into a drafted work
+item + build proposal (goal, scope, steps, risk, files touched,
+verification plan, rollback, cost estimate) that the user can edit,
+approve, save for later, or reject. Approval creates the ledger item and
+the loop together through the exact same `approveLoop` path as Greenlight;
+"save for later" stores the proposal as the item's brief so it stays
+greenlightable; "reject" persists nothing but is audited. One proposal
+shape, one approval path, one loop philosophy (docs/DECISIONS.md #8 still
+holds: no loop without a ledger item).
+
 ## 8. Loops are born from the ledger, never free-floating (PQ1)
 The `loops` table requires a `ledger_id`. Every unit of tracked work
 traces to a human-visible item that was proposed and approved. This keeps

@@ -11,7 +11,9 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const ROOT = join(__dirname, '..');
-export const DATA_DIR = join(ROOT, 'data');
+// GROVER_DATA lets tooling (scripts/verify.mjs) boot against a throwaway
+// data dir so mutation tests never touch the real database.
+export const DATA_DIR = process.env.GROVER_DATA || join(ROOT, 'data');
 export const VAULT_DIR = join(ROOT, 'vault');
 export const CLIENT_DIR = join(ROOT, 'client');
 export const DB_PATH = join(DATA_DIR, 'grover.db');

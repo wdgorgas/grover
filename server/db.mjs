@@ -163,7 +163,7 @@ export function initDb() {
   }
 }
 
-function addColumnIfMissing(table, col, ddl) {
+export function addColumnIfMissing(table, col, ddl) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!cols.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
 }

@@ -11,8 +11,14 @@ import {
 import { listLedger, createLedgerItem, updateLedgerItem, setLedgerStatus, DOMAINS, CATEGORIES, STATUSES } from './ledger.mjs';
 import { listSkills, patchSkill } from './skills.mjs';
 import { chatTurn, workshopTurn, generateBrief, approveMemories } from './chat.mjs';
-import { generateProposal, approveLoop, setLoopStatus, listLoops, loopForLedger, systemStatus } from './loops.mjs';
+import {
+  generateProposal, approveLoop, setLoopStatus, listLoops, loopForLedger, systemStatus,
+  draftImprovement, decideImprovement, listLoopEvents,
+} from './loops.mjs';
 import { spend } from './router.mjs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ROOT } from './config.mjs';
 
 const routes = [];
 function route(method, pattern, handler) {
@@ -267,12 +273,57 @@ route('GET', '/api/loops', ({ res, url }) => {
   json(res, 200, listLoops({ active: url.searchParams.get('active') === '1' }));
 });
 
+route('GET', '/api/loops/:id/events', ({ res, params }) => {
+  json(res, 200, listLoopEvents(Number(params.id)));
+});
+
 route('POST', '/api/loops/:id/status', ({ res, user, params, body }) => {
   const loop = setLoopStatus({
     user, loopId: Number(params.id),
-    status: body.status, summary: body.summary,
+    status: body.status, summary: body.summary, reason: body.reason,
   });
   json(res, 200, { ok: true, loop });
+});
+
+// ---- Improvement Requests (Builder's front door; docs/LOOP_ENGINEERING.md) --------
+
+route('POST', '/api/improvements/propose', async ({ res, user, body }) => {
+  const request = String(body.request || '').trim();
+  if (!request) return json(res, 400, { error: 'Describe the improvement first.' });
+  json(res, 200, await draftImprovement({ user, request: request.slice(0, 2000) }));
+});
+
+route('POST', '/api/improvements', ({ res, user, body }) => {
+  const decision = body.decision;
+  if (!['approve', 'save', 'reject'].includes(decision)) {
+    return json(res, 400, { error: 'decision must be approve, save, or reject' });
+  }
+  const request = String(body.request || '').trim();
+  if (!request) return json(res, 400, { error: 'Missing original request text' });
+  if (decision !== 'reject') {
+    if (!body.draft?.title || !body.proposal?.goal || !Array.isArray(body.proposal?.steps)) {
+      return json(res, 400, { error: 'Missing draft/proposal' });
+    }
+  }
+  json(res, 200, decideImprovement({
+    user, request,
+    draft: body.draft, proposal: body.proposal,
+    offline: Boolean(body.offline), decision,
+  }));
+});
+
+// ---- Docs (read-only; Builder links its own engineering docs) ----------------------
+
+const DOCS_DIR = join(ROOT, 'docs');
+const docsList = () => readdirSync(DOCS_DIR).filter((f) => /^[\w-]+\.md$/.test(f));
+
+route('GET', '/api/docs', ({ res }) => {
+  json(res, 200, docsList());
+});
+
+route('GET', '/api/docs/:name', ({ res, params }) => {
+  if (!docsList().includes(params.name)) return json(res, 404, { error: 'No such doc' });
+  json(res, 200, { name: params.name, content: readFileSync(join(DOCS_DIR, params.name), 'utf8') });
 });
 
 route('POST', '/api/ledger/:id/brief', async ({ res, user, params }) => {

@@ -53,15 +53,51 @@ pass or future screenshot tooling.
 - [ ] Approval interrupt banner keyed to budget gates + future privileged
       actions (design's amber APPROVE/DENY bar).
 
-## PQ3 — proposed
+## PQ3 — done (2026-07-03): Builder Workflow Pass
 
+Rescoped from the original PQ3 list: Builder became the priority — turning
+it from a display surface into Grover's self-development control center.
+
+- [x] Loop engine v2: statuses proposed/approved/ready/running/verifying/
+      blocked/done/killed/rejected; `LOOP_TRANSITIONS` state machine enforced
+      server-side; blocking requires a reason (cleared on unblock).
+- [x] `loop_events` table — per-loop auditable history (actor, from→to,
+      note); History timeline on every loop card, lazily loaded.
+- [x] Proposals extended: verification plan, rollback plan, cost-estimate
+      placeholder, files touched (both doors, incl. offline skeletons).
+- [x] Improvement Request flow: free text → drafted item + structured
+      proposal → user edits any field → Approve & queue / Save for later
+      (pending item w/ proposal as brief) / Reject (audited). Approval
+      creates ledger item + loop through the same path as Greenlight.
+- [x] Builder control center: active loop featured (verification checklist
+      while verifying), queued improvements, blocked-with-reasons section,
+      recently completed with summaries, beginner Q&A (what is Builder /
+      what can I ask / what happens after approval / what's safe at L1),
+      linked docs viewer (/api/docs, read-only).
+- [x] Verify mutation mode: GROVER_DATA throwaway data dir; 66-check
+      battery covers both doors, illegal transitions, blocking, events,
+      idempotency. All passing.
+
+## PQ3 leftovers → PQ4 candidates
+
+- [ ] Loop runner v0: a supervised session picks up a `ready` loop, works
+      its steps, and reports back — the first actual execution surface
+      (needs Agent Team Manager scoping + autonomy ≥2 policy decision).
+- [ ] Verification as a gate, not a checklist: a loop can register
+      `npm run verify` (or a script) that must pass before `done`.
+- [ ] Step-level progress: check off individual plan steps on a loop;
+      today progress is only visible at status granularity.
+- [ ] Proposal editing for the Greenlight door (Improvement Requests are
+      editable; greenlit items are approve/decline only).
+- [ ] Cost reconciliation: compare a loop's cost_estimate against actual
+      model_calls attributed to it.
 - [ ] Orb state-transition flourishes (brief scatter/refocus on change).
-- [ ] First-run guided moment ("log → greenlight → loop" in 3 steps).
-- [ ] Verify script mutation mode against throwaway data dir
-      (needs GROVER_DATA env override in config.mjs).
+- [ ] First-run guided moment ("request → approve → loop" in 3 steps).
 - [ ] Full keyboard navigation of ledger cards + loop actions.
 - [ ] messages retention decision (log in DECISIONS once made).
 - [ ] Consider screenshot CI once the Ubuntu deployment exists.
+- [ ] Improvement-request seam in chat: "Grover, log this as an
+      improvement" from any desk conversation.
 
 ## Standing (from v0.1/0.2)
 

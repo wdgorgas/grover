@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## 0.6.0 — 2026-07-03 — Product Quality Pass 3: Builder Workflow
+
+Builder becomes Grover's self-development control center.
+
+- **Improvement Request flow:** describe a change in plain words → Grover
+  drafts a work item + structured proposal (goal, scope, plan, risk, files
+  touched, verification plan, rollback, cost estimate) → every field
+  editable → Approve & queue / Save for later / Reject. Approval creates
+  the ledger item and build loop together, through the same path as
+  Greenlight — two doors, one loop philosophy. Honest offline skeleton
+  without an API key.
+- **Loop engine v2:** statuses proposed / approved / ready / running /
+  verifying / blocked / done / killed / rejected, enforced by a
+  server-side state machine (illegal transitions are 400s, blocking
+  requires a reason). New `loop_events` table gives every loop a per-loop
+  auditable timeline, shown as History on each loop card.
+- **Builder control center:** active loop featured (verification checklist
+  while verifying), queued improvements, blocked-with-reasons section,
+  recently completed loops with closing summaries, beginner Q&A (what is
+  Builder / what can I ask for / what happens after approval / what's safe
+  at L1), read-only docs viewer (/api/docs).
+- **Verify with mutations:** `GROVER_DATA` env override boots verify on a
+  throwaway data dir; the battery grew to 66 checks covering the whole
+  lifecycle, both doors, and the failure cases.
+- (package.json version synced — 0.5.0 shipped without a bump.)
+
 ## 0.5.0 — 2026-07-02 — Command Center v2 design, stage one
 
 Implemented from `GROVER Command Center v2.dc.html` (Claude Design):

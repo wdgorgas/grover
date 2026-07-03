@@ -5,7 +5,7 @@
 import { api, esc, md, toast, modal, closeModal, fmt$, fmtDate } from './api.js';
 import { typewrite, countUp, stagger } from './fx.js';
 import { ChatPane } from './pane.js';
-import { greenlightFlow, renderSystemStrip, renderLoopsPanel, deskStarters } from './loop-ui.js';
+import { greenlightFlow, improvementFlow, renderSystemStrip, renderLoopsPanel, deskStarters } from './loop-ui.js';
 
 const $view = () => document.getElementById('view');
 
@@ -166,21 +166,39 @@ export async function renderBuilder(state) {
   const historyItems = [...groups.done, ...groups.rejected];
 
   $view().innerHTML = `
-    ${header('domain: grover-dev', 'Builder', 'Grover builds Grover. Greenlighting records a decision — the work itself happens when you act on it, or when a future coding loop is pointed at it.')}
+    ${header('domain: grover-dev', 'Builder', 'Grover\'s self-development control center: describe an improvement, approve the proposal, track the loop until it\'s verified and done.')}
     <div class="callout reveal">
-      <b>How this works:</b> ✓ Greenlight → Grover drafts a build proposal (scope, plan, risk, effort) →
-      you approve → it becomes a tracked loop below. Nothing executes automatically at autonomy L1 —
-      the loop is the plan-of-record you (or a supervised session) work from.
+      <b>How this works:</b> describe an improvement (or ✓ Greenlight a pending item) → Grover drafts a
+      structured proposal → you edit and approve it → it becomes a tracked loop with an auditable history.
+      <details style="margin-top:8px">
+        <summary class="small" style="cursor:pointer">New here? What Builder is, what to ask for, what approval does</summary>
+        <div class="small dim" style="margin-top:8px;display:grid;gap:8px">
+          <div><b>What is Builder?</b> The desk where Grover develops itself. Every change to this app —
+            features, fixes, upgrades — is captured, approved, and tracked here as a build loop.</div>
+          <div><b>What can I ask it to build?</b> Anything about this app, at any size: "add a way to delete
+            chats from the sidebar", "make task widgets draggable", "keyboard shortcut for the command input",
+            "better empty state on the Ledger". Grover structures it; you decide.</div>
+          <div><b>What happens after I approve?</b> The request becomes a queued loop — a plan-of-record with
+            steps, a verification checklist, and a rollback note. It moves through
+            <span class="mono">ready → running → verifying → done</span>, and every transition is recorded in
+            its History.</div>
+          <div><b>What is safe at Autonomy L1?</b> Everything — nothing executes automatically. Approving
+            creates the tracked plan; the work happens when you (or a supervised coding session) act on it.
+            Blocked loops wait, visibly, until you unblock them.</div>
+        </div>
+      </details>
     </div>
     <div id="sys-strip"></div>
-    <div id="loops-panel"></div>
     <div class="toolbar">
-      <button class="primary" id="quick-add">＋ Log work item</button>
+      <button class="primary" id="req-improve" title="Describe a change to Grover in plain words">✦ Request improvement</button>
+      <button class="ghost" id="quick-add">＋ Log work item</button>
       <span class="spacer"></span>
-      <span class="dim small">${groups.pending_greenlight.length} pending · ${groups.approved.length} queued · ${historyItems.length} closed</span>
+      <span class="dim small" id="doc-chips">docs:</span>
     </div>
+    <div id="loops-panel"></div>
+    <h2 style="margin-top:22px">Work items <span class="small faint" style="font-weight:400">— ${groups.pending_greenlight.length} pending · ${groups.approved.length} approved · ${historyItems.length} closed</span></h2>
     ${section('Awaiting greenlight', groups.pending_greenlight)}
-    ${section('Build queue — approved', groups.approved)}
+    ${section('Approved', groups.approved)}
     ${section('Deferred', groups.deferred)}
     ${historyItems.length ? `
       <details class="history">
@@ -195,13 +213,38 @@ export async function renderBuilder(state) {
     expanded.add(ledgerId);
     renderBuilder(state);
   });
+  $view().querySelector('#req-improve').onclick = () => improvementFlow(() => renderBuilder(state));
   $view().querySelector('#quick-add').onclick = () => ledgerForm({ domain: 'grover-dev' }, () => renderBuilder(state));
+  mountDocChips($view().querySelector('#doc-chips'));
   bindItemCards($view(), () => renderBuilder(state), state);
 
   function section(title, rows) {
     if (!rows.length) return '';
     return `<h2>${title}</h2>` + rows.map((it) => itemCard(it)).join('');
   }
+}
+
+/** Builder's linked docs — the engineering record behind the loops. */
+async function mountDocChips(el) {
+  if (!el) return;
+  let docs;
+  try { docs = await api('/api/docs'); } catch { return; }
+  const wanted = ['LOOP_ENGINEERING.md', 'TASKS.md', 'DECISIONS.md', 'QUALITY_RUBRIC.md'];
+  el.innerHTML = 'docs: ' + wanted.filter((d) => docs.includes(d)).map((d) =>
+    `<a href="#" data-doc="${esc(d)}" class="mono" style="margin-left:6px">${esc(d.replace('.md', ''))}</a>`).join(' ·');
+  el.querySelectorAll('[data-doc]').forEach((a) => {
+    a.onclick = async (e) => {
+      e.preventDefault();
+      try {
+        const f = await api(`/api/docs/${a.dataset.doc}`);
+        modal(`
+          <p class="view-kicker">docs / ${esc(f.name)}</p>
+          <div class="small" style="max-height:65vh;overflow-y:auto;white-space:pre-wrap;line-height:1.55">${md(f.content)}</div>
+          <div class="row"><button class="primary" data-a="close">Close</button></div>`)
+          .querySelector('[data-a=close]').onclick = closeModal;
+      } catch (err) { toast(err.message, 'err'); }
+    };
+  });
 }
 
 // ============================== LEDGER ======================================

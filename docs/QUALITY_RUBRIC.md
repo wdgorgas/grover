@@ -31,17 +31,29 @@ only if every bullet holds. Grade honestly; the audit is worthless otherwise.
 
 ## 6. Builder usefulness
 - [ ] Builder shows system state: autonomy, spend vs cap, active loop,
-      queue depth, next actions.
+      queue depth + blocked count, next actions.
 - [ ] Items expand to brief + workshop; approved work is visibly queued.
+- [ ] (PQ3) Builder shows active / queued / blocked (with reasons) /
+      recently completed loops, and answers a beginner's four questions
+      in the UI: what is Builder, what can I ask for, what happens after
+      approval, what is safe at L1.
+- [ ] (PQ3) A user can go from "I want X" (free text) to an approved,
+      tracked loop without leaving Builder or pre-creating a ledger item.
 
-## 7. Greenlight Build Loop
-- [ ] Greenlight produces a proposal (goal/scope/steps/risk/effort) before
-      anything changes state.
+## 7. Build Loop (both doors: Greenlight + Improvement Request)
+- [ ] A proposal (goal/scope/steps/risk/effort/verification/rollback/
+      cost estimate) exists before anything changes state.
 - [ ] Proposal displays autonomy level and approval requirement.
-- [ ] Approval creates a tracked loop with explicit lifecycle
-      (proposed→approved→running→verifying→done/killed), all transitions audited.
+- [ ] (PQ3) Improvement Request proposals are editable before the
+      decision; the decision set is approve / save for later / reject,
+      and every decision leaves a record.
+- [ ] Approval creates a tracked loop with an explicit, server-enforced
+      lifecycle (proposed→approved→ready→running→verifying→done, plus
+      blocked-with-reason / killed / rejected), all transitions audited.
+- [ ] (PQ3) Every loop has a per-loop event timeline (who, from→to, note)
+      visible in the UI; completed loops carry a closing summary.
 - [ ] Nothing executes autonomously at L1; the UI says so.
-- [ ] Without an API key, the flow still works with an honest offline skeleton.
+- [ ] Without an API key, both flows still work with an honest offline skeleton.
 
 ## 8. Responsiveness / accessibility
 - [ ] Usable at 1000px width (panel collapses); keyboard: Enter sends,
@@ -56,6 +68,20 @@ only if every bullet holds. Grade honestly; the audit is worthless otherwise.
 ## Scoring — PQ1 target
 Must flip §7 from total fail to full pass, §6 and §2 to pass, §9 to pass.
 §1/§3/§5 improved measurably; residuals logged in TASKS.md for PQ2.
+
+## Grades after PQ3 — Builder Workflow Pass (2026-07-03, honest)
+§6 Builder: PASS at the new, stricter criteria — free text → editable
+proposal → approve/save/reject → tracked loop, all inside Builder; active/
+queued/blocked/completed visible; beginner Q&A present. §7 loop: PASS —
+state machine enforced server-side, per-loop event timelines, verification
+checklist surfaced while verifying, both doors share one path, 66-check
+verify battery covers the lifecycle including illegal transitions.
+Honest residuals: verification is a checklist not a gate; no step-level
+progress; Greenlight-door proposals aren't editable; cost_estimate is a
+labeled placeholder never reconciled; no loop runner — loops still track
+work, they don't do it. §1–§5, §8: unchanged from PQ2 (visuals handled
+externally this pass by design). §9: PASS — verify extended to 66 checks
+incl. mutations on a throwaway data dir; docs updated.
 
 ## Grades after PQ2 (2026-07-01, honest)
 §1 polish: PASS (tables carded, empty states designed; residual: no visual
