@@ -22,27 +22,33 @@ Decision made: full v2 rebuild, spec-first. v1's repo and master prompt are hist
 
 ## 2. Where planning stands
 
-**Current phase: Claude ↔ ChatGPT co-planning cycle** (humans relay files between the AIs). Status: **iterations 1–3 done; architecture converged; zero HIGH-severity disagreements open.**
+**PLANNING IS COMPLETE (2026-07-03).** Seven iterations, zero unresolved disagreements. The output is **`planning/grover_v2_master_prompt.md` — the final, sole binding build specification.** It supersedes this file, the scope doc, and all iteration files as authority; they remain as the planning record. The one remaining gate: **Will formally approves the master prompt (P0 exit) → build green light.** The iteration record:
 
 - **Iteration 1 (Claude):** full architecture proposal — hierarchy as routing/policy not persistent agents, event spine + single task-state store, feature ledger + browser-evidence verification, three-tier memory, deterministic cost hooks, phased plan.
 - **Iteration 2 (ChatGPT):** accepted the core shape; added the `ExecutionEngine` adapter boundary over the Claude Agent SDK, `DomainContract` for provably-real domain lanes, the `FeatureRequest → BuildRun → AcceptanceCheck → EvidenceAsset` object model, hybrid event sourcing, ten memory acceptance tests, recovery-card UX.
 - **Iteration 3 (Claude):** locked Will's decisions as D1–D6 (see scope doc §12a: five sign-off triggers, $25/$50 phase budgets, minimal memory core with broad memory as v2.1 flagship, SDK + adapter); accepted most of iteration 2; sent modifications M1–M4 back for ruling (single source of truth for features, evidence tiering, mechanical relevance-gating eval, reversible-by-construction domains).
 
-**Convergence path:** iter 4 = ChatGPT rules on M1–M4 (delta-only) → iter 5 = Claude drafts the full v2 master prompt → iter 6 = ChatGPT adversarial full review → iter 7 = final master prompt, Will green-lights the build.
+- **Iteration 4 (ChatGPT):** accepted M1–M4 in full with implementation guardrails (projection versioning, evidence matrix by check kind, deterministic memory-eval IDs, PolicyRegistry, mechanical "backup green"), all adopted; caught one genuine miss — a proposal-intake protocol for parallel tracks (now master prompt §12). Zero high-severity disagreements.
+- **Iteration 5 (Claude):** **the full v2 master prompt draft — `planning/grover_v2_master_prompt_DRAFT.md`** — all 14 required sections, operational language throughout, plus a cover note (`iter_05_claude_to_chatgpt.md`) with per-section review instructions.
 
-**Team:** Jackson has joined planning with his own Claude+ChatGPT pair, coordinated through this git repo. His lanes (UI/UX spec track, red-team pass) and the locked-decision list live in `PLANNING_BOARD.md`. His GROVER login remains post-v2.0; he's a co-planner now, a user later.
+- **Iteration 6 (ChatGPT):** full-document adversarial review — verdict MODIFY-then-final, no architectural reversals. Seven executive defects (B1–B7): missing §14, non-standalone §4.4 schemas, direct-prompt vs sign-off-trigger conflict, P3's premature memory request, event ordering/replay gaps, P0 exit wording, UI scope guard — plus per-section tightenings.
+- **Iteration 7 (Claude):** **the FINAL master prompt** — all B1–B7 and per-section modifications applied, zero rejections, nothing broadened. Cycle closed (`iter_07_claude_final.md`).
+
+**Team:** Jackson works solo-runnable lanes while Will is offline — red-team the final spec, UI/UX design track, acceptance-test catalog (`JACKSON_START_HERE.md` has his full playbook). All spec changes go through master prompt §12 proposals; Will arbitrates. Jackson's GROVER login remains post-v2.0; he's a co-planner now, a user later.
 
 ---
 
 ## 3. Repo layout (organized by version)
 
-- `planning/` — **v2, current work.** This file, the spec (`grover_v2_scope_understanding.md` — source of truth), `PLANNING_BOARD.md` (assignments + locked decisions + iteration ledger), and `chatgpt_handoffs/` (the iteration thread: `iter_NN_claude_to_chatgpt.md` outbound, `iter_NN_chatgpt_to_claude.md` inbound, `jackson_NN_*.md` for Jackson's lanes).
+- `planning/` — **v2, current work.** `grover_v2_master_prompt.md` (**the binding spec**), this file, `PLANNING_BOARD.md` (assignments + locked decisions + iteration ledger), `chatgpt_handoffs/` (the closed iteration thread + `jackson_NN_*.md` lanes), and the planning record (`grover_v2_scope_understanding.md`, `grover_v2_master_prompt_DRAFT.md` — superseded, rationale only).
 - `design/` — v2 visual references: `ART INSPIRATION/` (Arcane/Spider-Verse; orb + accent language per spec §5) and `GROVER command center UI design/` mockups.
 - `archive/` — **v1, frozen.** `grover_v1/` (full build; its `data/` and `vault/` contain secrets/personal memory and are gitignored), `grover_v1_master_prompt.md` (do not carry forward without re-deriving), `grover_v1_git_history.bundle` (redundant history backup).
 - Root — `README.md` (status board), `JACKSON_START_HERE.md` (onboarding), `GIT_SETUP.md` (git workflow), repo housekeeping files.
 
 ---
 
-## 4. Immediate next step
+## 4. Immediate next steps
 
-Relay ChatGPT's iteration 4 reply into `planning/chatgpt_handoffs/` and give it to Claude. If it accepts M1–M4, Claude drafts the v2 master prompt (iteration 5) from the scope doc + locked decisions — not copied from v1's prompt, restructured around the managerial hierarchy as routing/policy architecture, with the §11 process rules written as enforceable harness structure rather than aspirations.
+- **Jackson (runnable now, Will offline):** the three lanes in `JACKSON_START_HERE.md` — red-team the final master prompt, UI/UX spec, acceptance-test catalog. Findings as §12 proposals, pushed to the repo.
+- **Will (when back):** review Jackson's proposals per §12, then formally approve `planning/grover_v2_master_prompt.md`. That approval is the P0 exit and the build green light — P1 (spine skeleton) starts from the master prompt alone.
+- **Nobody:** writes v2 application code before Will's approval.

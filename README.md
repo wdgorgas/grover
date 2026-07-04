@@ -7,8 +7,8 @@ GROVER (General of Resource Optimization and Varying Expertise Requests; named f
 **Phase: v2 planning. No v2 code exists yet, by explicit decision.**
 
 - **v1** — built 2026-07-01→03, retired. Real engineering, unusable product (no live feedback, dead controls, contradictory status, HUD-style visuals). Frozen under `archive/grover_v1/`.
-- **v2** — spec-first rebuild, planned via a Claude ↔ ChatGPT adversarial loop (humans relay files). Progress: iterations 1–3 complete, **architecture converged, zero high-severity disagreements open**. Awaiting ChatGPT's iteration 4 (ruling on four modifications), then the master prompt gets drafted (iter 5), reviewed (iter 6), finalized (iter 7) → Will green-lights the build.
-- **Team** — Will owns the main planning thread; Jackson runs parallel lanes (UI/UX spec, red-team). See `planning/PLANNING_BOARD.md` for live assignments and the locked-decision list.
+- **v2** — spec-first rebuild, planned via a seven-iteration Claude ↔ ChatGPT adversarial loop (humans relay files). **Planning is COMPLETE: the final binding spec is `planning/grover_v2_master_prompt.md`.** The one remaining gate: Will formally approves the prompt (P0 exit) → build green light. No code before that.
+- **Team** — Jackson's solo-runnable lanes are live (red-team the final spec, UI/UX design track, acceptance-test catalog) — see `JACKSON_START_HERE.md` and `planning/PLANNING_BOARD.md`. Spec changes go through §12 proposals only; Will arbitrates and green-lights.
 
 ## Layout — organized by version
 
@@ -21,10 +21,10 @@ GROVER (General of Resource Optimization and Varying Expertise Requests; named f
 
 ## Read in this order
 
-1. `planning/grover_v2_handoff.md` — what happened, where things stand. **Always start here.**
-2. `planning/grover_v2_scope_understanding.md` — the spec. Source of truth, including locked decisions (§12a).
-3. `planning/chatgpt_handoffs/` — the iteration thread, in order.
-4. `planning/PLANNING_BOARD.md` — who's doing what right now.
+1. `planning/grover_v2_master_prompt.md` — **the final, sole binding build spec.** Overrides everything below.
+2. `planning/grover_v2_handoff.md` — what happened, where things stand.
+3. `planning/PLANNING_BOARD.md` — who's doing what right now, locked decisions, iteration ledger.
+4. `planning/chatgpt_handoffs/` and `planning/grover_v2_scope_understanding.md` — the planning record; rationale only, no longer authoritative.
 
 New contributor: `JACKSON_START_HERE.md`.
 
