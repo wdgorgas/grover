@@ -1,33 +1,36 @@
-# GROVER v2 — Planning Workspace
+# GROVER — Project Workspace
 
-GROVER (General of Resource Optimization and Varying Expertise Requests; named for Grover's quantum search algorithm) is a private AI command center for Will and Jackson. **v1 was built and retired; this repo is currently the v2 planning workspace.** No v2 code exists yet — planning first, by explicit decision.
+GROVER (General of Resource Optimization and Varying Expertise Requests; named for Grover's quantum search algorithm) is a private AI command center for Will and Jackson — an operating layer, not a chatbot.
+
+## Current status (updated 2026-07-03)
+
+**Phase: v2 planning. No v2 code exists yet, by explicit decision.**
+
+- **v1** — built 2026-07-01→03, retired. Real engineering, unusable product (no live feedback, dead controls, contradictory status, HUD-style visuals). Frozen under `archive/grover_v1/`.
+- **v2** — spec-first rebuild, planned via a Claude ↔ ChatGPT adversarial loop (humans relay files). Progress: iterations 1–3 complete, **architecture converged, zero high-severity disagreements open**. Awaiting ChatGPT's iteration 4 (ruling on four modifications), then the master prompt gets drafted (iter 5), reviewed (iter 6), finalized (iter 7) → Will green-lights the build.
+- **Team** — Will owns the main planning thread; Jackson runs parallel lanes (UI/UX spec, red-team). See `planning/PLANNING_BOARD.md` for live assignments and the locked-decision list.
+
+## Layout — organized by version
+
+| Path | Version | What it is |
+|---|---|---|
+| `planning/` | **v2 (current)** | Everything being worked on now: the spec (`grover_v2_scope_understanding.md`), cold-start briefing (`grover_v2_handoff.md`), planning board, and the Claude↔ChatGPT iteration thread (`chatgpt_handoffs/`) |
+| `design/` | v2 (current) | Visual references: `ART INSPIRATION/` (orb + accent language) and the command-center UI mockups |
+| `archive/` | **v1 (frozen)** | v1's full codebase (`grover_v1/`), its master prompt, and a standalone git-history bundle. Read-only reference — never modified, never resumed |
+| root | — | This file + onboarding (`JACKSON_START_HERE.md`) + git workflow (`GIT_SETUP.md`) |
 
 ## Read in this order
 
-1. `grover_v2_handoff.md` — cold-start briefing: what happened, where things stand. **Always start here.**
-2. `grover_v2_scope_understanding.md` — the living spec. Source of truth for what GROVER v2 is.
-3. `chatgpt_handoffs/` — the Claude ↔ ChatGPT planning cycle, in iteration order.
-4. `PLANNING_BOARD.md` — who is working on what right now.
+1. `planning/grover_v2_handoff.md` — what happened, where things stand. **Always start here.**
+2. `planning/grover_v2_scope_understanding.md` — the spec. Source of truth, including locked decisions (§12a).
+3. `planning/chatgpt_handoffs/` — the iteration thread, in order.
+4. `planning/PLANNING_BOARD.md` — who's doing what right now.
 
-New contributor? Read `JACKSON_START_HERE.md`.
-
-## Layout
-
-| Path | What it is |
-|---|---|
-| `grover_v2_handoff.md` | Cold-start status briefing (kept current every iteration) |
-| `grover_v2_scope_understanding.md` | The v2 spec-in-progress |
-| `chatgpt_handoffs/` | Planning cycle: `iter_NN_claude_to_chatgpt.md` (outbound) / `iter_NN_chatgpt_to_claude.md` (inbound) |
-| `PLANNING_BOARD.md` | Active workstreams and owners |
-| `JACKSON_START_HERE.md` | Onboarding for Jackson + his Claude instance |
-| `GIT_SETUP.md` | One-time repo restructure commands (Will) + daily git workflow (everyone) |
-| `archive/grover_v1/` | v1's full codebase — frozen reference, never modified |
-| `archive/grover_v1_master_prompt.md` | v1's master prompt — historical only, do not carry forward |
-| `archive/grover_v1_git_history.bundle` | v1's standalone git history (redundant backup) |
-| `ART INSPIRATION/`, `GROVER command center UI design/` | Visual references (orb + accent language) |
+New contributor: `JACKSON_START_HERE.md`.
 
 ## Hard rules
 
-- **Never commit secrets.** `archive/grover_v1/data/` and `archive/grover_v1/vault/` are gitignored — they contain a real API key and personal memory. Check `git status` before every commit; if anything under `data/` or any `secrets.json` appears staged, stop.
-- **`archive/` is read-only.** v1 is reference material for "what went wrong," not something to iterate on.
-- **This is a planning repo right now.** Do not start writing v2 application code until the master prompt is finalized and Will green-lights the build.
+- **Never commit secrets.** `archive/grover_v1/data/` (contains a real API key) and `archive/grover_v1/vault/` (personal memory) are gitignored. If `git status` ever shows them staged, stop.
+- **`archive/` is read-only.** v1 is evidence, not a starting point.
+- **No v2 application code until the master prompt is final** and Will green-lights the build.
+- **Locked decisions don't get reopened** — list at the bottom of `planning/PLANNING_BOARD.md`.

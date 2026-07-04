@@ -1,32 +1,8 @@
-# Git setup and workflow
+# Git workflow
 
-The repo is `https://github.com/wdgorgas/grover.git`. v1 was already pushed there; the restructure below turns it into the v2 planning workspace while keeping all v1 history.
+The repo is `https://github.com/wdgorgas/grover.git`. One repo, one `master` branch, full history from v1 through v2 planning.
 
-## One-time restructure (Will, on Windows, in Command Prompt)
-
-v1's `.git` currently sits inside `archive\grover_v1\`. Moving it to the folder root makes this whole folder the repo, with v1's history intact and the origin already configured.
-
-```bat
-cd "C:\Grover v2"
-move "archive\grover_v1\.git" ".git"
-git add -A
-git status
-```
-
-**Stop and check `git status` output:** nothing under `archive/grover_v1/data/`, no `vault/`, no `secrets.json` may appear. If clean:
-
-```bat
-git commit -m "v2 planning workspace: archive v1, add planning docs and handoff cycle"
-git push origin master
-```
-
-Optional cleanup (old v1 work branches on GitHub):
-
-```bat
-git push origin --delete loop/product-quality-pass-2 loop/product-quality-pass-3 loop/product-quality-pass-4
-```
-
-Then add Jackson as a collaborator on GitHub (repo → Settings → Collaborators).
+**History note (2026-07-03):** the "Archive Grover v1 and initialize Grover v2 workspace" commit initially landed on a leftover v1 branch (`loop/product-quality-pass-5`) because that's where v1's HEAD was parked; it was merged into master and the repo was reorganized into the version-based layout (`planning/`, `design/`, `archive/`) right after. The old `loop/*` branches are dead — delete on sight.
 
 ## Daily workflow (Will and Jackson, identical)
 
@@ -39,12 +15,24 @@ Then add Jackson as a collaborator on GitHub (repo → Settings → Collaborator
    git commit -m "planning: <one line on what changed>"
    git push
    ```
-4. Push promptly — an unpushed session is invisible to the other person and invites collisions.
+4. **Check `git status` before every commit:** nothing under `archive/grover_v1/data/`, no `vault/`, no `secrets.json` may ever appear staged.
+5. Push promptly — an unpushed session is invisible to the other person and invites collisions.
+
+## Branch hygiene
+
+- All planning work goes straight on `master` — planning docs don't need feature branches, and two humans pulling frequently is enough coordination.
+- **Always check `git branch` shows `* master` before committing.** (This is exactly how the history-note incident happened.)
+- Cleanup of dead v1 branches, if they still exist:
+  ```bat
+  git branch -D loop/product-quality-pass-2 loop/product-quality-pass-3 loop/product-quality-pass-4 loop/product-quality-pass-5
+  git push origin --delete loop/product-quality-pass-2 loop/product-quality-pass-3 loop/product-quality-pass-4
+  ```
+  (Ignore "not found" errors — it means they're already gone.)
 
 ## Collision rules
 
-- The main iteration thread (`chatgpt_handoffs/iter_NN_*.md`) has **one owner at a time** — see `PLANNING_BOARD.md`. Don't add a new `iter_NN` file unless the board says the thread is yours.
-- Jackson's parallel outputs are named `jackson_NN_<topic>.md` inside `chatgpt_handoffs/` — separate namespace, no number conflicts possible.
+- The main iteration thread (`planning/chatgpt_handoffs/iter_NN_*.md`) has **one owner at a time** — see `planning/PLANNING_BOARD.md`. Don't add a new `iter_NN` file unless the board says the thread is yours.
+- Jackson's parallel outputs are named `jackson_NN_<topic>.md` in the same folder — separate namespace, no number conflicts possible.
 - If both of you edited the same file and `git pull` reports a conflict, don't fight it manually — have your Claude instance resolve the merge and sanity-check the result.
 
 ## Known gotcha
