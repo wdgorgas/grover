@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Syne:wght@600;700&family=Familjen+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    html,body{margin:0;padding:0;background:#0e0d13}
+    *{box-sizing:border-box}
+    input,select,textarea{outline:none}
+    @keyframes gv-orbit{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes gv-orbit-r{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
+    @keyframes gv-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes gv-blink{0%,100%{opacity:1}50%{opacity:.15}}
+    @keyframes gv-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes gv-slide-l{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes gv-slide-r{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes gv-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+  </style>
+</helmet>
+<div ref="{{ rootRef }}" data-screen-label="Command Center v2" style="width:100%;min-width:1320px;height:100vh;min-height:840px;display:grid;grid-template-columns:224px 1fr 330px;grid-template-rows:1fr 40px;grid-template-areas:'side main ctx' 'side foot foot';background:var(--bg,#0e0d13);color:var(--text,#eae7ee);font-family:var(--f-ui,'Hanken Grotesk',sans-serif);position:relative;overflow:hidden">
+
+  <!-- ambient desk-tinted field -->
+  <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 55% 48% at 46% 42%, var(--halo,rgba(122,104,201,.13)), transparent 70%);transition:background 1s ease"></div>
+
+  <!-- ═══ sidebar ═══ -->
+  <aside style="grid-area:side;display:flex;flex-direction:column;border-right:1px solid var(--border,#252131);background:var(--bg2,#121017);position:relative;z-index:6;padding:20px 14px 16px">
+    <div style="display:flex;align-items:center;gap:11px;padding:0 8px 22px">
+      <div style="width:11px;height:11px;border-radius:50%;background:var(--sc,#7cc7bc);box-shadow:0 0 var(--glow,14px) var(--sc,#7cc7bc);transition:background .6s,box-shadow .6s"></div>
+      <div>
+        <div style="font-family:var(--f-disp,'Bricolage Grotesque',sans-serif);font-size:16px;font-weight:700;letter-spacing:.18em">GROVER</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.22em;color:var(--text3,#6c6580);margin-top:1px">COMMAND CENTER</div>
+      </div>
+    </div>
+
+    <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.26em;color:var(--text3,#6c6580);padding:0 8px 8px">DESKS</div>
+    <nav style="display:flex;flex-direction:column;gap:2px">
+      <sc-for list="{{ desks }}" as="dk" hint-placeholder-count="5">
+        <div onClick="{{ dk.onPick }}" style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;cursor:pointer;background:{{ dk.bg }};border:1px solid {{ dk.border }};transition:background .25s" style-hover="background:var(--surface,#18151f)">
+          <div style="width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;color:{{ dk.iconColor }};background:{{ dk.iconBg }};flex:none">{{ dk.icon }}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:{{ dk.weight }};color:{{ dk.color }}">{{ dk.name }}</div>
+          </div>
+          <div style="width:5px;height:5px;border-radius:50%;background:{{ dk.dot }};flex:none"></div>
+        </div>
+      </sc-for>
+    </nav>
+
+    <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.26em;color:var(--text3,#6c6580);padding:20px 8px 8px">SYSTEM</div>
+    <nav style="display:flex;flex-direction:column;gap:1px">
+      <sc-for list="{{ sysRows }}" as="sr" hint-placeholder-count="4">
+        <div style="display:flex;align-items:center;gap:11px;padding:7px 10px;border-radius:8px;opacity:.5;cursor:default">
+          <div style="width:22px;text-align:center;font-size:11px;color:var(--text2,#a29aae)">{{ sr.icon }}</div>
+          <div style="flex:1;font-size:12.5px;color:var(--text2,#a29aae)">{{ sr.name }}</div>
+          <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:7.5px;letter-spacing:.14em;color:var(--text3,#6c6580);border:1px solid var(--border,#252131);border-radius:4px;padding:2px 5px">SOON</div>
+        </div>
+      </sc-for>
+    </nav>
+
+    <div style="flex:1"></div>
+
+    <div style="display:flex;align-items:center;gap:8px;padding:0 8px 14px">
+      <sc-for list="{{ skinChips }}" as="sk" hint-placeholder-count="5">
+        <div onClick="{{ sk.onPick }}" title="{{ sk.name }}" style="width:15px;height:15px;border-radius:50%;cursor:pointer;background:{{ sk.swatch }};box-shadow:{{ sk.ringShadow }}"></div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 8px 0;border-top:1px solid var(--border,#252131)">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--surface2,#1e1a28);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--text2,#a29aae)">W</div>
+      <div>
+        <div style="font-size:12px;font-weight:600">Will</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;color:var(--text3,#6c6580)">admin · {{ clock }}</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ main stage ═══ -->
+  <main onDragOver="{{ onDragOver }}" onDrop="{{ onDrop }}" style="grid-area:main;display:flex;flex-direction:column;align-items:center;min-width:0;position:relative;z-index:4;padding:26px 32px 12px">
+
+    <!-- desk header -->
+    <div key="{{ deskKey }}" style="width:100%;max-width:680px;display:flex;align-items:baseline;gap:14px;animation:gv-slide-l .65s cubic-bezier(.22,1,.36,1) both;flex:none">
+      <div style="font-family:var(--f-disp,'Bricolage Grotesque',sans-serif);font-size:30px;font-weight:600;letter-spacing:-.01em;color:var(--text,#eae7ee)">{{ deskTitle }}</div>
+      <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:10px;letter-spacing:.18em;color:var(--sc,#7cc7bc);transition:color .6s;display:flex;align-items:baseline">{{ typedSub }}<sc-if value="{{ typing }}" hint-placeholder-val="{{ false }}"><span style="display:inline-block;width:5px;height:10px;background:var(--sc,#7cc7bc);margin-left:2px;animation:gv-blink .7s linear infinite"></span></sc-if></div>
+      <div style="margin-left:auto;font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9.5px;letter-spacing:.12em;color:var(--text3,#6c6580)">{{ deskMeta }}</div>
+    </div>
+
+    <!-- orb assembly (never remounts) -->
+    <div style="position:relative;width:560px;height:520px;display:flex;align-items:center;justify-content:center;flex:1;min-height:380px">
+      <canvas ref="{{ orbCanvasRef }}" style="width:520px;height:520px;display:block;max-height:100%"></canvas>
+
+      <sc-if value="{{ dragging }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:396px;height:396px;border:1.5px dashed var(--sc,#7cc7bc);border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:15;pointer-events:none;animation:gv-pulse 1.6s ease-in-out infinite">
+          <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:10px;letter-spacing:.3em;color:var(--sc,#7cc7bc);background:var(--bg,#0e0d13);padding:6px 12px 6px 14px;border-radius:6px">RELEASE TO START</div>
+        </div>
+      </sc-if>
+
+      <svg width="560" height="560" viewBox="0 0 560 560" style="position:absolute;left:0;top:calc(50% - 280px);pointer-events:none;animation:gv-spin 110s linear infinite">
+        <circle cx="280" cy="280" r="252" fill="none" stroke="var(--border,#252131)" stroke-width="1" stroke-dasharray="1 10"></circle>
+        <circle cx="280" cy="280" r="252" fill="none" stroke="var(--sc,#7cc7bc)" stroke-width="1.4" stroke-dasharray="110 1473" stroke-linecap="round" opacity=".85" style="transition:stroke .6s"></circle>
+      </svg>
+
+      <div style="position:absolute;left:50%;top:50%;width:0;height:0;animation:gv-orbit 52s linear infinite">
+        <div style="position:absolute;left:238px;top:-8px;animation:gv-orbit-r 52s linear infinite;opacity:var(--agent-op,0);transition:opacity .7s">
+          <div style="display:flex;align-items:center;gap:7px;white-space:nowrap">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--sc,#7cc7bc);box-shadow:0 0 10px var(--sc,#7cc7bc)"></div>
+            <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;letter-spacing:.14em;color:var(--text2,#a29aae)">SCOUT · research</div>
+          </div>
+        </div>
+      </div>
+      <div style="position:absolute;left:50%;top:50%;width:0;height:0;animation:gv-orbit 52s linear infinite;animation-delay:-17.3s">
+        <div style="position:absolute;left:238px;top:-8px;animation:gv-orbit-r 52s linear infinite;animation-delay:-17.3s;opacity:var(--agent-op,0);transition:opacity .7s">
+          <div style="display:flex;align-items:center;gap:7px;white-space:nowrap">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--sc,#7cc7bc);box-shadow:0 0 10px var(--sc,#7cc7bc)"></div>
+            <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;letter-spacing:.14em;color:var(--text2,#a29aae)">FORGE · code</div>
+          </div>
+        </div>
+      </div>
+      <div style="position:absolute;left:50%;top:50%;width:0;height:0;animation:gv-orbit 52s linear infinite;animation-delay:-34.6s">
+        <div style="position:absolute;left:238px;top:-8px;animation:gv-orbit-r 52s linear infinite;animation-delay:-34.6s;opacity:var(--agent-op,0);transition:opacity .7s">
+          <div style="display:flex;align-items:center;gap:7px;white-space:nowrap">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--sc,#7cc7bc);box-shadow:0 0 10px var(--sc,#7cc7bc)"></div>
+            <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;letter-spacing:.14em;color:var(--text2,#a29aae)">ARCHIVIST · memory</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="position:absolute;left:0;right:0;bottom:6px;display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:none">
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:11.5px;font-weight:500;letter-spacing:.4em;color:var(--sc,#7cc7bc);transition:color .6s">{{ stateLabel }}</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9.5px;letter-spacing:.1em;color:var(--text3,#6c6580)">{{ stateDesc }}</div>
+      </div>
+    </div>
+
+    <!-- approval interrupt -->
+    <sc-if value="{{ showApproval }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:50%;top:74px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:10px 14px 10px 18px;background:var(--surface,#18151f);border:1px solid var(--sc,#eeb069);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);animation:gv-rise .25s ease;z-index:20">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--sc,#eeb069);animation:gv-blink 1.1s linear infinite"></div>
+        <div>
+          <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9.5px;letter-spacing:.2em;color:var(--sc,#eeb069)">APPROVAL REQUIRED</div>
+          <div style="font-size:12.5px;color:var(--text2,#a29aae);margin-top:2px">{{ approvalText }}</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-left:8px">
+          <button onClick="{{ onApprove }}" style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:10px;letter-spacing:.1em;padding:7px 14px;border-radius:7px;border:none;background:var(--sc,#eeb069);color:#141118;font-weight:600;cursor:pointer">APPROVE</button>
+          <button onClick="{{ onDeny }}" style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:10px;letter-spacing:.1em;padding:7px 14px;border-radius:7px;border:1px solid var(--border,#252131);background:transparent;color:var(--text2,#a29aae);cursor:pointer">DENY</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- transcript -->
+    <div style="width:100%;max-width:640px;min-height:52px;display:flex;flex-direction:column;gap:7px;margin:6px 0 12px;flex:none">
+      <sc-for list="{{ transcript }}" as="msg" hint-placeholder-count="1">
+        <div style="display:flex;gap:10px;align-items:baseline;animation:gv-rise .3s ease">
+          <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.18em;color:{{ msg.tagColor }};flex:none;width:56px;text-align:right">{{ msg.tag }}</div>
+          <div style="font-size:13px;line-height:1.5;color:{{ msg.color }}">{{ msg.text }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- composer -->
+    <div style="width:100%;max-width:640px;display:flex;align-items:center;gap:10px;padding:6px 6px 6px 16px;background:var(--surface,#18151f);border:1px solid var(--border,#252131);border-radius:13px;flex:none;box-shadow:0 10px 34px rgba(0,0,0,.3)">
+      <div style="width:7px;height:7px;border-radius:50%;background:var(--sc,#7cc7bc);flex:none;animation:gv-pulse 2.4s ease-in-out infinite;transition:background .6s"></div>
+      <input ref="{{ inputRef }}" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="{{ inputPlaceholder }}" style="flex:1;background:transparent;border:none;color:var(--text,#eae7ee);font-family:var(--f-ui,'Hanken Grotesk',sans-serif);font-size:13.5px;padding:10px 0"></input>
+      <select value="{{ tier }}" onChange="{{ onTier }}" style="flex:none;appearance:none;-webkit-appearance:none;background:transparent;border:1px solid var(--border,#252131);border-radius:7px;color:var(--text2,#a29aae);font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9.5px;letter-spacing:.08em;padding:6px 9px;cursor:pointer">
+        <option value="auto">AUTO</option>
+        <option value="fast">FAST</option>
+        <option value="smart">SMART</option>
+        <option value="frontier">FRONTIER</option>
+        <option value="fable">FABLE</option>
+      </select>
+      <button onClick="{{ onSend }}" style="flex:none;width:37px;height:37px;border-radius:9px;border:none;background:var(--scDim,rgba(124,199,188,.14));color:var(--sc,#7cc7bc);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .6s,color .6s">↑</button>
+    </div>
+  </main>
+
+  <!-- ═══ context panel ═══ -->
+  <aside key="{{ deskKey }}" style="grid-area:ctx;border-left:1px solid var(--border,#252131);padding:24px 22px 14px;display:flex;flex-direction:column;gap:20px;overflow-y:auto;background:var(--bg2,#121017);position:relative;z-index:5;animation:gv-slide-r .6s cubic-bezier(.22,1,.36,1) both">
+
+    <div>
+      <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.26em;color:var(--text3,#6c6580);margin-bottom:9px">ACTIVE TASK</div>
+      <div style="font-size:14px;font-weight:500;line-height:1.45">{{ task }}</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:8px">
+        <div style="width:6px;height:6px;border-radius:50%;background:var(--sc,#7cc7bc);transition:background .6s"></div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9.5px;letter-spacing:.12em;color:var(--sc,#7cc7bc);transition:color .6s">{{ taskStatus }}</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.26em;color:var(--text3,#6c6580)">QUEUE</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8px;letter-spacing:.1em;color:var(--text3,#6c6580)">drag → orb to start</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;padding-bottom:4px">
+        <sc-for list="{{ queue }}" as="q" hint-placeholder-count="2">
+          <div draggable="true" onDragStart="{{ q.onDrag }}" onDragEnd="{{ q.onDragEnd }}" onClick="{{ q.onToggle }}" style="background:var(--surface,#18151f);border:1px solid {{ q.border }};border-radius:10px;padding:11px 12px;cursor:grab;transition:border-color .2s;animation:gv-rise .55s cubic-bezier(.22,1,.36,1) both;animation-delay:{{ q.delay }}">
+            <div style="display:flex;align-items:center;gap:9px">
+              <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;color:var(--text3,#6c6580);flex:none">{{ q.n }}</div>
+              <div style="flex:1;font-size:12.5px;font-weight:500;line-height:1.4">{{ q.t }}</div>
+              <div style="font-size:9px;color:var(--text3,#6c6580);transform:{{ q.chevRot }};transition:transform .5s cubic-bezier(.22,1,.36,1);flex:none">▾</div>
+            </div>
+            <div style="display:flex;gap:6px;margin:7px 0 0 22px">
+              <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.06em;padding:2.5px 7px;border-radius:5px;border:1px solid var(--border,#252131);color:var(--text2,#a29aae)">est {{ q.est }}</div>
+              <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.06em;padding:2.5px 7px;border-radius:5px;border:1px solid {{ q.prioColor }};color:{{ q.prioColor }}">{{ q.prio }}</div>
+            </div>
+            <div style="overflow:hidden;max-height:{{ q.maxH }};transition:max-height .6s cubic-bezier(.4,0,.2,1)">
+              <div>
+                <div style="margin:9px 0 2px 22px;opacity:{{ q.detailOp }};transition:opacity .5s ease {{ q.fadeDelay }}">
+                  <div style="font-size:11.5px;line-height:1.5;color:var(--text2,#a29aae)">{{ q.d }}</div>
+                  <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">
+                    <sc-for list="{{ q.steps }}" as="stp" hint-placeholder-count="3">
+                      <div style="display:flex;gap:8px;align-items:baseline;opacity:{{ q.detailOp }};transform:{{ stp.tx }};transition:opacity .55s ease {{ stp.delay }},transform .55s cubic-bezier(.22,1,.36,1) {{ stp.delay }}">
+                        <div style="width:4px;height:4px;border-radius:50%;background:var(--text3,#6c6580);flex:none;transform:translateY(-2px)"></div>
+                        <div style="font-size:11px;line-height:1.45;color:var(--text3,#6c6580)">{{ stp.text }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div onClick="{{ q.onRun }}" style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;letter-spacing:.16em;color:var(--sc,#7cc7bc);cursor:pointer;padding:5px 10px;border:1px solid var(--scDim,rgba(124,199,188,.3));border-radius:6px">RUN NOW ▸</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="height:1px;background:var(--border,#252131)"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.26em;color:var(--text3,#6c6580);margin-bottom:7px">MODEL</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:11px;line-height:1.4">{{ model }}</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;color:{{ modelTierColor }};letter-spacing:.1em;margin-top:3px">{{ modelTier }}</div>
+      </div>
+      <div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.26em;color:var(--text3,#6c6580);margin-bottom:7px">EST. COST</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:16px;font-weight:500">{{ estCost }}</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;color:var(--text3,#6c6580);margin-top:3px">cap $2.00 / task</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.26em;color:var(--text3,#6c6580);margin-bottom:9px">TOOLS ALLOWED</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <sc-for list="{{ tools }}" as="tool" hint-placeholder-count="4">
+          <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;letter-spacing:.08em;padding:4px 9px;border-radius:6px;border:1px solid {{ tool.border }};color:{{ tool.color }}">{{ tool.name }}</div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.26em;color:var(--text3,#6c6580)">MEMORY</div>
+        <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9.5px;color:var(--text2,#a29aae)">{{ memLabel }}</div>
+      </div>
+      <div style="height:3px;border-radius:2px;background:var(--border,#252131);overflow:hidden">
+        <div style="height:100%;width:{{ memPct }}%;border-radius:2px;background:var(--sc,#7cc7bc);transition:width .5s ease,background .6s"></div>
+      </div>
+      <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;color:var(--text3,#6c6580);margin-top:7px;line-height:1.6">{{ memNote }}</div>
+    </div>
+
+    <div style="font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:8.5px;letter-spacing:.14em;color:var(--text3,#6c6580);display:flex;justify-content:space-between">
+      <span>NS {{ namespace }}</span><span>UPTIME {{ uptime }}</span>
+    </div>
+  </aside>
+
+  <!-- ═══ telemetry strip ═══ -->
+  <footer style="grid-area:foot;display:flex;align-items:center;gap:26px;padding:0 24px;border-top:1px solid var(--border,#252131);font-family:var(--f-mono,'Spline Sans Mono',monospace);font-size:9px;letter-spacing:.12em;color:var(--text3,#6c6580);position:relative;z-index:5;background:var(--bg2,#121017)">
+    <span>TOK IN <span style="color:var(--text2,#a29aae)">{{ tokIn }}</span></span>
+    <span>TOK OUT <span style="color:var(--text2,#a29aae)">{{ tokOut }}</span></span>
+    <span>LATENCY <span style="color:var(--text2,#a29aae)">{{ latency }}</span></span>
+    <span>SESSION <span style="color:var(--text2,#a29aae)">{{ sessionCost }}</span></span>
+    <span style="margin-left:auto">ORB PREVIEW</span>
+    <div style="display:flex;align-items:center;gap:7px">
+      <sc-for list="{{ stateChips }}" as="chip" hint-placeholder-count="6">
+        <div onClick="{{ chip.onPick }}" title="{{ chip.label }}" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:{{ chip.dot }};opacity:{{ chip.op }};box-shadow:{{ chip.glow }}"></div>
+      </sc-for>
+    </div>
+    <span style="color:var(--sc,#7cc7bc);transition:color .6s">● {{ stateLabel }}</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;skin&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;atelier&quot;,&quot;arcane&quot;,&quot;pulse&quot;,&quot;obsidian&quot;,&quot;porcelain&quot;],&quot;default&quot;:&quot;obsidian&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;typePairing&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;bricolage&quot;,&quot;editorial&quot;,&quot;syne&quot;],&quot;default&quot;:&quot;bricolage&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;meshIntensity&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:0,&quot;max&quot;:1,&quot;step&quot;:0.05,&quot;default&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Orb&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.rootRef = React.createRef();
+    this.orbCanvasRef = React.createRef();
+    this.inputRef = React.createRef();
+    this.state = {
+      st: 'idle', desk: 'command', draft: '', tier: 'auto', transcript: [],
+      task: 'No active task', taskStatus: 'STANDING BY',
+      model: 'claude-sonnet-4.5', modelTier: 'SMART TIER',
+      cost: 0, sessionCost: 0.4172, tokIn: 128409, tokOut: 40233,
+      latency: '—', memPct: 38,
+      showApproval: false, approvalText: '',
+      clock: '', uptime: '02:14:38',
+      qOpen: null, dragging: false,
+      queues: Object.keys(Component.DESKS).reduce((a, k) => (a[k] = Component.DESKS[k].queue.map(q => Object.assign({}, q)), a), {})
+    };
+    this._runId = 0;
+  }
+
+  // ── skins: lifted from client/css/tokens.css (repo) + Atelier (new) ──
+  static SKINS = {
+    atelier: {
+      name: 'Atelier', swatch: 'linear-gradient(135deg,#7cc7bc,#9a8cf2 50%,#eeb069)',
+      bg: '#0e0d13', bg2: '#121017', surface: '#18151f', surface2: '#1e1a28',
+      border: '#252131', text: '#eae7ee', text2: '#a29aae', text3: '#6c6580',
+      glow: '14px',
+      states: {
+        idle: '#7cc7bc', listening: '#98dcd2', thinking: '#9a8cf2', memory: '#8fb8e8',
+        tools: '#7cc7bc', agents: '#b39ae0', coding: '#e88aa8', frontier: '#eeb069',
+        approval: '#e0a566', error: '#e0705f', success: '#8fca9c'
+      },
+      orb: { core: '#292350', mid: '#7a68c9', hot: '#d9799d', edge: '#f0b46f' }
+    },
+    arcane: {
+      name: 'Arcane', swatch: 'linear-gradient(135deg,#3de8f0,#b14aed 55%,#ffd27a)',
+      bg: '#0a0b12', bg2: '#0d0f1a', surface: '#121527', surface2: '#181c33',
+      border: '#232948', text: '#eae9f2', text2: '#9a94b8', text3: '#5d597a',
+      glow: '22px',
+      states: {
+        idle: '#3de8f0', listening: '#7ff0f6', thinking: '#b14aed', memory: '#6fc9ea',
+        tools: '#3de8f0', agents: '#c455ee', coding: '#ff4fd8', frontier: '#f2b34c',
+        approval: '#f2b34c', error: '#ff5c5c', success: '#43e8b0'
+      },
+      orb: { core: '#123a52', mid: '#2fb8c9', hot: '#c455ee', edge: '#ffd27a' }
+    },
+    pulse: {
+      name: 'Pulse', swatch: 'linear-gradient(135deg,#00e5ff,#ff2d78 55%,#ffd166)',
+      bg: '#08060c', bg2: '#0c0812', surface: '#120c1c', surface2: '#191026',
+      border: '#2a1a3d', text: '#f2ecff', text2: '#a390c4', text3: '#64548a',
+      glow: '24px',
+      states: {
+        idle: '#00e5ff', listening: '#6ceeff', thinking: '#c86bfa', memory: '#7f9df5',
+        tools: '#00e5ff', agents: '#c86bfa', coding: '#ff2d78', frontier: '#ffd166',
+        approval: '#ffd166', error: '#ff3355', success: '#37ffb4'
+      },
+      orb: { core: '#14186e', mid: '#7a3cf0', hot: '#ff2d78', edge: '#ffd166' }
+    },
+    obsidian: {
+      name: 'Obsidian', swatch: 'linear-gradient(135deg,#7a6a4a,#d4a94f 60%,#f4e3b2)',
+      bg: '#0b0b0c', bg2: '#101012', surface: '#161618', surface2: '#1c1c1f',
+      border: '#26262a', text: '#ece9e2', text2: '#9b968b', text3: '#625e55',
+      glow: '8px',
+      states: {
+        idle: '#b3ab9c', listening: '#c9c1b0', thinking: '#c2a06a', memory: '#a99e86',
+        tools: '#b3ab9c', agents: '#c2a06a', coding: '#d4a94f', frontier: '#e8c268',
+        approval: '#e8c268', error: '#d1685c', success: '#9ec29a'
+      },
+      orb: { core: '#2a2620', mid: '#7a6a4a', hot: '#d4a94f', edge: '#f4e3b2' }
+    },
+    porcelain: {
+      name: 'Porcelain', swatch: 'linear-gradient(135deg,#34506b,#8c3041 55%,#d9964a)',
+      light: true,
+      bg: '#f6f4ef', bg2: '#efece5', surface: '#fdfcf9', surface2: '#f3f0e9',
+      border: '#e0dcd1', text: '#23211c', text2: '#6b675c', text3: '#a19c8e',
+      glow: '0px',
+      states: {
+        idle: '#34506b', listening: '#4a6a88', thinking: '#5f4a80', memory: '#46628a',
+        tools: '#34506b', agents: '#5f4a80', coding: '#8c3041', frontier: '#a86b2d',
+        approval: '#a86b2d', error: '#b3402e', success: '#3e7d5a'
+      },
+      orb: { core: '#2c3d63', mid: '#6b5a9e', hot: '#b04a6e', edge: '#d9964a' }
+    }
+  };
+
+  static TYPES = {
+    bricolage: { disp: "'Bricolage Grotesque', sans-serif", ui: "'Hanken Grotesk', sans-serif", mono: "'Spline Sans Mono', monospace" },
+    editorial: { disp: "'Instrument Serif', serif", ui: "'Hanken Grotesk', sans-serif", mono: "'Spline Sans Mono', monospace" },
+    syne: { disp: "'Syne', sans-serif", ui: "'Familjen Grotesk', sans-serif", mono: "'Spline Sans Mono', monospace" }
+  };
+
+  static DESKS = {
+    command:   { name: 'Command', icon: '◉', sub: 'everything, routed', meta: 'kernel v1 · all namespaces', accent: 'idle',
+                 tools: ['router', 'memory', 'web', 'ledger'], task: 'No active task', ns: 'shared',
+                 queue: [
+                   { t: 'Review pending memory consolidation', d: '12 brain-dump extractions await promotion into the vault.', est: '$0.04', prio: 'LOW', steps: ['Dedupe against existing entries', 'Tag namespaces', 'Write to vault + audit'] },
+                   { t: 'Greenlight Loop Engine spec', d: 'Spec drafted in DECISIONS.md; needs your sign-off before Builder starts.', est: '$0.00', prio: 'BLOCKED ON YOU', steps: ['Read spec', 'Approve or annotate'] }
+                 ],
+                 ph: 'Talk to Grover — routed, budgeted, remembered' },
+    builder:   { name: 'Builder', icon: '✦', sub: 'code · repo · ship', meta: 'grover-dev ledger slice', accent: 'coding',
+                 tools: ['filesystem', 'shell', 'git', 'memory'], task: 'Refactor auth module', ns: 'grover-dev',
+                 queue: [
+                   { t: 'Fix flaky loop-engine test', d: 'test/loop.spec.mjs fails ~1 in 7 runs on a timing race.', est: '$0.11', prio: 'HIGH', steps: ['Reproduce with seed sweep', 'Isolate race in runner.tick', 'Patch + 200-run soak'] },
+                   { t: 'Wire /api/loops route', d: 'Route table entry + handler against the ledger schema.', est: '$0.08', prio: 'MED', steps: ['Add route', 'Handler + validation', 'Smoke test'] },
+                   { t: 'Review PR #41', d: 'Prompt-cache markers for the stable context prefix.', est: '$0.03', prio: 'MED', steps: ['Diff review', 'Check cache hit-rate claim', 'Comment'] }
+                 ],
+                 ph: 'Ask Builder — “refactor the auth module”, “fix the failing test”' },
+    quant:     { name: 'Quant Desk', icon: '∿', sub: 'markets · signals · risk', meta: 'paper trading · read-only', accent: 'frontier',
+                 tools: ['market-data', 'backtester', 'notebook'], task: 'Backtest momentum basket', ns: 'will-private',
+                 queue: [
+                   { t: 'Rebalance watchlist', d: 'Drop stale tickers; add the two flagged in the latest scan.', est: '$0.02', prio: 'LOW', steps: ['Score current list', 'Apply changes', 'Log to ledger'] },
+                   { t: 'Overnight futures summary', d: 'ES, NQ, CL, gold — moves, catalysts, open risk.', est: '$0.05', prio: 'MED', steps: ['Pull data', 'Summarize catalysts', 'Flag positions at risk'] }
+                 ],
+                 ph: 'Ask the Quant Desk — “backtest this basket”, “what moved overnight?”' },
+    research:  { name: 'Research Desk', icon: '⬡', sub: 'agents · sources · synthesis', meta: 'maker/checker split', accent: 'thinking',
+                 tools: ['web-search', 'browser', 'agents', 'memory'], task: 'Vector retrieval survey', ns: 'shared',
+                 queue: [
+                   { t: 'Summarize FTS vs hybrid tradeoffs', d: 'Feeds the vector-retrieval decision; maker/checker on sources.', est: '$0.18', prio: 'HIGH', steps: ['Scout gathers sources', 'Forge drafts comparison', 'Archivist files to vault'] },
+                   { t: 'Collect Arcane S3 press art', d: 'Reference sweep for the Arcane skin refresh.', est: '$0.06', prio: 'LOW', steps: ['Search official art', 'Dedupe', 'Pin to inspiration inbox'] }
+                 ],
+                 ph: 'Ask Research — “have the team survey vector DBs”' },
+    lifestyle: { name: 'Lifestyle', icon: '❋', sub: 'health · home · rhythm', meta: 'private namespace', accent: 'success',
+                 tools: ['calendar', 'health', 'home', 'memory'], task: 'Plan training block', ns: 'will-private',
+                 queue: [
+                   { t: 'Meal prep list for Sunday', d: 'High-protein week; reuse the batch-cook template.', est: '$0.01', prio: 'LOW', steps: ['Pull template', 'Adjust macros', 'Push to phone'] },
+                   { t: 'Book dentist', d: 'Overdue cleaning; Tuesday mornings preferred.', est: '$0.00', prio: 'BLOCKED ON YOU', steps: ['Confirm slot', 'Add to calendar'] }
+                 ],
+                 ph: 'Ask Lifestyle — “plan next week’s training block”' }
+  };
+
+  // motion params (superset of client/js/orb.js STATES)
+  static MOTION = {
+    idle:      { turb: .16, speed: .10, pulse: .035, heat: .55, band: .5 },
+    listening: { turb: .22, speed: .16, pulse: .06, heat: .65, band: .9, mic: true },
+    thinking:  { turb: .40, speed: .30, pulse: .05, heat: .80, band: 1.4 },
+    memory:    { turb: .26, speed: .20, pulse: .05, heat: .70, band: .8, stream: true },
+    tools:     { turb: .34, speed: .26, pulse: .05, heat: .75, band: 1.1 },
+    agents:    { turb: .30, speed: .24, pulse: .06, heat: .80, band: 1.2 },
+    coding:    { turb: .48, speed: .48, pulse: .04, heat: .95, band: 2.4, create: true },
+    frontier:  { turb: .52, speed: .34, pulse: .09, heat: 1.0, band: 1.7, gold: true },
+    approval:  { turb: .10, speed: .05, pulse: .16, heat: .90, band: .3, gold: true, hold: true },
+    error:     { turb: .85, speed: .45, pulse: .04, heat: 1.0, band: 2.2, red: true },
+    success:   { turb: .12, speed: .16, pulse: .20, heat: .75, band: .6, ok: true }
+  };
+
+  static LABELS = {
+    idle: ['IDLE', 'awaiting input'], listening: ['LISTENING', 'capturing input'],
+    thinking: ['REASONING', 'planning approach'], memory: ['MEMORY', 'reading the vault'],
+    tools: ['TOOL USE', 'executing tools'], agents: ['AGENT TEAM', '3 agents active'],
+    coding: ['CODING', 'writing & testing'], frontier: ['FRONTIER', 'high-attention mode'],
+    approval: ['APPROVAL', 'holding for you'], error: ['BLOCKED', 'needs your input'],
+    success: ['DONE', 'task complete']
+  };
+
+  skinId() { return this.state.skinOv || this.props.skin || 'atelier'; }
+  skin() { return Component.SKINS[this.skinId()] || Component.SKINS.atelier; }
+  desk() { return Component.DESKS[this.state.desk] || Component.DESKS.command; }
+  hex2rgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+  mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+
+  stateColor() {
+    const sk = this.skin();
+    return sk.states[this.state.st] || sk.states.idle;
+  }
+
+  applyTheme() {
+    const el = this.rootRef.current; if (!el) return;
+    const s = this.skin(), d = this.desk();
+    const t = Component.TYPES[this.props.typePairing] || Component.TYPES.bricolage;
+    const set = (k, v) => el.style.setProperty(k, v);
+    set('--bg', s.bg); set('--bg2', s.bg2); set('--surface', s.surface); set('--surface2', s.surface2);
+    set('--border', s.border); set('--text', s.text); set('--text2', s.text2); set('--text3', s.text3);
+    set('--glow', s.glow);
+    const sc = this.stateColor();
+    set('--sc', sc);
+    const r = this.hex2rgb(sc);
+    set('--scDim', `rgba(${r[0] | 0},${r[1] | 0},${r[2] | 0},${s.light ? .12 : .14})`);
+    const da = this.hex2rgb(s.states[d.accent] || s.states.idle);
+    set('--halo', `rgba(${da[0] | 0},${da[1] | 0},${da[2] | 0},${s.light ? .10 : .13})`);
+    set('--agent-op', this.state.st === 'agents' ? '1' : '0');
+    set('--f-ui', t.ui); set('--f-mono', t.mono); set('--f-disp', t.disp);
+    document.body.style.background = s.bg;
+  }
+
+  // ── orb engine: dot lattice + surface mesh + radial spikes, mixed ──
+  initOrb() {
+    const cv = this.orbCanvasRef.current; if (!cv) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const CSS = 520;
+    cv.width = CSS * dpr; cv.height = CSS * dpr;
+    const ctx = cv.getContext('2d');
+
+    // latitude-band lattice (like client/js/orb.js), with ring bookkeeping for mesh
+    const dots = [], rings = [];
+    const BANDS = 40;
+    for (let b = 0; b < BANDS; b++) {
+      const phi = ((b + .5) / BANDS) * Math.PI;
+      const ringR = Math.sin(phi);
+      const count = Math.max(6, Math.round(ringR * 92));
+      const start = dots.length;
+      for (let i = 0; i < count; i++) {
+        const theta = (i / count) * Math.PI * 2 + (b % 2) * (Math.PI / count);
+        dots.push({ phi, theta, y: Math.cos(phi), seed: Math.random() * 100, jag: Math.random(), ring: b });
+      }
+      rings.push({ start, count });
+    }
+    // sparse meridian links: every 5th dot → nearest-by-theta in next ring
+    const merid = [];
+    for (let b = 0; b < BANDS - 1; b++) {
+      const A = rings[b], B = rings[b + 1];
+      for (let i = 0; i < A.count; i += 5) {
+        const th = dots[A.start + i].theta;
+        let best = 0, bd = 9;
+        for (let j = 0; j < B.count; j++) {
+          const d2 = Math.abs(((dots[B.start + j].theta - th + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+          if (d2 < bd) { bd = d2; best = j; }
+        }
+        merid.push([A.start + i, B.start + best]);
+      }
+    }
+    this.dots = dots; this.rings = rings; this.merid = merid;
+
+    // interior volume particles — the orb is a body, not a shell
+    const inner = [];
+    for (let i = 0; i < 1500; i++) {
+      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
+      const sq = Math.sqrt(1 - u * u);
+      inner.push({ x: Math.cos(th) * sq, y: u, z: Math.sin(th) * sq, rr: Math.cbrt(Math.random()) * .92, seed: Math.random() * 6.28, hbase: Math.pow(Math.random(), 1.4) * .8, ember: Math.random() > .9 });
+    }
+    this.inner = inner;
+
+    this.p = { turb: .16, speed: .1, pulse: .035, heat: .55, band: .5 };
+    this.rampNow = null;
+    this.flash = 0; this.t = 0; this.rot = 0; this.quality = 1;
+    this.ptr = { x: 0, y: 0, vx: 0, vy: 0, tx: 0, ty: 0 };
+    this.glints = []; this.motes = null;
+
+    cv.addEventListener('pointermove', (e) => {
+      const r = cv.getBoundingClientRect();
+      this.ptr.tx = ((e.clientX - r.left) / r.width - .5) * 2;
+      this.ptr.ty = ((e.clientY - r.top) / r.height - .5) * 2;
+    });
+    cv.addEventListener('pointerleave', () => { this.ptr.tx = 0; this.ptr.ty = 0; });
+
+    const NP = dots.length;
+    const px = new Float32Array(NP), py = new Float32Array(NP);
+    const bx = new Float32Array(NP), by = new Float32Array(NP);
+    const dep = new Float32Array(NP), heat = new Float32Array(NP), dsp = new Float32Array(NP);
+
+    this._last = performance.now();
+    const frame = (now) => {
+      if (!this._alive) return;
+      const dt = Math.min((now - this._last) / 1000, .05); this._last = now;
+      this.t += dt;
+      if (dt > .03 && this.quality > .5) this.quality -= .05;
+      else if (dt < .02 && this.quality < 1) this.quality += .02;
+
+      const M = Component.MOTION[this.state.st] || Component.MOTION.idle;
+      const sk = this.skin(), d = this.desk();
+
+      // target ramp: skin orb ramp, state-modulated, desk-tinted
+      const P = {
+        core: this.hex2rgb(sk.orb.core), mid: this.hex2rgb(sk.orb.mid),
+        hot: this.hex2rgb(sk.orb.hot), edge: this.hex2rgb(sk.orb.edge),
+        gold: this.hex2rgb(sk.states.frontier), red: this.hex2rgb(sk.states.error),
+        ok: this.hex2rgb(sk.states.success), create: this.hex2rgb(sk.states.coding)
+      };
+      let ramp;
+      if (M.red) ramp = [P.core, this.mix(P.mid, P.red, .5), P.red, this.mix(P.red, P.edge, .4)];
+      else if (M.gold) ramp = [this.mix(P.core, P.gold, .15), this.mix(P.mid, P.gold, .35), this.mix(P.hot, P.gold, .5), P.gold];
+      else if (M.ok) ramp = [P.core, this.mix(P.mid, P.ok, .4), P.ok, this.mix(P.ok, P.edge, .3)];
+      else if (M.create) ramp = [P.core, this.mix(P.mid, P.create, .35), this.mix(P.hot, P.create, .6), this.mix(P.create, P.edge, .35)];
+      else ramp = [P.core, P.mid, P.hot, P.edge];
+      if (this.state.desk !== 'command') {
+        const da = this.hex2rgb(sk.states[d.accent] || sk.states.idle);
+        ramp = ramp.map((c, i) => this.mix(c, da, i === 0 ? .08 : .18));
+      }
+      if (!this.rampNow) this.rampNow = ramp.map(c => c.slice());
+
+      const e = 1 - Math.pow(.002, dt);
+      this.p.turb += (M.turb - this.p.turb) * e;
+      this.p.speed += (M.speed - this.p.speed) * e;
+      this.p.pulse += (M.pulse - this.p.pulse) * e;
+      this.p.heat += (M.heat - this.p.heat) * e;
+      this.p.band += (M.band - this.p.band) * e;
+      for (let i = 0; i < 4; i++) this.rampNow[i] = this.mix(this.rampNow[i], ramp[i], e);
+
+      const k = 26, c = 10;
+      this.ptr.vx += (k * (this.ptr.tx - this.ptr.x) - c * this.ptr.vx) * dt;
+      this.ptr.vy += (k * (this.ptr.ty - this.ptr.y) - c * this.ptr.vy) * dt;
+      this.ptr.x += this.ptr.vx * dt; this.ptr.y += this.ptr.vy * dt;
+
+      this.rot += dt * this.p.speed * (1 + .18 * Math.sin(this.t * .13) + .07 * Math.sin(this.t * .041));
+      this.flash = Math.max(0, this.flash - dt * 1.1);
+      const rate = this.state.st === 'idle' ? .5 : 1.6;
+      if (this.glints.length < 5 && Math.random() < dt * rate) {
+        this.glints.push({ phi: Math.acos(2 * Math.random() - 1), theta: Math.random() * Math.PI * 2, life: 1 });
+      }
+      for (const g of this.glints) g.life -= dt * 1.4;
+      this.glints = this.glints.filter(g => g.life > 0);
+
+      // draw
+      const W = cv.width, cx = W / 2, cyc = W / 2;
+      ctx.clearRect(0, 0, W, W);
+      const light = !!sk.light;
+      let mic = 1;
+      if (M.mic) mic = .55 + .45 * Math.abs(Math.sin(this.t * 2.1) * Math.sin(this.t * 3.7) + .3 * Math.sin(this.t * 9));
+      if (M.hold) mic = .8 + .25 * Math.sin(this.t * 1.6);
+      const thump = Math.max(0, Math.sin(this.t * .9)) ** 12 * .045;
+      const breathe = 1 + Math.sin(this.t * 1.5) * this.p.pulse + thump + this.flash * .10;
+      const R = W * .30 * breathe;
+      const [C0, C1, C2, C3] = this.rampNow;
+
+      const halo = ctx.createRadialGradient(cx, cyc, R * .2, cx, cyc, R * 2);
+      halo.addColorStop(0, `rgba(${C1[0] | 0},${C1[1] | 0},${C1[2] | 0},${(light ? .07 : .10) + this.flash * .15})`);
+      halo.addColorStop(.6, `rgba(${C2[0] | 0},${C2[1] | 0},${C2[2] | 0},${light ? .02 : .035})`);
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = halo; ctx.fillRect(0, 0, W, W);
+
+      const ry = this.rot + this.ptr.x * .35;
+      const rx = .35 + Math.sin(this.t * .22) * .10 + this.ptr.y * .28;
+      const cosy = Math.cos(ry), siny = Math.sin(ry), cosx = Math.cos(rx), sinx = Math.sin(rx);
+
+      // solid body — an occluding shaded sphere; the lattice is its skin
+      const bodyR = R * 1.005;
+      const bodyLit = this.mix(C0, C1, .55);
+      const bodyDark = [C0[0] * .38, C0[1] * .38, C0[2] * .42];
+      const bgrad = ctx.createRadialGradient(cx - bodyR * .32, cyc - bodyR * .36, bodyR * .05, cx, cyc, bodyR);
+      bgrad.addColorStop(0, `rgba(${bodyLit[0] | 0},${bodyLit[1] | 0},${bodyLit[2] | 0},${light ? .22 : .94})`);
+      bgrad.addColorStop(.55, `rgba(${C0[0] | 0},${C0[1] | 0},${C0[2] | 0},${light ? .15 : .92})`);
+      bgrad.addColorStop(.95, `rgba(${bodyDark[0] | 0},${bodyDark[1] | 0},${bodyDark[2] | 0},${light ? .10 : .90})`);
+      bgrad.addColorStop(1, `rgba(${bodyDark[0] | 0},${bodyDark[1] | 0},${bodyDark[2] | 0},0)`);
+      ctx.fillStyle = bgrad;
+      ctx.beginPath(); ctx.arc(cx, cyc, bodyR, 0, Math.PI * 2); ctx.fill();
+      const rimg = ctx.createRadialGradient(cx, cyc, bodyR * .8, cx, cyc, bodyR);
+      rimg.addColorStop(0, 'rgba(0,0,0,0)');
+      rimg.addColorStop(.85, `rgba(${C2[0] | 0},${C2[1] | 0},${C2[2] | 0},${light ? .12 : .22})`);
+      rimg.addColorStop(1, `rgba(${C2[0] | 0},${C2[1] | 0},${C2[2] | 0},0)`);
+      ctx.fillStyle = rimg;
+      ctx.beginPath(); ctx.arc(cx, cyc, bodyR, 0, Math.PI * 2); ctx.fill();
+
+      ctx.globalCompositeOperation = light ? 'source-over' : 'lighter';
+      const dotBase = W / 480;
+      const turb = this.p.turb * mic;
+
+      // project all points (displaced + base-surface)
+      for (let i = 0; i < NP; i++) {
+        const dd = dots[i];
+        const bandWave = Math.sin(dd.phi * 26 + this.t * (1.2 + this.p.band)) * .02 * this.p.band;
+        const nse = Math.sin(dd.theta * 2.1 + dd.phi * 1.7 + this.t * .7 + dd.seed) * .5 +
+                    Math.sin(dd.theta * 4.7 - dd.phi * 3.1 + this.t * 1.1) * .3 +
+                    Math.sin(dd.theta * 9.3 + dd.phi * 6.9 - this.t * 1.7 + dd.seed) * .2;
+        const spike = dd.jag > .82 ? 1.9 : 1.0;
+        const disp = nse * turb * .16 * spike + bandWave;
+        dsp[i] = disp;
+        for (let pass = 0; pass < 2; pass++) {
+          const r = pass === 0 ? 1 + disp : 1 + bandWave;
+          const sp = Math.sin(dd.phi) * r;
+          let x = Math.cos(dd.theta) * sp, z = Math.sin(dd.theta) * sp, y = dd.y * r;
+          const x1 = x * cosy - z * siny, z1 = x * siny + z * cosy;
+          const y1 = y * cosx - z1 * sinx, z2 = y * sinx + z1 * cosx;
+          const persp = 1 / (1 + z2 * .32);
+          if (pass === 0) {
+            px[i] = cx + x1 * R * persp; py[i] = cyc + y1 * R * persp;
+            dep[i] = (1 - z2) / 2;
+            const rim = Math.min(1, Math.hypot(x1, y1) * 1.05);
+            heat[i] = Math.min(1, (rim * .72 + Math.abs(disp) * 3.4) * this.p.heat);
+          } else {
+            bx[i] = cx + x1 * R * persp; by[i] = cyc + y1 * R * persp;
+          }
+        }
+      }
+
+      const colOf = (h) => {
+        let cc;
+        if (h < .45) cc = this.mix(C0, C1, h / .45);
+        else if (h < .78) cc = this.mix(C1, C2, (h - .45) / .33);
+        else cc = this.mix(C2, C3, (h - .78) / .22);
+        return cc;
+      };
+      // 0 · interior: nucleus glow + drifting volume particles
+      const ry2 = ry * .7, cosy2 = Math.cos(ry2), siny2 = Math.sin(ry2);
+      const ng = ctx.createRadialGradient(cx, cyc, 0, cx, cyc, R * .68);
+      ng.addColorStop(0, `rgba(${C2[0] | 0},${C2[1] | 0},${C2[2] | 0},${((light ? .14 : .22) + this.flash * .18).toFixed(3)})`);
+      ng.addColorStop(.42, `rgba(${C1[0] | 0},${C1[1] | 0},${C1[2] | 0},${(light ? .11 : .19).toFixed(3)})`);
+      ng.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = ng;
+      ctx.beginPath(); ctx.arc(cx, cyc, R * .68, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < this.inner.length; i++) {
+        const q = this.inner[i];
+        const rr = q.rr * (1 + Math.sin(this.t * .6 + q.seed) * .05);
+        const x = q.x * rr, z = q.z * rr, y = q.y * rr;
+        const x1 = x * cosy2 - z * siny2, z1 = x * siny2 + z * cosy2;
+        const y1 = y * cosx - z1 * sinx, z2 = y * sinx + z1 * cosx;
+        const persp = 1 / (1 + z2 * .32);
+        const sx = cx + x1 * R * persp, syI = cyc + y1 * R * persp;
+        const dp = (1 - z2) / 2, inw = 1 - q.rr;
+        const shimmer = .5 + .5 * Math.sin(this.t * .45 + q.seed * 2);
+        const cc = q.ember ? colOf(.82 + shimmer * .15) : colOf(Math.min(1, q.hbase + inw * .3 + shimmer * .18));
+        const al = (light ? .22 + dp * .4 : .16 + dp * .38) * (.5 + inw * 1.0) + this.flash * .1;
+        const szI = dotBase * (.85 + dp * .85 + inw * 1.0);
+        ctx.fillStyle = `rgba(${cc[0] | 0},${cc[1] | 0},${cc[2] | 0},${al.toFixed(3)})`;
+        ctx.fillRect(sx - szI / 2, syI - szI / 2, szI, szI);
+      }
+
+      const meshK = this.props.meshIntensity == null ? .55 : this.props.meshIntensity;
+
+      // 1 · surface mesh: latitude rings (every 2nd point) + sparse meridians
+      if (meshK > .02) {
+        ctx.lineWidth = dpr * .55;
+        for (let b = 0; b < rings.length; b += 1) {
+          const rg = rings[b];
+          for (let i = 0; i < rg.count; i += 2) {
+            const a = rg.start + i, bIdx = rg.start + ((i + 2) % rg.count);
+            const dp = (dep[a] + dep[bIdx]) / 2;
+            if (dp < .35) continue;
+            const cc = colOf((heat[a] + heat[bIdx]) / 2);
+            const al = (light ? .10 : .05 + .16 * dp) * meshK * (light ? dp : 1);
+            ctx.strokeStyle = `rgba(${cc[0] | 0},${cc[1] | 0},${cc[2] | 0},${al.toFixed(3)})`;
+            ctx.beginPath(); ctx.moveTo(bx[a], by[a]); ctx.lineTo(bx[bIdx], by[bIdx]); ctx.stroke();
+          }
+        }
+        for (let m = 0; m < merid.length; m++) {
+          const [a, bIdx] = merid[m];
+          const dp = (dep[a] + dep[bIdx]) / 2;
+          if (dp < .4) continue;
+          const cc = colOf((heat[a] + heat[bIdx]) / 2);
+          const al = (light ? .09 : .04 + .13 * dp) * meshK;
+          ctx.strokeStyle = `rgba(${cc[0] | 0},${cc[1] | 0},${cc[2] | 0},${al.toFixed(3)})`;
+          ctx.beginPath(); ctx.moveTo(bx[a], by[a]); ctx.lineTo(bx[bIdx], by[bIdx]); ctx.stroke();
+        }
+      }
+
+      // 2 · radial spike lines where displacement runs hot
+      ctx.lineWidth = dpr * .8;
+      const spikeTh = .045 + (1 - Math.min(1, turb * 2.2)) * .06;
+      for (let i = 0; i < NP; i++) {
+        if (dsp[i] < spikeTh) continue;
+        const cc = colOf(Math.min(1, heat[i] * 1.15));
+        const al = (light ? .45 : .12 + .38 * dep[i]);
+        ctx.strokeStyle = `rgba(${cc[0] | 0},${cc[1] | 0},${cc[2] | 0},${al.toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(bx[i], by[i]); ctx.lineTo(px[i], py[i]); ctx.stroke();
+      }
+
+      // 3 · dot matrix
+      const n = Math.floor(NP * this.quality);
+      for (let i = 0; i < n; i++) {
+        const cc = colOf(heat[i]);
+        const alpha = (light ? (.15 + dep[i] * .55) : (.10 + dep[i] * .5)) * (.55 + heat[i] * .6) + this.flash * .18;
+        const size = dotBase * (.65 + dep[i] * .95) * (1 + heat[i] * .35);
+        ctx.fillStyle = `rgba(${cc[0] | 0},${cc[1] | 0},${cc[2] | 0},${alpha.toFixed(3)})`;
+        ctx.fillRect(px[i] - size / 2, py[i] - size / 2, size, size);
+      }
+
+      // glints
+      for (const g of this.glints) {
+        const gs = Math.sin(g.phi);
+        let gx = Math.cos(g.theta) * gs, gz = Math.sin(g.theta) * gs, gy = Math.cos(g.phi);
+        const gx1 = gx * cosy - gz * siny, gz1 = gx * siny + gz * cosy;
+        const gy1 = gy * cosx - gz1 * sinx, gz2 = gy * sinx + gz1 * cosx;
+        if (gz2 > .1) continue;
+        const gp = 1 / (1 + gz2 * .32);
+        const a = Math.sin(Math.min(1, g.life) * Math.PI) * .9;
+        ctx.fillStyle = `rgba(${C3[0] | 0},${C3[1] | 0},${C3[2] | 0},${a.toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(cx + gx1 * R * gp, cyc + gy1 * R * gp, dotBase * (1.6 + (1 - g.life) * 1.2), 0, Math.PI * 2); ctx.fill();
+      }
+
+      // memory motes drifting inward
+      if (M.stream) {
+        if (!this.motes) this.motes = Array.from({ length: 22 }, () => ({ p: Math.random(), a: Math.random() * Math.PI * 2 }));
+        for (const m of this.motes) {
+          m.p -= .006;
+          if (m.p < .04) { m.p = 1; m.a = Math.random() * Math.PI * 2; }
+          const d2 = R * (.55 + m.p * 1.15);
+          ctx.fillStyle = `rgba(${C1[0] | 0},${C1[1] | 0},${C1[2] | 0},${((1 - m.p) * .6).toFixed(3)})`;
+          ctx.beginPath(); ctx.arc(cx + Math.cos(m.a) * d2, cyc + Math.sin(m.a) * d2, dotBase * 1.4, 0, Math.PI * 2); ctx.fill();
+        }
+      } else this.motes = null;
+
+      ctx.globalCompositeOperation = 'source-over';
+      requestAnimationFrame(frame);
+    };
+    this._alive = true;
+    requestAnimationFrame(frame);
+  }
+
+  // ── state + scenario engine ──
+  setSt(st, extra) {
+    if (st === 'success') this.flash = 1;
+    this.setState(Object.assign({ st }, extra || {}), () => this.applyTheme());
+  }
+
+  runSeq(steps, done) {
+    const id = ++this._runId;
+    const next = (i) => {
+      if (id !== this._runId) return;
+      if (i >= steps.length) { done && done(); return; }
+      const s = steps[i];
+      this.setSt(s.st);
+      if (s.st === 'approval') {
+        this.setState({ showApproval: true, approvalText: s.note || 'Grover wants to run a privileged action.' });
+        this._approveNext = () => { this.setState({ showApproval: false }); next(i + 1); };
+        this._t = setTimeout(this._approveNext, 6000);
+      } else {
+        this._t = setTimeout(() => next(i + 1), s.dur);
+      }
+    };
+    next(0);
+  }
+
+  startQueued(i) {
+    if (this._busy) return;
+    const deskId = this.state.desk;
+    const qs = this.state.queues[deskId] || [];
+    const item = qs[i]; if (!item) return;
+    this._busy = true;
+    const push = (role, txt) => this.setState(s => ({ transcript: [...s.transcript, { role, text: txt }].slice(-3) }));
+    this.setState(s => ({
+      queues: Object.assign({}, s.queues, { [deskId]: qs.filter((_, j) => j !== i) }),
+      qOpen: null, dragging: false, task: item.t, taskStatus: 'RUNNING', cost: 0, latency: '—'
+    }));
+    const SEQ = {
+      command:   [{ st: 'thinking', dur: 1400 }, { st: 'tools', dur: 1600 }, { st: 'success', dur: 1500 }],
+      builder:   [{ st: 'thinking', dur: 1200 }, { st: 'memory', dur: 900 }, { st: 'coding', dur: 2400 }, { st: 'approval', note: 'Write access required — ' + item.t }, { st: 'coding', dur: 1300 }, { st: 'success', dur: 1600 }],
+      quant:     [{ st: 'thinking', dur: 1200 }, { st: 'tools', dur: 1500 }, { st: 'frontier', dur: 2600 }, { st: 'success', dur: 1600 }],
+      research:  [{ st: 'thinking', dur: 1100 }, { st: 'agents', dur: 2800 }, { st: 'tools', dur: 1400 }, { st: 'success', dur: 1600 }],
+      lifestyle: [{ st: 'thinking', dur: 1000 }, { st: 'memory', dur: 900 }, { st: 'tools', dur: 1500 }, { st: 'success', dur: 1500 }]
+    };
+    const t0 = performance.now();
+    this._costTick = setInterval(() => {
+      const rate = this.state.st === 'frontier' ? .012 : .003;
+      this.setState(s => ({ cost: s.cost + rate, sessionCost: s.sessionCost + rate, tokIn: s.tokIn + ((Math.random() * 900) | 0), tokOut: s.tokOut + ((Math.random() * 400) | 0) }));
+    }, 240);
+    this.runSeq(SEQ[deskId] || SEQ.command, () => {
+      clearInterval(this._costTick);
+      push('grover', '“' + item.t + '” complete — steps logged to ' + this.desk().ns + '. Nothing merged or sent without you.');
+      this.setState({ taskStatus: 'COMPLETE', latency: ((performance.now() - t0) / 1000).toFixed(1) + 's', memPct: Math.min(96, this.state.memPct + 2) });
+      this._t = setTimeout(() => { this.setSt('idle'); this._busy = false; this.setState({ taskStatus: 'STANDING BY', task: this.desk().task }); }, 2200);
+    });
+  }
+
+  send() {
+    const text = this.state.draft.trim();
+    if (!text || this._busy) return;
+    this._busy = true;
+    const lower = text.toLowerCase();
+    const push = (role, txt) => this.setState(s => ({ transcript: [...s.transcript, { role, text: txt }].slice(-3) }));
+    push('user', text);
+    this.setState({ draft: '', latency: '—' });
+
+    const tier = this.state.tier;
+    let seq, reply, task, model = 'claude-sonnet-4.5', mTier = 'SMART TIER';
+    if (tier === 'fast') { model = 'claude-haiku-4.5'; mTier = 'FAST TIER'; }
+    if (tier === 'frontier' || tier === 'fable') { model = 'claude-opus-4.6'; mTier = 'FRONTIER TIER'; }
+
+    if (/team|agents|research|survey|scout/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1500 }, { st: 'agents', dur: 2800 }, { st: 'tools', dur: 1500 }, { st: 'success', dur: 1600 }];
+      reply = 'Dispatched Scout, Forge and Archivist. Synthesis pinned to the task; sources logged Output Class 2.';
+      task = 'Multi-agent research sweep';
+    } else if (/code|refactor|fix|build|deploy|test|auth/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1300 }, { st: 'memory', dur: 1000 }, { st: 'coding', dur: 2500 }, { st: 'approval', note: 'Write access to src/auth/** (14 files)' }, { st: 'coding', dur: 1400 }, { st: 'success', dur: 1600 }];
+      reply = 'Refactor complete: 14 files touched, tests green. Diff staged — nothing merged without you.';
+      task = 'Refactor auth module';
+    } else if (/remember|recall|memory|decided|last time/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'memory', dur: 2000 }, { st: 'thinking', dur: 1200 }, { st: 'success', dur: 1500 }];
+      reply = 'Found 6 vault entries across shared/grover-dev. Most relevant surfaced first.';
+      task = 'Memory retrieval';
+    } else if (/hard|deep|frontier|opus|prove|backtest|complex/.test(lower) || tier === 'frontier' || tier === 'fable') {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1200 }, { st: 'frontier', dur: 3200 }, { st: 'thinking', dur: 1100 }, { st: 'success', dur: 1600 }];
+      reply = 'Escalated to frontier for the hard step, then dropped back to smart. Chain logged to model_calls.';
+      task = 'Deep reasoning task'; model = 'claude-opus-4.6'; mTier = 'FRONTIER TIER';
+    } else if (/error|fail|break/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1100 }, { st: 'tools', dur: 1300 }, { st: 'error', dur: 2600 }];
+      reply = 'Blocked: sandbox denied network egress. Whitelist the endpoint or I change approach.';
+      task = 'Tool execution — blocked';
+    } else {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1600 }, { st: 'tools', dur: 1700 }, { st: 'success', dur: 1600 }];
+      reply = 'Done. Two follow-ups queued — nothing executes automatically.';
+      task = 'General request';
+    }
+
+    const t0 = performance.now();
+    this.setState({ task, taskStatus: 'RUNNING', model, modelTier: mTier, cost: 0 });
+    this._costTick = setInterval(() => {
+      const rate = this.state.st === 'frontier' ? .012 : this.state.st === 'idle' ? 0 : .003;
+      this.setState(s => ({ cost: s.cost + rate, sessionCost: s.sessionCost + rate, tokIn: s.tokIn + ((Math.random() * 900) | 0), tokOut: s.tokOut + ((Math.random() * 400) | 0) }));
+    }, 240);
+
+    this.runSeq(seq, () => {
+      clearInterval(this._costTick);
+      const ok = this.state.st === 'success';
+      push('grover', reply);
+      this.setState({ taskStatus: ok ? 'COMPLETE' : 'BLOCKED — AWAITING INPUT', latency: ((performance.now() - t0) / 1000).toFixed(1) + 's', memPct: Math.min(96, this.state.memPct + 3) });
+      this._t = setTimeout(() => { this.setSt('idle'); this._busy = false; this.setState({ taskStatus: 'STANDING BY', task: this.desk().task }); }, ok ? 2200 : 5000);
+    });
+  }
+
+  typeSub() {
+    clearInterval(this._typeT);
+    const full = this.desk().sub;
+    let i = 0;
+    this.setState({ typedSub: '', typing: true });
+    this._typeT = setInterval(() => {
+      i++;
+      this.setState({ typedSub: full.slice(0, i) });
+      if (i >= full.length) { clearInterval(this._typeT); this.setState({ typing: false }); }
+    }, 30);
+  }
+
+  componentDidMount() {
+    this.applyTheme();
+    this.initOrb();
+    this.typeSub();
+    this._clock = setInterval(() => {
+      const d = new Date();
+      const up = 8078 + ((performance.now() / 1000) | 0);
+      const hh = (n) => String(n).padStart(2, '0');
+      this.setState({ clock: hh(d.getHours()) + ':' + hh(d.getMinutes()), uptime: hh((up / 3600) | 0) + ':' + hh(((up % 3600) / 60) | 0) + ':' + hh(up % 60) });
+    }, 1000);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.skin !== this.props.skin || prevProps.typePairing !== this.props.typePairing) this.applyTheme();
+  }
+
+  componentWillUnmount() {
+    this._alive = false;
+    clearInterval(this._clock); clearInterval(this._costTick); clearTimeout(this._t); clearInterval(this._typeT);
+    this._runId++;
+  }
+
+  renderVals() {
+    const s = this.state, sk = this.skin(), d = this.desk();
+    const [lab, desc] = Component.LABELS[s.st] || Component.LABELS.idle;
+    const activeSkin = this.skinId();
+
+    const desks = Object.keys(Component.DESKS).map(id => {
+      const dk = Component.DESKS[id], on = s.desk === id;
+      const ac = sk.states[dk.accent] || sk.states.idle;
+      return {
+        name: dk.name, icon: dk.icon,
+        bg: on ? sk.surface : 'transparent',
+        border: on ? sk.border : 'transparent',
+        color: on ? sk.text : sk.text2,
+        weight: on ? 600 : 400,
+        iconColor: on ? ac : sk.text3,
+        iconBg: on ? `color-mix(in srgb, ${ac} 14%, transparent)` : sk.surface,
+        dot: on ? ac : 'transparent',
+        onPick: () => {
+          if (s.desk === id) return;
+          this._runId++; clearInterval(this._costTick); this._busy = false;
+          this.setState({ desk: id, transcript: [], showApproval: false, qOpen: null, dragging: false, task: dk.task, taskStatus: dk.task === 'No active task' ? 'STANDING BY' : 'QUEUED' }, () => { this.applyTheme(); this.setSt('idle'); this.typeSub(); });
+        }
+      };
+    });
+
+    const sysRows = [
+      { name: 'Ledger', icon: '≡' }, { name: 'Memory Vault', icon: '◆' },
+      { name: 'Costs', icon: '▤' }, { name: 'Audit', icon: '◎' }
+    ];
+
+    const skinChips = Object.keys(Component.SKINS).map(id => ({
+      name: Component.SKINS[id].name, swatch: Component.SKINS[id].swatch,
+      ringShadow: activeSkin === id ? `0 0 0 2px ${sk.bg2}, 0 0 0 3.5px ${sk.text2}` : 'none',
+      onPick: () => this.setState({ skinOv: id }, () => this.applyTheme())
+    }));
+
+    const stateChips = Object.keys(Component.MOTION).map(id => {
+      const on = s.st === id;
+      const c = sk.states[id] || sk.states.idle;
+      return {
+        label: Component.LABELS[id][0], dot: c,
+        glow: on ? `0 0 8px ${c}` : 'none', op: on ? 1 : .35,
+        onPick: () => { this._runId++; clearInterval(this._costTick); this._busy = false; this.setState({ showApproval: id === 'approval', approvalText: 'Manual state preview' }); this.setSt(id); }
+      };
+    });
+
+    const busy = s.st === 'tools' || s.st === 'coding' || s.st === 'agents';
+    const sc = this.stateColor();
+    const tools = d.tools.map((name, i) => ({
+      name, color: busy && i < 2 ? sc : sk.text2, border: busy && i < 2 ? sc : sk.border
+    }));
+
+    const transcript = s.transcript.map(m => ({
+      tag: m.role === 'user' ? 'YOU' : 'GROVER',
+      tagColor: m.role === 'user' ? sk.text3 : sc,
+      color: m.role === 'user' ? sk.text2 : sk.text,
+      text: m.text
+    }));
+
+    const qs = s.queues[s.desk] || [];
+    const queue = qs.map((q, i) => ({
+      n: String(i + 1).padStart(2, '0'), t: q.t, d: q.d, est: q.est, prio: q.prio,
+      steps: q.steps.map((text, j) => ({
+        text,
+        delay: s.qOpen === i ? (160 + j * 130) + 'ms' : '0ms',
+        tx: s.qOpen === i ? 'translateX(0)' : 'translateX(-12px)'
+      })),
+      delay: (i * 80) + 'ms',
+      open: s.qOpen === i,
+      maxH: s.qOpen === i ? '300px' : '0px',
+      detailOp: s.qOpen === i ? 1 : 0,
+      fadeDelay: s.qOpen === i ? '90ms' : '0ms',
+      chevRot: s.qOpen === i ? 'rotate(180deg)' : 'rotate(0deg)',
+      border: s.qOpen === i ? sk.text3 : sk.border,
+      prioColor: q.prio === 'HIGH' ? sk.states.error : (q.prio.indexOf('BLOCKED') === 0 ? sk.states.approval : sk.text3),
+      onToggle: () => this.setState(st => ({ qOpen: st.qOpen === i ? null : i })),
+      onDrag: (e) => {
+        try { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; } catch (x) {}
+        this._dragIdx = i;
+        setTimeout(() => this.setState({ dragging: true }), 0);
+      },
+      onDragEnd: () => { this._dragIdx = null; this.setState({ dragging: false }); },
+      onRun: (e) => { e.stopPropagation(); this.startQueued(i); }
+    }));
+
+    return {
+      rootRef: this.rootRef, orbCanvasRef: this.orbCanvasRef, inputRef: this.inputRef,
+      deskKey: s.desk, deskTitle: d.name, deskSub: d.sub, deskMeta: d.meta,
+      typedSub: s.typedSub == null ? d.sub : s.typedSub, typing: !!s.typing,
+      stateLabel: lab, stateDesc: desc,
+      draft: s.draft, inputPlaceholder: d.ph,
+      onDraft: (e) => this.setState({ draft: e.target.value }),
+      onKey: (e) => { if (e.key === 'Enter') this.send(); },
+      onSend: () => this.send(),
+      tier: s.tier, onTier: (e) => this.setState({ tier: e.target.value }),
+      desks, sysRows, skinChips, stateChips, tools, transcript,
+      task: s.task, taskStatus: s.taskStatus,
+      queue,
+      dragging: s.dragging,
+      onDragOver: (e) => { if (this._dragIdx != null) e.preventDefault(); },
+      onDrop: (e) => { e.preventDefault(); const i = this._dragIdx; this._dragIdx = null; this.setState({ dragging: false }); if (i != null) this.startQueued(i); },
+      model: s.model, modelTier: s.modelTier,
+      modelTierColor: s.modelTier.startsWith('FRONTIER') ? sk.states.frontier : sk.text3,
+      estCost: '$' + s.cost.toFixed(4), sessionCost: '$' + s.sessionCost.toFixed(4),
+      tokIn: s.tokIn.toLocaleString(), tokOut: s.tokOut.toLocaleString(),
+      latency: s.latency, memPct: s.memPct,
+      memLabel: s.memPct + '% · 4.2 GB',
+      memNote: 'vault: ' + d.ns + ' · 214 entries · last write 2m ago',
+      namespace: d.ns,
+      showApproval: s.showApproval, approvalText: s.approvalText,
+      onApprove: () => { clearTimeout(this._t); this._approveNext ? this._approveNext() : this.setState({ showApproval: false }); },
+      onDeny: () => { clearTimeout(this._t); this._runId++; clearInterval(this._costTick); this._busy = false; this.setState({ showApproval: false, taskStatus: 'DENIED BY USER' }); this.setSt('error'); this._t = setTimeout(() => { this.setSt('idle'); this.setState({ taskStatus: 'STANDING BY' }); }, 2500); },
+      clock: s.clock, uptime: s.uptime
+    };
+  }
+}
+</script>
+</body>
+</html>

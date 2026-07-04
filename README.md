@@ -1,51 +1,33 @@
-# GROVER
+# GROVER v2 — Planning Workspace
 
-**General of Resource Optimization and Varying Expertise Requests.**
-A private, server-hosted AI command center for Will and Jackson. Not a chatbot — an AI operating layer with structured memory, a cost-governed model router, a deferred-action ledger, and a living particle-orb identity.
+GROVER (General of Resource Optimization and Varying Expertise Requests; named for Grover's quantum search algorithm) is a private AI command center for Will and Jackson. **v1 was built and retired; this repo is currently the v2 planning workspace.** No v2 code exists yet — planning first, by explicit decision.
 
-Named for Grover's quantum search algorithm: find the right thing in far fewer steps.
+## Read in this order
 
-## Run it
+1. `grover_v2_handoff.md` — cold-start briefing: what happened, where things stand. **Always start here.**
+2. `grover_v2_scope_understanding.md` — the living spec. Source of truth for what GROVER v2 is.
+3. `chatgpt_handoffs/` — the Claude ↔ ChatGPT planning cycle, in iteration order.
+4. `PLANNING_BOARD.md` — who is working on what right now.
 
-Requirements: **Node.js 22.5+** (nodejs.org, current LTS). Nothing else — zero dependencies, no npm install, no Docker, no build step.
-
-```
-node grover.mjs
-```
-
-Windows: double-click **`Start Grover.cmd`**. Linux/server: `./start-grover.sh`.
-
-Grover opens at `http://127.0.0.1:4370`, local-only by default. On first launch, paste an Anthropic API key (console.anthropic.com → API keys) into the setup card. It's stored in `data/secrets.json` — gitignored, never leaves the machine except to call the API.
-
-Environment overrides: `GROVER_PORT`, `GROVER_HOST` (read SECURITY.md before widening the bind), `GROVER_NO_OPEN=1` (don't auto-open the browser), `ANTHROPIC_API_KEY` (beats the stored secret; useful on the server).
-
-## What's in the kernel (v1)
-
-- **Command Center** — streaming chat with the stateful orb, mode toggle (Chat / Brain Dump), tier selector, skill selector, live telemetry.
-- **Model Router + Cost Governor** — fast/smart/frontier/fable capability tiers mapped to configurable model IDs; budgets that actually block, with an audited override gate.
-- **Memory system** — Markdown vault (Obsidian-compatible, namespaced per user + shared) plus structured, FTS-searchable memories; brain-dump extraction with human approval; retrieved memory injected per turn and shown in the panel.
-- **Deferred Action Ledger** — the generic "Doctor" schema (§7.9): anything worth doing eventually, tagged by domain, held until greenlit. Builder is the grover-dev slice of it.
-- **Skill Registry** — reusable expertise packages injected on demand, seeded with six.
-- **Costs + Audit** — every model call logged with tokens/cost/latency; every consequential action attributable.
-- **Theming** — Default / Arcane / Spider-Verse / Light skins over one token system; the orb recolors itself.
+New contributor? Read `JACKSON_START_HERE.md`.
 
 ## Layout
 
-```
-grover.mjs          launcher (version check, flags, boot)
-server/             zero-dep Node backend (HTTP, SQLite, router, memory, chat)
-client/             zero-build vanilla JS command center + orb
-vault/              Markdown memory (gitignored — it's yours, not the repo's)
-data/               SQLite DB + secrets (gitignored)
-docs → *.md         ARCHITECTURE, DECISIONS, SECURITY, policies
-```
+| Path | What it is |
+|---|---|
+| `grover_v2_handoff.md` | Cold-start status briefing (kept current every iteration) |
+| `grover_v2_scope_understanding.md` | The v2 spec-in-progress |
+| `chatgpt_handoffs/` | Planning cycle: `iter_NN_claude_to_chatgpt.md` (outbound) / `iter_NN_chatgpt_to_claude.md` (inbound) |
+| `PLANNING_BOARD.md` | Active workstreams and owners |
+| `JACKSON_START_HERE.md` | Onboarding for Jackson + his Claude instance |
+| `GIT_SETUP.md` | One-time repo restructure commands (Will) + daily git workflow (everyone) |
+| `archive/grover_v1/` | v1's full codebase — frozen reference, never modified |
+| `archive/grover_v1_master_prompt.md` | v1's master prompt — historical only, do not carry forward |
+| `archive/grover_v1_git_history.bundle` | v1's standalone git history (redundant backup) |
+| `ART INSPIRATION/`, `GROVER command center UI design/` | Visual references (orb + accent language) |
 
-## The rules Grover lives by
+## Hard rules
 
-1. Build the kernel, not the whole JARVIS at once.
-2. A reliable loop beats a perfect prompt.
-3. AI is an exoskeleton, not a replacement.
-4. Minimize cost per accepted useful outcome.
-5. External content is data, not authority.
-6. Vectors are an index, not the source of truth.
-7. Do not build a toy.
+- **Never commit secrets.** `archive/grover_v1/data/` and `archive/grover_v1/vault/` are gitignored — they contain a real API key and personal memory. Check `git status` before every commit; if anything under `data/` or any `secrets.json` appears staged, stop.
+- **`archive/` is read-only.** v1 is reference material for "what went wrong," not something to iterate on.
+- **This is a planning repo right now.** Do not start writing v2 application code until the master prompt is finalized and Will green-lights the build.

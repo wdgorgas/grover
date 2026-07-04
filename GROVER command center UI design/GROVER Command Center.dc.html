@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500&family=Chakra+Petch:wght@500;600&family=Space+Mono:wght@400&display=swap" rel="stylesheet">
+  <style>
+    html,body{margin:0;padding:0;background:#06070d}
+    *{box-sizing:border-box}
+    input{outline:none}
+    ::selection{background:rgba(70,200,255,.25)}
+    @keyframes gv-orbit{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes gv-orbit-r{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
+    @keyframes gv-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes gv-blink{0%,100%{opacity:1}50%{opacity:.15}}
+    @keyframes gv-fade-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes gv-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+  </style>
+</helmet>
+<div ref="{{ rootRef }}" data-screen-label="Command Center" style="width:100%;min-width:1280px;height:100vh;min-height:820px;display:grid;grid-template-rows:52px 1fr 40px;background:var(--bg,#06070d);color:var(--ink,#e7eaf6);font-family:var(--f-ui,'Space Grotesk',sans-serif);position:relative;overflow:hidden">
+
+  <!-- ambient field -->
+  <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 50% at 42% 46%, var(--halo,rgba(48,58,180,.16)), transparent 70%)"></div>
+  <div style="position:absolute;inset:0;pointer-events:none;background-image:var(--halftone,none);background-size:7px 7px;opacity:.5"></div>
+
+  <!-- ═══ top bar ═══ -->
+  <header style="display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid var(--line,rgba(148,163,216,.12));position:relative;z-index:5">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="width:10px;height:10px;border-radius:50%;background:var(--sc,#46c8ff);box-shadow:0 0 12px var(--sc,#46c8ff)"></div>
+      <div style="font-family:var(--f-disp,'Space Grotesk',sans-serif);font-size:15px;font-weight:700;letter-spacing:.32em">GROVER</div>
+      <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:10px;color:var(--ink3,#565e82);letter-spacing:.08em">PRIVATE COMMAND CENTER</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:20px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <sc-for list="{{ skinChips }}" as="sk" hint-placeholder-count="3">
+          <div onClick="{{ sk.onPick }}" title="{{ sk.name }}" style="width:16px;height:16px;border-radius:50%;cursor:pointer;background:{{ sk.swatch }};box-shadow:{{ sk.ringShadow }}"></div>
+        </sc-for>
+      </div>
+      <div style="width:1px;height:18px;background:var(--line,rgba(148,163,216,.12))"></div>
+      <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:10.5px;color:var(--ink2,#8b93b8);letter-spacing:.1em">SESSION 04-A2 · {{ clock }}</div>
+    </div>
+  </header>
+
+  <!-- ═══ main ═══ -->
+  <div style="display:grid;grid-template-columns:1fr 336px;min-height:0;position:relative;z-index:4">
+
+    <!-- center stage -->
+    <main style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;position:relative;padding:12px 24px 20px">
+
+      <!-- orb assembly -->
+      <div style="position:relative;width:660px;height:600px;display:flex;align-items:center;justify-content:center;flex:none">
+        <canvas ref="{{ orbCanvasRef }}" style="width:600px;height:600px;display:block"></canvas>
+
+        <!-- status ring -->
+        <svg width="660" height="660" viewBox="0 0 660 660" style="position:absolute;left:0;top:-30px;pointer-events:none;animation:gv-spin 90s linear infinite">
+          <circle cx="330" cy="330" r="308" fill="none" stroke="var(--line,rgba(148,163,216,.12))" stroke-width="1" stroke-dasharray="1 9"></circle>
+          <circle cx="330" cy="330" r="308" fill="none" stroke="var(--sc,#46c8ff)" stroke-width="1.5" stroke-dasharray="130 1805" stroke-linecap="round" opacity=".9"></circle>
+          <circle cx="330" cy="330" r="296" fill="none" stroke="var(--sc,#46c8ff)" stroke-width=".75" stroke-dasharray="40 240" opacity=".3"></circle>
+        </svg>
+
+        <!-- orbiting agents -->
+        <div style="position:absolute;left:330px;top:300px;width:0;height:0;animation:gv-orbit 46s linear infinite">
+          <div style="position:absolute;left:288px;top:-9px;animation:gv-orbit-r 46s linear infinite;opacity:var(--agent-op,.4);transition:opacity .6s">
+            <div style="display:flex;align-items:center;gap:7px;white-space:nowrap">
+              <div style="width:9px;height:9px;border-radius:50%;background:var(--sc,#46c8ff);box-shadow:0 0 var(--agent-glow,4px) var(--sc,#46c8ff)"></div>
+              <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;letter-spacing:.14em;color:var(--ink2,#8b93b8)">SCOUT · research</div>
+            </div>
+          </div>
+        </div>
+        <div style="position:absolute;left:330px;top:300px;width:0;height:0;animation:gv-orbit 46s linear infinite;animation-delay:-15.3s">
+          <div style="position:absolute;left:288px;top:-9px;animation:gv-orbit-r 46s linear infinite;animation-delay:-15.3s;opacity:var(--agent-op,.4);transition:opacity .6s">
+            <div style="display:flex;align-items:center;gap:7px;white-space:nowrap">
+              <div style="width:9px;height:9px;border-radius:50%;background:var(--sc,#46c8ff);box-shadow:0 0 var(--agent-glow,4px) var(--sc,#46c8ff)"></div>
+              <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;letter-spacing:.14em;color:var(--ink2,#8b93b8)">FORGE · code</div>
+            </div>
+          </div>
+        </div>
+        <div style="position:absolute;left:330px;top:300px;width:0;height:0;animation:gv-orbit 46s linear infinite;animation-delay:-30.6s">
+          <div style="position:absolute;left:288px;top:-9px;animation:gv-orbit-r 46s linear infinite;animation-delay:-30.6s;opacity:var(--agent-op,.4);transition:opacity .6s">
+            <div style="display:flex;align-items:center;gap:7px;white-space:nowrap">
+              <div style="width:9px;height:9px;border-radius:50%;background:var(--sc,#46c8ff);box-shadow:0 0 var(--agent-glow,4px) var(--sc,#46c8ff)"></div>
+              <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;letter-spacing:.14em;color:var(--ink2,#8b93b8)">ARCHIVIST · memory</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- state label, centered under orb -->
+        <div style="position:absolute;left:0;right:0;bottom:-6px;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none">
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:12px;font-weight:500;letter-spacing:.42em;color:var(--sc,#46c8ff);text-shadow:0 0 18px var(--sc,#46c8ff)">{{ stateLabel }}</div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:10px;letter-spacing:.1em;color:var(--ink3,#565e82)">{{ stateDesc }}</div>
+        </div>
+      </div>
+
+      <!-- approval interrupt -->
+      <sc-if value="{{ showApproval }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;top:56px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:10px 14px 10px 18px;background:var(--surface,#10131f);border:1px solid var(--sc,#ffb054);border-radius:8px;box-shadow:0 0 30px rgba(0,0,0,.5), 0 0 18px var(--sc-dim,rgba(255,176,84,.25));animation:gv-fade-up .25s ease;z-index:20">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--sc,#ffb054);animation:gv-blink 1.1s linear infinite"></div>
+          <div>
+            <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:10px;letter-spacing:.2em;color:var(--sc,#ffb054)">APPROVAL REQUIRED</div>
+            <div style="font-size:12.5px;color:var(--ink2,#8b93b8);margin-top:2px">{{ approvalText }}</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-left:8px">
+            <button onClick="{{ onApprove }}" style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:10.5px;letter-spacing:.1em;padding:7px 14px;border-radius:6px;border:none;background:var(--sc,#ffb054);color:#0a0a12;font-weight:600;cursor:pointer">APPROVE</button>
+            <button onClick="{{ onDeny }}" style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:10.5px;letter-spacing:.1em;padding:7px 14px;border-radius:6px;border:1px solid var(--line,rgba(148,163,216,.2));background:transparent;color:var(--ink2,#8b93b8);cursor:pointer">DENY</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- transcript -->
+      <div style="width:620px;min-height:58px;display:flex;flex-direction:column;gap:8px;margin:18px 0 14px;flex:none">
+        <sc-for list="{{ transcript }}" as="msg" hint-placeholder-count="1">
+          <div style="display:flex;gap:10px;align-items:baseline;animation:gv-fade-up .3s ease">
+            <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;letter-spacing:.18em;color:{{ msg.tagColor }};flex:none;width:52px;text-align:right">{{ msg.tag }}</div>
+            <div style="font-size:13px;line-height:1.5;color:{{ msg.color }}">{{ msg.text }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- chat input -->
+      <div style="width:620px;display:flex;align-items:center;gap:10px;padding:6px 6px 6px 18px;background:var(--surface,#10131f);border:1px solid var(--line,rgba(148,163,216,.14));border-radius:12px;flex:none;box-shadow:0 8px 30px rgba(0,0,0,.35)">
+        <div style="width:7px;height:7px;border-radius:50%;background:var(--sc,#46c8ff);flex:none;animation:gv-pulse 2.4s ease-in-out infinite"></div>
+        <input ref="{{ inputRef }}" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="Ask Grover — try “refactor the auth module” or “have the team research…”" style="flex:1;background:transparent;border:none;color:var(--ink,#e7eaf6);font-family:var(--f-ui,'Space Grotesk',sans-serif);font-size:13.5px;padding:10px 0"></input>
+        <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;color:var(--ink3,#565e82);letter-spacing:.08em;flex:none">⏎</div>
+        <button onClick="{{ onSend }}" style="flex:none;width:38px;height:38px;border-radius:9px;border:none;background:var(--sc-dim,rgba(70,200,255,.15));color:var(--sc,#46c8ff);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center">↑</button>
+      </div>
+
+      <!-- state chips (demo rail) -->
+      <div style="position:absolute;left:20px;bottom:16px;display:flex;flex-direction:column;gap:5px">
+        <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:8.5px;letter-spacing:.24em;color:var(--ink3,#565e82);margin-bottom:3px">STATES</div>
+        <sc-for list="{{ stateChips }}" as="chip" hint-placeholder-count="4">
+          <div onClick="{{ chip.onPick }}" style="display:flex;align-items:center;gap:8px;cursor:pointer;opacity:{{ chip.op }};padding:1.5px 0">
+            <div style="width:6px;height:6px;border-radius:50%;background:{{ chip.dot }};box-shadow:{{ chip.glow }}"></div>
+            <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;letter-spacing:.14em;color:{{ chip.tcolor }}">{{ chip.label }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+
+    <!-- ═══ context panel ═══ -->
+    <aside style="border-left:1px solid var(--line,rgba(148,163,216,.12));padding:22px 22px 16px;display:flex;flex-direction:column;gap:22px;overflow-y:auto;background:linear-gradient(180deg, var(--panel,rgba(13,16,28,.6)), transparent)">
+
+      <div>
+        <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;letter-spacing:.26em;color:var(--ink3,#565e82);margin-bottom:9px">ACTIVE TASK</div>
+        <div style="font-size:14px;font-weight:500;line-height:1.45;color:var(--ink,#e7eaf6)">{{ task }}</div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:8px">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--sc,#46c8ff)"></div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:10px;letter-spacing:.12em;color:var(--sc,#46c8ff)">{{ taskStatus }}</div>
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--line,rgba(148,163,216,.12))"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;letter-spacing:.26em;color:var(--ink3,#565e82);margin-bottom:7px">MODEL</div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:11.5px;color:var(--ink,#e7eaf6);line-height:1.4">{{ model }}</div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;color:{{ modelTierColor }};letter-spacing:.1em;margin-top:3px">{{ modelTier }}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;letter-spacing:.26em;color:var(--ink3,#565e82);margin-bottom:7px">EST. COST</div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:17px;font-weight:500;color:var(--ink,#e7eaf6)">{{ estCost }}</div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;color:var(--ink3,#565e82);margin-top:3px">cap $2.00 / task</div>
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--line,rgba(148,163,216,.12))"></div>
+
+      <div>
+        <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;letter-spacing:.26em;color:var(--ink3,#565e82);margin-bottom:9px">TOOLS ALLOWED</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <sc-for list="{{ tools }}" as="tool" hint-placeholder-count="4">
+            <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;letter-spacing:.08em;padding:4px 9px;border-radius:5px;border:1px solid {{ tool.border }};color:{{ tool.color }};background:{{ tool.bg }}">{{ tool.name }}</div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;letter-spacing:.26em;color:var(--ink3,#565e82)">MEMORY</div>
+          <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:10px;color:var(--ink2,#8b93b8)">{{ memLabel }}</div>
+        </div>
+        <div style="height:3px;border-radius:2px;background:var(--line,rgba(148,163,216,.12));overflow:hidden">
+          <div style="height:100%;width:{{ memPct }}%;border-radius:2px;background:linear-gradient(90deg, var(--sc,#46c8ff), var(--sc2,#2f6bff));transition:width .5s ease"></div>
+        </div>
+        <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;color:var(--ink3,#565e82);margin-top:7px;line-height:1.6">{{ memNote }}</div>
+      </div>
+
+      <div style="height:1px;background:var(--line,rgba(148,163,216,.12))"></div>
+
+      <div style="flex:1">
+        <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;letter-spacing:.26em;color:var(--ink3,#565e82);margin-bottom:10px">NEXT ACTIONS</div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ nextActions }}" as="act" hint-placeholder-count="2">
+            <div style="display:flex;gap:9px;align-items:baseline">
+              <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;color:var(--sc,#46c8ff);flex:none">{{ act.n }}</div>
+              <div style="font-size:12.5px;line-height:1.45;color:var(--ink2,#8b93b8)">{{ act.text }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9px;letter-spacing:.14em;color:var(--ink3,#565e82);display:flex;justify-content:space-between">
+        <span>AGENTS {{ agentCount }}/3</span><span>UPTIME {{ uptime }}</span>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ═══ telemetry strip ═══ -->
+  <footer style="display:flex;align-items:center;gap:28px;padding:0 24px;border-top:1px solid var(--line,rgba(148,163,216,.12));font-family:var(--f-mono,'JetBrains Mono',monospace);font-size:9.5px;letter-spacing:.12em;color:var(--ink3,#565e82);position:relative;z-index:5">
+    <span>TOK IN <span style="color:var(--ink2,#8b93b8)">{{ tokIn }}</span></span>
+    <span>TOK OUT <span style="color:var(--ink2,#8b93b8)">{{ tokOut }}</span></span>
+    <span>LATENCY <span style="color:var(--ink2,#8b93b8)">{{ latency }}</span></span>
+    <span>SESSION COST <span style="color:var(--ink2,#8b93b8)">{{ sessionCost }}</span></span>
+    <span style="margin-left:auto;color:var(--sc,#46c8ff)">● {{ stateLabel }}</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;skin&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;default&quot;, &quot;arcane&quot;, &quot;spiderverse&quot;], &quot;default&quot;: &quot;default&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;typePairing&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;grotesk&quot;, &quot;swiss&quot;, &quot;display&quot;], &quot;default&quot;: &quot;grotesk&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;orbStyle&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;lines&quot;, &quot;dots&quot;, &quot;mesh&quot;], &quot;default&quot;: &quot;lines&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Orb&quot; }
+}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.rootRef = React.createRef();
+    this.orbCanvasRef = React.createRef();
+    this.inputRef = React.createRef();
+    this.state = {
+      st: 'idle', draft: '', transcript: [],
+      task: 'No active task', taskStatus: 'STANDING BY',
+      model: 'claude-sonnet-4.5', modelTier: 'STANDARD TIER',
+      cost: 0, sessionCost: 0.4172, tokIn: 128409, tokOut: 40233,
+      latency: '—', memPct: 38,
+      memNote: 'project: grover · 214 entries · last write 2m ago',
+      nextActions: [
+        { n: '01', text: 'Connect the grover repo for design sync' },
+        { n: '02', text: 'Review pending memory consolidation' }
+      ],
+      showApproval: false, approvalText: '',
+      agentCount: 0, clock: '', uptime: '02:14:38'
+    };
+    this._runId = 0;
+  }
+
+  // ── design tokens ─────────────────────────────────────────
+  static SKINS = {
+    default: {
+      name: 'Default', swatch: 'linear-gradient(135deg,#2f6bff,#f45db7 60%,#ffc24b)',
+      bg: '#06070d', panel: 'rgba(13,16,28,.6)', surface: '#10131f',
+      line: 'rgba(148,163,216,.14)', ink: '#e7eaf6', ink2: '#8b93b8', ink3: '#565e82',
+      halo: 'rgba(48,58,180,.16)', halftone: 'none',
+      base: '#2730a8', deep: '#10164a',
+      states: {
+        idle:      ['#46c8ff', '#2f6bff'], listening: ['#7df3ff', '#38bdf8'],
+        thinking:  ['#9d6bff', '#6432e8'], memory:    ['#38d0f8', '#4f46e5'],
+        tools:     ['#2dd4bf', '#2f6bff'], agents:    ['#c26bff', '#7c3aed'],
+        coding:    ['#f45db7', '#7c3aed'], frontier:  ['#ffc24b', '#ff7847'],
+        approval:  ['#ffb054', '#f97316'], error:     ['#ff5c47', '#ff8c3b'],
+        success:   ['#3ddc97', '#22d3ee']
+      }
+    },
+    arcane: {
+      name: 'Arcane', swatch: 'linear-gradient(135deg,#4dd7e8,#b16ce8 55%,#ff4d8d)',
+      bg: '#070c11', panel: 'rgba(10,18,24,.65)', surface: '#0d151d',
+      line: 'rgba(120,180,200,.14)', ink: '#e4eef2', ink2: '#84a3b2', ink3: '#4c6472',
+      halo: 'rgba(20,110,140,.18)', halftone: 'none',
+      base: '#0e6a86', deep: '#092c3c',
+      states: {
+        idle:      ['#4dd7e8', '#1f7a9e'], listening: ['#8beefc', '#37b6d4'],
+        thinking:  ['#b16ce8', '#6d28d9'], memory:    ['#43c6dd', '#4338ca'],
+        tools:     ['#35d3b5', '#1f7a9e'], agents:    ['#cf7bff', '#8b2fc9'],
+        coding:    ['#ff4d8d', '#8b2fc9'], frontier:  ['#e8b34b', '#e0653a'],
+        approval:  ['#f0a848', '#dd6a2c'], error:     ['#ff5a3c', '#e0313d'],
+        success:   ['#4ade80', '#2dd4bf']
+      }
+    },
+    spiderverse: {
+      name: 'Spider-Verse', swatch: 'linear-gradient(135deg,#3d5afe,#ff3ef5 55%,#ffd60a)',
+      bg: '#0a0712', panel: 'rgba(18,10,28,.6)', surface: '#150e22',
+      line: 'rgba(190,140,255,.15)', ink: '#f1e9fa', ink2: '#a58fc4', ink3: '#63527e',
+      halo: 'rgba(90,40,190,.2)',
+      halftone: 'radial-gradient(rgba(255,62,245,.05) 1px, transparent 1.5px)',
+      base: '#4326c4', deep: '#1c0f52',
+      states: {
+        idle:      ['#4d6bff', '#00e5ff'], listening: ['#6ee9ff', '#3d5afe'],
+        thinking:  ['#b44dff', '#5324e0'], memory:    ['#00e5ff', '#5324e0'],
+        tools:     ['#3dd6c4', '#3d5afe'], agents:    ['#d84dff', '#7a1fd0'],
+        coding:    ['#ff3ef5', '#5324e0'], frontier:  ['#ffd60a', '#ff6b2d'],
+        approval:  ['#ffb03d', '#ff6b2d'], error:     ['#ff2d55', '#ff7847'],
+        success:   ['#3dffb4', '#00e5ff']
+      }
+    }
+  };
+
+  static TYPES = {
+    grotesk: { ui: "'Space Grotesk', sans-serif", mono: "'JetBrains Mono', monospace", disp: "'Space Grotesk', sans-serif" },
+    swiss:   { ui: "'Helvetica Neue', Helvetica, Arial, sans-serif", mono: "'IBM Plex Mono', monospace", disp: "'Helvetica Neue', Helvetica, sans-serif" },
+    display: { ui: "'Space Grotesk', sans-serif", mono: "'Space Mono', monospace", disp: "'Chakra Petch', sans-serif" }
+  };
+
+  // motion params per state
+  static MOTION = {
+    idle:      { amp: .16, speed: .10, freq: 2.2, churn: .5,  glow: .5 },
+    listening: { amp: .34, speed: .16, freq: 2.6, churn: 1.4, glow: .7, mic: true },
+    thinking:  { amp: .48, speed: .42, freq: 3.2, churn: 2.2, glow: .8 },
+    memory:    { amp: .30, speed: .22, freq: 1.6, churn: 1.0, glow: .7 },
+    tools:     { amp: .42, speed: .34, freq: 3.8, churn: 1.8, glow: .7 },
+    agents:    { amp: .36, speed: .28, freq: 2.4, churn: 1.3, glow: .8 },
+    coding:    { amp: .46, speed: .55, freq: 5.2, churn: 2.8, glow: .7 },
+    frontier:  { amp: .62, speed: .26, freq: 2.0, churn: 1.1, glow: 1.4 },
+    approval:  { amp: .20, speed: .06, freq: 1.8, churn: .4,  glow: .9, hold: true },
+    error:     { amp: .58, speed: .85, freq: 6.5, churn: 3.6, glow: .9 },
+    success:   { amp: .46, speed: .16, freq: 1.4, churn: .7,  glow: 1.1 }
+  };
+
+  static LABELS = {
+    idle: ['IDLE', 'awaiting input'], listening: ['LISTENING', 'capturing input'],
+    thinking: ['REASONING', 'planning approach'], memory: ['MEMORY', 'retrieving context'],
+    tools: ['TOOL USE', 'executing tools'], agents: ['AGENT TEAM', '3 agents active'],
+    coding: ['CODING', 'writing & testing'], frontier: ['FRONTIER', 'high-attention mode'],
+    approval: ['APPROVAL', 'holding for you'], error: ['ERROR', 'blocked — needs input'],
+    success: ['SUCCESS', 'task complete']
+  };
+
+  skinId() { return this.state.skinOv || this.props.skin || 'default'; }
+  skin() { return Component.SKINS[this.skinId()] || Component.SKINS.default; }
+
+  hex2rgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+
+  applyTheme() {
+    const el = this.rootRef.current; if (!el) return;
+    const s = this.skin();
+    const t = Component.TYPES[this.props.typePairing] || Component.TYPES.grotesk;
+    const [c1, c2] = s.states[this.state.st] || s.states.idle;
+    const set = (k, v) => el.style.setProperty(k, v);
+    set('--bg', s.bg); set('--panel', s.panel); set('--surface', s.surface);
+    set('--line', s.line); set('--ink', s.ink); set('--ink2', s.ink2); set('--ink3', s.ink3);
+    set('--halo', s.halo); set('--halftone', s.halftone);
+    set('--sc', c1); set('--sc2', c2);
+    const r = this.hex2rgb(c1);
+    set('--sc-dim', `rgba(${r[0]},${r[1]},${r[2]},.15)`);
+    set('--agent-op', this.state.st === 'agents' ? '1' : '.4');
+    set('--agent-glow', this.state.st === 'agents' ? '14px' : '4px');
+    set('--f-ui', t.ui); set('--f-mono', t.mono); set('--f-disp', t.disp);
+    document.body.style.background = s.bg;
+  }
+
+  // ── orb engine ────────────────────────────────────────────
+  initOrb() {
+    const cv = this.orbCanvasRef.current; if (!cv) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = 600 * dpr; cv.height = 600 * dpr;
+    const ctx = cv.getContext('2d');
+    // fibonacci sphere
+    const N = 1500, pts = [];
+    const ga = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < N; i++) {
+      const y = 1 - (i / (N - 1)) * 2;
+      const rad = Math.sqrt(1 - y * y);
+      const th = ga * i;
+      pts.push({ x: Math.cos(th) * rad, y, z: Math.sin(th) * rad, seed: (i * 7.13) % 6.283 });
+    }
+    this.pts = pts;
+    // current interpolated params
+    this.cur = { amp: .16, speed: .1, freq: 2.2, churn: .5, glow: .5, c1: this.hex2rgb('#46c8ff'), c2: this.hex2rgb('#2f6bff'), base: this.hex2rgb('#2730a8'), deep: this.hex2rgb('#10164a') };
+    this.yaw = 0; this.t = 0; this._last = performance.now();
+
+    const lerp = (a, b, k) => a + (b - a) * k;
+    const lerpC = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+
+    const frame = (now) => {
+      if (!this._alive) return;
+      const dt = Math.min((now - this._last) / 1000, .05); this._last = now;
+      const M = Component.MOTION[this.state.st] || Component.MOTION.idle;
+      const sk = this.skin();
+      const [h1, h2] = sk.states[this.state.st] || sk.states.idle;
+      const tg = { amp: M.amp, speed: M.speed, freq: M.freq, churn: M.churn, glow: M.glow, c1: this.hex2rgb(h1), c2: this.hex2rgb(h2), base: this.hex2rgb(sk.base), deep: this.hex2rgb(sk.deep) };
+      const C = this.cur, K = 1 - Math.pow(.02, dt); // smooth ~
+      C.amp = lerp(C.amp, tg.amp, K); C.speed = lerp(C.speed, tg.speed, K);
+      C.freq = lerp(C.freq, tg.freq, K); C.churn = lerp(C.churn, tg.churn, K);
+      C.glow = lerp(C.glow, tg.glow, K);
+      C.c1 = lerpC(C.c1, tg.c1, K); C.c2 = lerpC(C.c2, tg.c2, K);
+      C.base = lerpC(C.base, tg.base, K); C.deep = lerpC(C.deep, tg.deep, K);
+
+      this.t += dt * (1 + C.churn); this.yaw += dt * C.speed;
+      let amp = C.amp;
+      if (M.mic) amp *= .55 + .45 * Math.abs(Math.sin(this.t * 2.1) * Math.sin(this.t * 3.7) + .3 * Math.sin(this.t * 9));
+      if (M.hold) amp *= .8 + .25 * Math.sin(this.t * 1.6);
+      const breath = .022 * Math.sin(this.t * .5);
+
+      const W = cv.width, cxp = W / 2, cyp = W / 2, R = W * .285;
+      ctx.clearRect(0, 0, W, W);
+
+      // core glow
+      const gl = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, R * (1 + amp * .9));
+      gl.addColorStop(0, `rgba(${C.c1[0] | 0},${C.c1[1] | 0},${C.c1[2] | 0},${.10 * C.glow})`);
+      gl.addColorStop(.55, `rgba(${C.base[0] | 0},${C.base[1] | 0},${C.base[2] | 0},${.07 * C.glow})`);
+      gl.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gl; ctx.fillRect(0, 0, W, W);
+
+      ctx.globalCompositeOperation = 'lighter';
+      const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
+      const t2 = this.t, fq = C.freq;
+      const mode = this.props.orbStyle || 'lines';
+      const px = new Float32Array(this.pts.length), py = new Float32Array(this.pts.length);
+      const spk = new Float32Array(this.pts.length), zz = new Float32Array(this.pts.length);
+
+      for (let i = 0; i < this.pts.length; i++) {
+        const p = this.pts[i];
+        const xr = p.x * cy + p.z * sy, zr = -p.x * sy + p.z * cy;
+        let n = (Math.sin(p.x * fq + t2 + p.seed) + Math.sin(p.y * fq * 1.7 - t2 * 1.3) + Math.sin(p.z * fq * 2.3 + t2 * .7 + p.seed)) / 3;
+        n = Math.max(0, n);
+        const spike = n * n * n * amp;
+        const r = R * (1 + breath + spike);
+        const sc = 1 / (1 - zr * .28);
+        px[i] = cxp + xr * r * sc; py[i] = cyp + p.y * r * sc;
+        spk[i] = spike / (amp + .0001); zz[i] = zr;
+      }
+
+      for (let i = 0; i < this.pts.length; i++) {
+        const p = this.pts[i];
+        const depth = (zz[i] + 1) / 2, k = Math.min(1, spk[i] * 1.4);
+        const vg = (p.y + 1) / 2;
+        const tip = lerpC(C.c2, C.c1, vg);
+        const col = lerpC(C.base, tip, k * .85 + .15);
+        const a = (.10 + .34 * depth) * (mode === 'mesh' ? .8 : 1);
+        const cs = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${a.toFixed(3)})`;
+        if (mode === 'dots') {
+          const sz = (1.1 + spk[i] * 2.2 + depth * .8) * dpr;
+          ctx.fillStyle = cs; ctx.fillRect(px[i] - sz / 2, py[i] - sz / 2, sz, sz);
+        } else if (mode === 'lines') {
+          if (spk[i] > .06) {
+            const bx = cxp + (px[i] - cxp) / (1 + spk[i] * amp / (1 + breath));
+            const by = cyp + (py[i] - cyp) / (1 + spk[i] * amp / (1 + breath));
+            ctx.strokeStyle = cs; ctx.lineWidth = dpr * .9;
+            ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(px[i], py[i]); ctx.stroke();
+          } else {
+            ctx.fillStyle = cs; ctx.fillRect(px[i] - dpr * .7, py[i] - dpr * .7, dpr * 1.4, dpr * 1.4);
+          }
+        } else { // mesh
+          if (i > 0) {
+            const j = i - 1;
+            ctx.strokeStyle = cs; ctx.lineWidth = dpr * .55;
+            ctx.beginPath(); ctx.moveTo(px[j], py[j]); ctx.lineTo(px[i], py[i]); ctx.stroke();
+          }
+          if (spk[i] > .5) { ctx.fillStyle = cs; ctx.fillRect(px[i] - dpr, py[i] - dpr, dpr * 2, dpr * 2); }
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      requestAnimationFrame(frame);
+    };
+    this._alive = true;
+    requestAnimationFrame(frame);
+  }
+
+  // ── scenario engine ───────────────────────────────────────
+  setSt(st, extra) {
+    this.setState(Object.assign({ st }, extra || {}), () => this.applyTheme());
+  }
+
+  runSeq(steps, done) {
+    const id = ++this._runId;
+    const next = (i) => {
+      if (id !== this._runId) return;
+      if (i >= steps.length) { done && done(); return; }
+      const s = steps[i];
+      this.setSt(s.st, s.patch);
+      if (s.st === 'approval') {
+        this.setState({ showApproval: true, approvalText: s.note || 'Grover wants to run a privileged action.' });
+        this._approveNext = () => { this.setState({ showApproval: false }); next(i + 1); };
+        this._t = setTimeout(this._approveNext, 6000);
+      } else {
+        this._t = setTimeout(() => next(i + 1), s.dur);
+      }
+    };
+    next(0);
+  }
+
+  send() {
+    const text = this.state.draft.trim();
+    if (!text || this._busy) return;
+    this._busy = true;
+    const lower = text.toLowerCase();
+    const push = (role, txt) => this.setState(s => ({ transcript: [...s.transcript, { role, text: txt }].slice(-3) }));
+    push('user', text);
+    this.setState({ draft: '', latency: '—' });
+
+    let seq, reply, task, model = 'claude-sonnet-4.5', tier = 'STANDARD TIER', agents = 0;
+    if (/team|agents|research|scout/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1600 }, { st: 'agents', dur: 2800 }, { st: 'tools', dur: 1600 }, { st: 'success', dur: 1600 }];
+      reply = 'Dispatched Scout, Forge and Archivist. Findings consolidated — summary pinned to the task.';
+      task = 'Multi-agent research sweep'; agents = 3;
+    } else if (/code|refactor|fix|build|deploy|auth/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1400 }, { st: 'memory', dur: 1100 }, { st: 'coding', dur: 2600 }, { st: 'approval', note: 'Write access to src/auth/** (14 files)' }, { st: 'coding', dur: 1500 }, { st: 'success', dur: 1600 }];
+      reply = 'Refactor complete: 14 files touched, tests green. Diff staged for your review.';
+      task = 'Refactor auth module';
+    } else if (/remember|recall|memory|last time/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'memory', dur: 2000 }, { st: 'thinking', dur: 1300 }, { st: 'success', dur: 1500 }];
+      reply = 'Found 6 related memory entries from the past two weeks. Most relevant surfaced first.';
+      task = 'Memory retrieval';
+    } else if (/hard|deep|frontier|opus|prove|complex/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1300 }, { st: 'frontier', dur: 3200 }, { st: 'thinking', dur: 1200 }, { st: 'success', dur: 1600 }];
+      reply = 'Escalated to frontier model for the hard step, then dropped back down. Full chain logged.';
+      task = 'Deep reasoning task'; model = 'claude-opus-4.6'; tier = 'FRONTIER TIER';
+    } else if (/error|fail|break/.test(lower)) {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1200 }, { st: 'tools', dur: 1400 }, { st: 'error', dur: 2600 }];
+      reply = 'Blocked: sandbox denied network egress. I need you to whitelist the endpoint or change approach.';
+      task = 'Tool execution — blocked';
+    } else {
+      seq = [{ st: 'listening', dur: 900 }, { st: 'thinking', dur: 1700 }, { st: 'tools', dur: 1800 }, { st: 'success', dur: 1600 }];
+      reply = 'Done. Two follow-ups added under next actions.';
+      task = 'General request';
+    }
+
+    const t0 = performance.now();
+    this.setState({ task, taskStatus: 'RUNNING', model, modelTier: tier, cost: 0, agentCount: agents });
+    this._costTick = setInterval(() => {
+      const rate = this.state.st === 'frontier' ? .012 : this.state.st === 'idle' ? 0 : .003;
+      this.setState(s => ({ cost: s.cost + rate, sessionCost: s.sessionCost + rate, tokIn: s.tokIn + ((Math.random() * 900) | 0), tokOut: s.tokOut + ((Math.random() * 400) | 0) }));
+    }, 240);
+
+    this.runSeq(seq, () => {
+      clearInterval(this._costTick);
+      const ok = this.state.st === 'success';
+      push('grover', reply);
+      this.setState({ taskStatus: ok ? 'COMPLETE' : 'BLOCKED — AWAITING INPUT', latency: ((performance.now() - t0) / 1000).toFixed(1) + 's', agentCount: 0, memPct: Math.min(96, this.state.memPct + 3) });
+      this._t = setTimeout(() => { this.setSt('idle'); this._busy = false; this.setState({ taskStatus: 'STANDING BY' }); }, ok ? 2200 : 5000);
+    });
+  }
+
+  componentDidMount() {
+    this.applyTheme();
+    this.initOrb();
+    this._clock = setInterval(() => {
+      const d = new Date();
+      const up = 8078 + ((performance.now() / 1000) | 0);
+      const hh = (n) => String(n).padStart(2, '0');
+      this.setState({ clock: hh(d.getHours()) + ':' + hh(d.getMinutes()) + ':' + hh(d.getSeconds()), uptime: hh((up / 3600) | 0) + ':' + hh(((up % 3600) / 60) | 0) + ':' + hh(up % 60) });
+    }, 1000);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.skin !== this.props.skin || prevProps.typePairing !== this.props.typePairing) this.applyTheme();
+  }
+
+  componentWillUnmount() {
+    this._alive = false;
+    clearInterval(this._clock); clearInterval(this._costTick); clearTimeout(this._t);
+    this._runId++;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const sk = this.skin();
+    const activeSkin = this.skinId();
+    const [lab, desc] = Component.LABELS[s.st] || Component.LABELS.idle;
+
+    const stateChips = Object.keys(Component.MOTION).map(id => {
+      const on = s.st === id;
+      const c = (sk.states[id] || sk.states.idle)[0];
+      return {
+        label: Component.LABELS[id][0], dot: c,
+        glow: on ? `0 0 8px ${c}` : 'none',
+        op: on ? 1 : .42, tcolor: on ? sk.ink : sk.ink2,
+        onPick: () => { this._runId++; clearInterval(this._costTick); this._busy = false; this.setState({ showApproval: id === 'approval', approvalText: 'Manual state preview' }); this.setSt(id); }
+      };
+    });
+
+    const skinChips = Object.keys(Component.SKINS).map(id => ({
+      name: Component.SKINS[id].name, swatch: Component.SKINS[id].swatch,
+      ringShadow: activeSkin === id ? `0 0 0 2px ${sk.bg}, 0 0 0 3.5px ${sk.ink2}` : 'none',
+      onPick: () => this.setState({ skinOv: id }, () => this.applyTheme())
+    }));
+
+    const toolNames = ['filesystem', 'web-search', 'shell', 'memory', 'browser'];
+    const busy = s.st === 'tools' || s.st === 'coding' || s.st === 'agents';
+    const tools = toolNames.map((name, i) => {
+      const hot = busy && i < 3;
+      const c = (sk.states[s.st] || sk.states.idle)[0];
+      return { name, color: hot ? c : sk.ink2, border: hot ? c : sk.line, bg: hot ? 'rgba(255,255,255,.03)' : 'transparent' };
+    });
+
+    const transcript = s.transcript.map(m => ({
+      tag: m.role === 'user' ? 'YOU' : 'GROVER',
+      tagColor: m.role === 'user' ? sk.ink3 : (sk.states[s.st] || sk.states.idle)[0],
+      color: m.role === 'user' ? sk.ink2 : sk.ink,
+      text: m.text
+    }));
+
+    return {
+      rootRef: this.rootRef, orbCanvasRef: this.orbCanvasRef, inputRef: this.inputRef,
+      stateLabel: lab, stateDesc: desc,
+      draft: s.draft,
+      onDraft: (e) => this.setState({ draft: e.target.value }),
+      onKey: (e) => { if (e.key === 'Enter') this.send(); },
+      onSend: () => this.send(),
+      transcript, stateChips, skinChips, tools,
+      task: s.task, taskStatus: s.taskStatus,
+      model: s.model, modelTier: s.modelTier,
+      modelTierColor: s.modelTier.startsWith('FRONTIER') ? (sk.states.frontier[0]) : sk.ink3,
+      estCost: '$' + s.cost.toFixed(4),
+      sessionCost: '$' + s.sessionCost.toFixed(4),
+      tokIn: s.tokIn.toLocaleString(), tokOut: s.tokOut.toLocaleString(),
+      latency: s.latency, memPct: s.memPct, memLabel: s.memPct + '% · 4.2 GB',
+      memNote: s.memNote, nextActions: s.nextActions,
+      showApproval: s.showApproval, approvalText: s.approvalText,
+      onApprove: () => { clearTimeout(this._t); this._approveNext ? this._approveNext() : this.setState({ showApproval: false }); },
+      onDeny: () => { clearTimeout(this._t); this._runId++; clearInterval(this._costTick); this._busy = false; this.setState({ showApproval: false, taskStatus: 'DENIED BY USER' }); this.setSt('error'); this._t = setTimeout(() => { this.setSt('idle'); this.setState({ taskStatus: 'STANDING BY' }); }, 2500); },
+      agentCount: s.agentCount, clock: s.clock, uptime: s.uptime
+    };
+  }
+}
+</script>
+</body>
+</html>

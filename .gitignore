@@ -1,17 +1,17 @@
-# Runtime data — never commit. Contains the database, secrets, and logs.
-/data/
+# ── Secrets & runtime data — NEVER commit ──────────────────────
+# v1's database and secret vault (contains a real API key)
+archive/grover_v1/data/
+archive/grover_v1/vault/
+secrets.json
+*.env
+*.db
+*.db-shm
+*.db-wal
 
-# Memory vault — personal/business memory lives here, not in git.
-# (Back it up separately; see MEMORY_POLICY.md)
-/vault/
-
-# OS noise
-.DS_Store
-Thumbs.db
-
-# Editor noise
+# ── Local tooling / machine-specific ────────────────────────────
+.claude/
 .vscode/
 .idea/
-
-# Node (no deps in v1, but keep this for the future)
+.DS_Store
+Thumbs.db
 node_modules/

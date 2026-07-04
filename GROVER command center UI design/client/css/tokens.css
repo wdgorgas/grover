@@ -1,0 +1,259 @@
+/* ==========================================================================
+   GROVER design tokens — semantic variables, themeable skins.
+   Components never use raw hex; they use these tokens. (Master prompt §16)
+
+   Each theme also defines the orb's color ramp (--orb-core → --orb-edge),
+   so Grover's face belongs to the skin it wears.
+   ========================================================================== */
+
+:root, [data-theme="default"] {
+  /* Surfaces */
+  --bg: #07090f;
+  --bg-2: #0a0d16;
+  --surface: #0e1220;
+  --surface-2: #131829;
+  --border: #1d2438;
+  --border-bright: #2a3352;
+
+  /* Text */
+  --text: #e6eaf5;
+  --text-dim: #8b93ab;
+  --text-faint: #575f78;
+
+  /* Brand accents */
+  --accent: #4cc9f0;
+  --accent-2: #7b2ff7;
+  --accent-3: #f72585;
+
+  /* System states (§16.1) */
+  --state-idle: #4cc9f0;
+  --state-think: #9d4edd;
+  --state-create: #f72585;
+  --state-frontier: #ffb703;
+  --state-ok: #2ee6a8;
+  --state-warn: #ffb703;
+  --state-err: #ff4d4d;
+
+  /* Orb ramp (orb.jpg: indigo core → violet → magenta → gold edge) */
+  --orb-core: #1c2b96;
+  --orb-mid: #5a3fd8;
+  --orb-hot: #e0409a;
+  --orb-edge: #ffb454;
+
+  --glow-strength: 22px;
+  --edge-glow: 1;            /* 1 = neon borders allowed; 0 = quiet luxury   */
+  --radius: 10px;
+  --radius-lg: 16px;
+
+  --font: "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Cascadia Code", ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+/* --- Arcane: hextech teal, rich magenta, aged gold — painterly depth ------ */
+[data-theme="arcane"] {
+  --bg: #0a0b12;
+  --bg-2: #0d0f1a;
+  --surface: #121527;
+  --surface-2: #181c33;
+  --border: #232948;
+  --border-bright: #333c68;
+
+  --text: #eae9f2;
+  --text-dim: #9a94b8;
+  --text-faint: #5d597a;
+
+  --accent: #3de8f0;
+  --accent-2: #b14aed;
+  --accent-3: #ff4fd8;
+
+  --state-idle: #3de8f0;
+  --state-think: #b14aed;
+  --state-create: #ff4fd8;
+  --state-frontier: #f2b34c;
+  --state-ok: #43e8b0;
+  --state-warn: #f2b34c;
+  --state-err: #ff5c5c;
+
+  --orb-core: #123a52;
+  --orb-mid: #2fb8c9;
+  --orb-hot: #c455ee;
+  --orb-edge: #ffd27a;
+
+  --glow-strength: 28px;
+  --edge-glow: 0.6;
+}
+
+/* --- Pulse: near-black, hot pink / cyan collision (formerly Spider-Verse) - */
+[data-theme="pulse"] {
+  --bg: #08060c;
+  --bg-2: #0c0812;
+  --surface: #120c1c;
+  --surface-2: #191026;
+  --border: #2a1a3d;
+  --border-bright: #3d2657;
+
+  --text: #f2ecff;
+  --text-dim: #a390c4;
+  --text-faint: #64548a;
+
+  --accent: #00e5ff;
+  --accent-2: #ff2d78;
+  --accent-3: #c86bfa;
+
+  --state-idle: #00e5ff;
+  --state-think: #c86bfa;
+  --state-create: #ff2d78;
+  --state-frontier: #ffd166;
+  --state-ok: #37ffb4;
+  --state-warn: #ffd166;
+  --state-err: #ff3355;
+
+  --orb-core: #14186e;
+  --orb-mid: #7a3cf0;
+  --orb-hot: #ff2d78;
+  --orb-edge: #ffd166;
+
+  --glow-strength: 30px;
+  --edge-glow: 1;
+}
+
+/* --- Obsidian: graphite and warm gold — quiet luxury ----------------------- */
+[data-theme="obsidian"] {
+  --bg: #0b0b0c;
+  --bg-2: #101012;
+  --surface: #161618;
+  --surface-2: #1c1c1f;
+  --border: #26262a;
+  --border-bright: #35353b;
+
+  --text: #ece9e2;
+  --text-dim: #9b968b;
+  --text-faint: #625e55;
+
+  --accent: #d4a94f;
+  --accent-2: #8f8578;
+  --accent-3: #b0733f;
+
+  --state-idle: #b3ab9c;
+  --state-think: #c2a06a;
+  --state-create: #d4a94f;
+  --state-frontier: #e8c268;
+  --state-ok: #9ec29a;
+  --state-warn: #e8c268;
+  --state-err: #d1685c;
+
+  --orb-core: #2a2620;
+  --orb-mid: #7a6a4a;
+  --orb-hot: #d4a94f;
+  --orb-edge: #f4e3b2;
+
+  --glow-strength: 10px;
+  --edge-glow: 0;
+
+  --font-display: Georgia, "Times New Roman", serif;
+}
+
+/* --- Slate: desaturated steel blue + copper — engineering professional ----- */
+[data-theme="slate"] {
+  --bg: #0e1116;
+  --bg-2: #12161d;
+  --surface: #181d26;
+  --surface-2: #1f2531;
+  --border: #2a3140;
+  --border-bright: #3a4356;
+
+  --text: #e4e8ee;
+  --text-dim: #96a0b0;
+  --text-faint: #5d6675;
+
+  --accent: #7fa6c9;
+  --accent-2: #c98d5f;
+  --accent-3: #a3b6cc;
+
+  --state-idle: #7fa6c9;
+  --state-think: #9d94c9;
+  --state-create: #c98d5f;
+  --state-frontier: #d9a660;
+  --state-ok: #7fc9a6;
+  --state-warn: #d9a660;
+  --state-err: #cf6f64;
+
+  --orb-core: #1d3247;
+  --orb-mid: #48708f;
+  --orb-hot: #c98d5f;
+  --orb-edge: #ecd3a8;
+
+  --glow-strength: 8px;
+  --edge-glow: 0;
+}
+
+/* --- Porcelain: warm paper, ink, burgundy — editorial light ----------------- */
+[data-theme="porcelain"] {
+  --bg: #f6f4ef;
+  --bg-2: #efece5;
+  --surface: #fdfcf9;
+  --surface-2: #f3f0e9;
+  --border: #e0dcd1;
+  --border-bright: #cdc8ba;
+
+  --text: #23211c;
+  --text-dim: #6b675c;
+  --text-faint: #a19c8e;
+
+  --accent: #8c3041;
+  --accent-2: #34506b;
+  --accent-3: #a86b2d;
+
+  --state-idle: #34506b;
+  --state-think: #5f4a80;
+  --state-create: #8c3041;
+  --state-frontier: #a86b2d;
+  --state-ok: #3e7d5a;
+  --state-warn: #a86b2d;
+  --state-err: #b3402e;
+
+  --orb-core: #2c3d63;
+  --orb-mid: #6b5a9e;
+  --orb-hot: #b04a6e;
+  --orb-edge: #d9964a;
+
+  --glow-strength: 6px;
+  --edge-glow: 0;
+
+  --font-display: Georgia, "Times New Roman", serif;
+}
+
+/* --- Light: clean, same soul as default ------------------------------------- */
+[data-theme="light"] {
+  --bg: #f4f5f9;
+  --bg-2: #eceef5;
+  --surface: #ffffff;
+  --surface-2: #f2f3f9;
+  --border: #dcdfeb;
+  --border-bright: #c4c9de;
+
+  --text: #171b28;
+  --text-dim: #5a6178;
+  --text-faint: #979db2;
+
+  --accent: #0e86c4;
+  --accent-2: #6425d0;
+  --accent-3: #d61f74;
+
+  --state-idle: #0e86c4;
+  --state-think: #7b3ff2;
+  --state-create: #d61f74;
+  --state-frontier: #c77c02;
+  --state-ok: #0da678;
+  --state-warn: #c77c02;
+  --state-err: #d3382c;
+
+  --orb-core: #1e2f9e;
+  --orb-mid: #6a3fd8;
+  --orb-hot: #d61f74;
+  --orb-edge: #e8973a;
+
+  --glow-strength: 12px;
+  --edge-glow: 1;
+}

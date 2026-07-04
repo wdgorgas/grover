@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en" data-theme="default">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GROVER</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%234cc9f0' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%237b2ff7'/%3E%3C/svg%3E">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-orb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="8.5" ry="3.4"/></symbol>
+      <symbol id="i-builder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14.5 5.5 18.5 9.5 8 20H4v-4L14.5 5.5Z"/><path d="m13 7 4 4"/></symbol>
+      <symbol id="i-ledger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 4h14v16H5z"/><path d="M9 8.5h7M9 12h7M9 15.5h4"/></symbol>
+      <symbol id="i-memory" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 4c-4 0-6.5 2.2-6.5 5.5 0 2 .9 3.4 2.2 4.3L7 20l3.4-2h1.6c4 0 6.5-2.2 6.5-5.5S16 4 12 4Z"/></symbol>
+      <symbol id="i-costs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19h16M7 16V9m5 7V5m5 11v-6"/></symbol>
+      <symbol id="i-skills" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m12 3 2.2 5.3L20 9.2l-4.4 3.8 1.4 5.7L12 15.6l-5 3.1 1.4-5.7L4 9.2l5.8-.9L12 3Z"/></symbol>
+      <symbol id="i-audit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M12 4.5V3m0 18v-1.5M6.7 6.7 5.6 5.6m12.8 12.8-1.1-1.1M4.5 12H3m18 0h-1.5M6.7 17.3l-1.1 1.1M18.4 5.6l-1.1 1.1"/></symbol>
+      <symbol id="i-desk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="8" stroke-dasharray="3.5 4"/></symbol>
+    </defs>
+  </svg>
+
+  <div id="shell">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><span></span></div>
+        <div class="brand-text">
+          <div class="brand-name">GROVER</div>
+          <div class="brand-sub">command center</div>
+        </div>
+      </div>
+
+      <nav id="nav">
+        <a href="#command" data-view="command"><svg><use href="#i-orb"/></svg> Command Center</a>
+        <a href="#builder" data-view="builder"><svg><use href="#i-builder"/></svg> Builder</a>
+        <a href="#ledger" data-view="ledger"><svg><use href="#i-ledger"/></svg> Ledger</a>
+        <a href="#memory" data-view="memory"><svg><use href="#i-memory"/></svg> Memory Vault</a>
+      </nav>
+
+      <div class="nav-group">
+        <div class="nav-label">Desks</div>
+        <nav class="nav-list" id="desk-nav"></nav>
+      </div>
+
+      <div class="nav-group nav-flex">
+        <div class="nav-label">System</div>
+        <nav class="nav-list">
+          <a href="#costs" data-view="costs"><svg><use href="#i-costs"/></svg> Costs</a>
+          <a href="#skills" data-view="skills"><svg><use href="#i-skills"/></svg> Skills</a>
+          <a href="#audit" data-view="audit"><svg><use href="#i-audit"/></svg> Audit</a>
+          <a href="#settings" data-view="settings"><svg><use href="#i-settings"/></svg> Settings</a>
+        </nav>
+      </div>
+
+      <div id="skin-chips" title="Skin"></div>
+      <div id="user-chip" title="Switch profile in Settings">
+        <div class="avatar" id="user-avatar">W</div>
+        <div class="user-meta">
+          <div id="user-name">—</div>
+          <div id="user-role" class="dim">admin · <span id="clock">--:--</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <main id="main">
+      <!-- Command Center v2 (kept mounted so the orb never re-initializes) -->
+      <section id="view-command" class="view">
+        <div id="command-layout">
+          <div id="command-core">
+            <div id="desk-head">
+              <div id="desk-title">Command</div>
+              <div id="desk-sub"><span id="desk-sub-text"></span><span id="desk-sub-caret"></span></div>
+              <div id="desk-meta">kernel v1 · all namespaces</div>
+            </div>
+            <div id="orb-wrap">
+              <canvas id="orb" width="520" height="520"></canvas>
+              <svg id="orb-ring" width="560" height="560" viewBox="0 0 560 560" aria-hidden="true">
+                <circle cx="280" cy="280" r="252" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="1 10"/>
+                <circle cx="280" cy="280" r="252" fill="none" stroke="var(--sc, var(--state-idle))" stroke-width="1.4" stroke-dasharray="110 1473" stroke-linecap="round" opacity=".85"/>
+              </svg>
+              <div class="orb-sat" style="--sat-delay:0s"><div class="orb-sat-inner" style="--sat-delay:0s"><i></i><span>SCOUT · research</span></div></div>
+              <div class="orb-sat" style="--sat-delay:-17.3s"><div class="orb-sat-inner" style="--sat-delay:-17.3s"><i></i><span>FORGE · code</span></div></div>
+              <div class="orb-sat" style="--sat-delay:-34.6s"><div class="orb-sat-inner" style="--sat-delay:-34.6s"><i></i><span>ARCHIVIST · memory</span></div></div>
+              <div id="orb-status">
+                <span id="orb-state-label">IDLE</span>
+                <span id="orb-state-detail" class="dim">awaiting input</span>
+              </div>
+            </div>
+            <div id="chat-log" class="chat-log" aria-live="polite"></div>
+            <div id="composer" class="composer">
+              <div class="composer-toolbar">
+                <div class="seg" id="mode-seg">
+                  <button data-mode="chat" class="on">CHAT</button>
+                  <button data-mode="brain_dump">BRAIN DUMP</button>
+                </div>
+                <button id="new-chat" class="ghost" title="Start a new conversation">＋ NEW</button>
+              </div>
+              <div class="composer-row">
+                <span class="composer-dot" aria-hidden="true"></span>
+                <textarea id="chat-input" class="chat-input" rows="1" placeholder="Talk to Grover — routed, budgeted, remembered"></textarea>
+                <select id="tier-select" class="tier-select" title="Model tier">
+                  <option value="">AUTO</option>
+                  <option value="fast">FAST</option>
+                  <option value="smart">SMART</option>
+                  <option value="frontier">FRONTIER</option>
+                  <option value="fable">FABLE</option>
+                </select>
+                <button id="send-btn" class="send-btn" title="Send (Enter)">↑</button>
+              </div>
+            </div>
+          </div>
+          <aside id="context-panel">
+            <div class="ctx-block">
+              <div class="ctx-label">Active task</div>
+              <div id="ctx-task">No active task</div>
+              <div class="ctx-status"><i id="ctx-task-dot"></i><span id="ctx-task-status">STANDING BY</span></div>
+            </div>
+            <div class="ctx-block">
+              <div class="ctx-label">Next actions</div>
+              <div id="ctx-queue" class="small dim">…</div>
+            </div>
+            <div class="ctx-rule"></div>
+            <div class="ctx-grid">
+              <div>
+                <div class="ctx-label">Model</div>
+                <div id="tele-model" class="mono ctx-val">—</div>
+                <div id="tele-tier" class="mono ctx-subval">—</div>
+              </div>
+              <div>
+                <div class="ctx-label">Autonomy</div>
+                <div id="tele-autonomy" class="mono ctx-val">L1</div>
+                <div class="mono ctx-subval">direct: instant · self-init: needs OK</div>
+              </div>
+            </div>
+            <div class="ctx-block">
+              <div class="ctx-label">Memory injected</div>
+              <div id="tele-memories" class="dim small">none yet</div>
+            </div>
+            <div class="ctx-block ctx-convs">
+              <div class="ctx-label">Recent conversations</div>
+              <div id="conv-list"></div>
+            </div>
+            <div class="ctx-foot mono"><span>NS SHARED</span><span>UPTIME <span id="ctx-uptime">00:00:00</span></span></div>
+          </aside>
+          <footer id="tele-strip" class="mono">
+            <span>TODAY <b id="tele-today">$0.00</b></span>
+            <span>LAST TURN <b id="tele-cost">—</b></span>
+            <span>LATENCY <b id="tele-latency">—</b></span>
+            <span class="strip-spacer"></span>
+            <span>ORB PREVIEW</span>
+            <div id="state-chips"></div>
+            <span id="foot-state">● IDLE</span>
+          </footer>
+        </div>
+      </section>
+
+      <!-- All other views render here -->
+      <section id="view-generic" class="view" hidden>
+        <div id="view"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
