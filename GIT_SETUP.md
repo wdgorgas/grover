@@ -20,8 +20,9 @@ The repo is `https://github.com/wdgorgas/grover.git`. One repo, one `master` bra
 
 ## Branch hygiene
 
-- All planning work goes straight on `master` — planning docs don't need feature branches, and two humans pulling frequently is enough coordination.
-- **Always check `git branch` shows `* master` before committing.** (This is exactly how the history-note incident happened.)
+- **Docs-only changes** (board updates, handoffs, planning files) go straight on `master`.
+- **Build/code slices** get a branch per slice — `git checkout -b phase-pX-short-description` — merged to `master` only after verification, per `CLAUDE.md`.
+- **Always check `git branch` before committing.** (A leftover v1 branch once swallowed a whole evening's commit.)
 - Cleanup of dead v1 branches, if they still exist:
   ```bat
   git branch -D loop/product-quality-pass-2 loop/product-quality-pass-3 loop/product-quality-pass-4 loop/product-quality-pass-5

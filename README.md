@@ -4,11 +4,11 @@ GROVER (General of Resource Optimization and Varying Expertise Requests; named f
 
 ## Current status (updated 2026-07-03)
 
-**Phase: v2 planning. No v2 code exists yet, by explicit decision.**
+**Phase: v2 BUILD — P0 approved by Will 2026-07-03; P1 (spine skeleton) is open.**
 
 - **v1** — built 2026-07-01→03, retired. Real engineering, unusable product (no live feedback, dead controls, contradictory status, HUD-style visuals). Frozen under `archive/grover_v1/`.
-- **v2** — spec-first rebuild, planned via a seven-iteration Claude ↔ ChatGPT adversarial loop (humans relay files). **Planning is COMPLETE: the final binding spec is `planning/grover_v2_master_prompt.md`.** The one remaining gate: Will formally approves the prompt (P0 exit) → build green light. No code before that.
-- **Team** — Jackson's solo-runnable lanes are live (red-team the final spec, UI/UX design track, acceptance-test catalog) — see `JACKSON_START_HERE.md` and `planning/PLANNING_BOARD.md`. Spec changes go through §12 proposals only; Will arbitrates and green-lights.
+- **v2** — spec-first rebuild. The binding spec is **`planning/grover_v2_master_prompt.md`** (final, seven planning iterations). Build proceeds phase by phase (P1–P5) with evidence-gated exits and $25/$50 budgets per phase; status on `planning/PLANNING_BOARD.md`.
+- **Team** — relay model: Will and Jackson are both build partners; whoever pulls next takes the next useful slice (`JACKSON_START_HERE.md`). Sessions follow the repo-root `CLAUDE.md` contract. Visual direction is Will's, via Claude Design. Spec changes go through §12 proposals only.
 
 ## Layout — organized by version
 
@@ -21,10 +21,11 @@ GROVER (General of Resource Optimization and Varying Expertise Requests; named f
 
 ## Read in this order
 
-1. `planning/grover_v2_master_prompt.md` — **the final, sole binding build spec.** Overrides everything below.
-2. `planning/grover_v2_handoff.md` — what happened, where things stand.
-3. `planning/PLANNING_BOARD.md` — who's doing what right now, locked decisions, iteration ledger.
-4. `planning/chatgpt_handoffs/` and `planning/grover_v2_scope_understanding.md` — the planning record; rationale only, no longer authoritative.
+1. `CLAUDE.md` — the session contract for any Claude instance working here.
+2. `planning/grover_v2_master_prompt.md` — **the final, sole binding build spec.** Overrides everything below.
+3. `planning/PLANNING_BOARD.md` — phase status, locked decisions, iteration ledger.
+4. `planning/grover_v2_handoff.md` — how we got here.
+5. `planning/chatgpt_handoffs/` and `planning/grover_v2_scope_understanding.md` — the planning record; rationale only, no longer authoritative.
 
 New contributor: `JACKSON_START_HERE.md`.
 

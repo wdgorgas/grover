@@ -1,14 +1,27 @@
-# Planning board
+# Planning board → Build board
 
-One line per active workstream. Claim by adding your name and pushing. Update status when you push results.
+**P0 APPROVED by Will, 2026-07-03. The build is green-lit. Current phase: P1 — spine skeleton.**
 
-| # | Workstream | Owner | Status | Output location |
-|---|---|---|---|---|
-| 1 | Main planning thread (Claude ↔ ChatGPT iterations → master prompt) | Will | **COMPLETE** — 7 iterations; final spec: `planning/grover_v2_master_prompt.md`. Thread closed; changes now go through §12 proposals only | `planning/chatgpt_handoffs/iter_NN_*.md` |
-| 2 | **Red-team the FINAL master prompt** — cold read, hunt contradictions/loopholes/unwritten assumptions; findings as §12 proposals | Jackson | **Unclaimed — Jackson's #1 priority; fully runnable while Will is offline** | `planning/chatgpt_handoffs/jackson_01_redteam_master_prompt.md` |
-| 3 | UI/UX spec track: visual direction, theme token system, layout of Command Center + Builder view, orb integration (orb itself carries verbatim) | Jackson | Unclaimed — target: ready before build Phase 1 starts | `planning/chatgpt_handoffs/jackson_02_uiux_spec.md` |
-| 4 | Acceptance-test catalog: expand master prompt §5/§13 (evidence matrix, phase exits, P5 drills, 10 memory tests, no-migration test) into a numbered, runnable test list for v2.0 | open | Unblocked — source is the final master prompt | `planning/acceptance_test_catalog.md` |
-| 5 | **P0 exit: Will formally approves the master prompt → build green light** | **Will (only)** | **Waiting on Will** — reviews Jackson's proposals first, then approves. Nothing gets built before this | — |
+Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → find the open phase/slice → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `CLAUDE.md`.
+
+## Phase status
+
+| Phase | What | Status |
+|---|---|---|
+| P0 | Decision lock + master prompt | **APPROVED (Will, 2026-07-03)** — spec: `planning/grover_v2_master_prompt.md` |
+| P1 | Spine skeleton: SPA shell, orb port, events+projections, SSE, cost-ledger stub, kill switch, object-model schema, DomainContract stubs | **OPEN** — exits in master prompt §13; budget $25 soft / $50 hard |
+| P2 | Razor Builder slice (one real request end-to-end) | Blocked on P1 exit |
+| P3 | Builder reliability set (5 diverse requests) | Blocked on P2 exit |
+| P4 | Minimal memory core (10 tests + no-migration test) | Blocked on P3 exit |
+| P5 | Hardening drills → v2.0 | Blocked on P4 exit |
+
+## Open side-tracks
+
+| Track | Owner | Status | Output |
+|---|---|---|---|
+| Acceptance-test catalog: expand master prompt §5/§13 into a numbered runnable checklist (this is also a strong P1 warm-up task) | open (relay) | Unclaimed | `planning/acceptance_test_catalog.md` |
+| Visual direction / UI design | **Will + Claude Design (Will's alone)** | Will owns this directly; Jackson routes ideas to Will, doesn't own the direction | `design/` |
+| Build-technique intake (external lists → adopt/skip) | main thread | Standing rule + first pass done | `planning/build_techniques_assessment.md` |
 
 ## Decisions locked by Will (do not reopen in any workstream)
 
