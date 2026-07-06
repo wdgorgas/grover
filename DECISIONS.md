@@ -29,3 +29,13 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** §4.3 mandates the mechanism (projections reduced from events, actions computed server-side) but not these micro-mappings. Chosen minimal so later slices refine mappings without touching the reduction mechanics.
 
 **Prediction (checked at P1 exit):** the engine/SSE slices will change these mappings but will NOT need to change the events schema or the append/rebuild mechanics.
+
+## 2026-07-05 — Idempotency collision = hard conflict; plain_language capped at 2000 chars
+
+**Decision (per accepted PlanningProposal 001, items 2 and 8):** reusing an idempotency key with a *different* payload (any field except `ts`) throws a conflict error — never silently returns the original. `plain_language` is rejected when missing, empty, whitespace-only, or over 2000 characters (enforced in code and schema CHECK).
+
+**Why:** silent ignore would let UI retries, SSE reconnects, and engine bugs hide real double-writes; 2000 chars keeps the event log human-scannable — long detail belongs in `internal_detail` or evidence assets.
+
+## 2026-07-05 — Sandbox treats the mounted repo as read-suspect
+
+**Decision:** Claude sandbox sessions must not run ANY git command against the mount (a read-only `git status` corrupted the index on 2026-07-05), and must not trust the mount's view of recently written files (stale/truncated reads observed same day). Tests run on a sandbox-local copy; the authoritative verification is `npm test` on the host before committing. Recorded in `GIT_SETUP.md`.

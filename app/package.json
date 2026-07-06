@@ -7,6 +7,6 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test \"test/*.test.ts\""
+    "test": "node --test test/event-spine.test.ts"
   }
 }

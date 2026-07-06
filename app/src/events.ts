@@ -1,6 +1,7 @@
 // events.ts — the only write path into the event log (master prompt §4.3).
-// Rules enforced here: plain_language mandatory and human-readable (non-empty),
-// idempotency keys prevent duplicate events/side effects, append + projection
+// Rules enforced here: plain_language mandatory and human-readable (non-empty,
+// capped), idempotency keys prevent duplicate events/side effects (reuse with a
+// different payload is a hard conflict — proposal 001), append + projection
 // update happen in one transaction so they can never disagree.
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
@@ -61,9 +62,48 @@ export interface AppendResult {
   deduplicated: boolean;
 }
 
+/** Max plain_language length (DECISIONS.md 2026-07-05, proposal 001 item 8). */
+export const PLAIN_LANGUAGE_MAX = 2000;
+
+/**
+ * Payload fields compared on idempotency-key reuse (ts excluded — retries carry
+ * new timestamps). Same key + different payload = conflict, never silent ignore
+ * (proposal 001 item 2).
+ */
+const PAYLOAD_FIELDS = [
+  ['scope_type', 'scopeType'],
+  ['scope_id', 'scopeId'],
+  ['task_id', 'taskId'],
+  ['build_run_id', 'buildRunId'],
+  ['parent_event_id', 'parentEventId'],
+  ['actor', 'actor'],
+  ['domain', 'domain'],
+  ['phase', 'phase'],
+  ['plain_language', 'plainLanguage'],
+  ['internal_detail', 'internalDetail'],
+  ['evidence_ref', 'evidenceRef'],
+  ['cost_delta', 'costDelta'],
+  ['model_run_id', 'modelRunId'],
+  ['signoff_state', 'signoffState'],
+] as const;
+
+function payloadMismatches(existing: EventRow, input: EventInput): string[] {
+  const defaults: Record<string, unknown> = { internal_detail: '' };
+  return PAYLOAD_FIELDS.filter(([col, key]) => {
+    const oldVal = existing[col as keyof EventRow];
+    const newVal = (input as unknown as Record<string, unknown>)[key] ?? defaults[col] ?? null;
+    return oldVal !== newVal;
+  }).map(([col]) => col);
+}
+
 export function appendEvent(db: DatabaseSync, input: EventInput): AppendResult {
   if (!input.plainLanguage || input.plainLanguage.trim().length === 0) {
     throw new Error('plain_language is mandatory on every event (master prompt §4.3)');
+  }
+  if (input.plainLanguage.length > PLAIN_LANGUAGE_MAX) {
+    throw new Error(
+      `plain_language exceeds ${PLAIN_LANGUAGE_MAX} chars — put detail in internal_detail or evidence`
+    );
   }
   if (!input.idempotencyKey || input.idempotencyKey.trim().length === 0) {
     throw new Error('idempotency_key is mandatory on every event (master prompt §4.3)');
@@ -78,6 +118,14 @@ export function appendEvent(db: DatabaseSync, input: EventInput): AppendResult {
       .prepare('SELECT * FROM events WHERE idempotency_key = ?')
       .get(input.idempotencyKey) as EventRow | undefined;
     if (existing) {
+      const mismatches = payloadMismatches(existing, input);
+      if (mismatches.length > 0) {
+        throw new Error(
+          `idempotency conflict: key '${input.idempotencyKey}' was already used with a ` +
+          `different payload (differs in: ${mismatches.join(', ')}). Reusing a key must ` +
+          `mean an identical retry, never a new event.`
+        );
+      }
       db.exec('COMMIT;');
       return { event: existing, deduplicated: true };
     }

@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS events (
   phase            TEXT NOT NULL CHECK (phase IN
                      ('intake','planning','editing','verifying','blocked','done','failed',
                       'cancelled','policy','budget','memory','system')),
-  plain_language   TEXT NOT NULL CHECK (length(trim(plain_language)) > 0),
+  plain_language   TEXT NOT NULL CHECK (length(trim(plain_language)) > 0
+                                        AND length(plain_language) <= 2000),
   internal_detail  TEXT NOT NULL DEFAULT '',
   evidence_ref     TEXT,
   cost_delta       INTEGER,

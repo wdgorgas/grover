@@ -32,6 +32,65 @@ test('plain_language is mandatory — empty or whitespace events are rejected', 
   assert.equal(count.n, 0, 'no event row may exist after rejected appends');
 });
 
+test('plain_language edge cases: missing and over-length are rejected (proposal 001 #8)', () => {
+  const db = freshDb();
+  assert.throws(
+    () => appendEvent(db, taskEvent({ plainLanguage: undefined as never })),
+    /plain_language/
+  );
+  assert.throws(
+    () => appendEvent(db, taskEvent({ plainLanguage: 'x'.repeat(2001) })),
+    /2000/
+  );
+  // exactly at the cap is fine
+  appendEvent(db, taskEvent({ plainLanguage: 'x'.repeat(2000) }));
+  const count = db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number };
+  assert.equal(count.n, 1);
+});
+
+test('idempotency key reuse with a DIFFERENT payload is a conflict, not a silent ignore (proposal 001 #2)', () => {
+  const db = freshDb();
+  const original = taskEvent({ idempotencyKey: 'reused-key', phase: 'editing', costDelta: 10_000 });
+  appendEvent(db, original);
+
+  // identical retry → dedup, fine
+  const retry = appendEvent(db, original);
+  assert.equal(retry.deduplicated, true);
+
+  // same key, different payload → rejected, log untouched
+  assert.throws(
+    () => appendEvent(db, { ...original, plainLanguage: 'Something else entirely' }),
+    /idempotency conflict.*plain_language/
+  );
+  assert.throws(
+    () => appendEvent(db, { ...original, phase: 'done', costDelta: 999_999 }),
+    /idempotency conflict/
+  );
+
+  const count = db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number };
+  assert.equal(count.n, 1, 'conflicting appends must not create events');
+  const t = db.prepare('SELECT status, cost_total FROM task_state').get() as {
+    status: string; cost_total: number;
+  };
+  assert.equal(t.status, 'editing', 'projection unchanged by conflicting append');
+  assert.equal(t.cost_total, 10_000);
+});
+
+test('a failed append leaves events AND projections completely untouched (proposal 001 #4)', () => {
+  const db = freshDb();
+  appendEvent(db, taskEvent({ phase: 'editing', costDelta: 20_000, plainLanguage: 'Good event' }));
+  const eventsBefore = db.prepare('SELECT * FROM events ORDER BY seq').all();
+  const stateBefore = db.prepare('SELECT * FROM task_state ORDER BY task_id').all();
+
+  // schema-level rejection fires mid-transaction (after BEGIN, during INSERT)
+  assert.throws(() => appendEvent(db, taskEvent({ actor: 'intruder' as never })));
+
+  assert.deepEqual(db.prepare('SELECT * FROM events ORDER BY seq').all(), eventsBefore);
+  assert.deepEqual(db.prepare('SELECT * FROM task_state ORDER BY task_id').all(), stateBefore);
+  // and the connection is usable again (transaction was rolled back cleanly)
+  appendEvent(db, taskEvent({ phase: 'done', plainLanguage: 'Still working after rollback' }));
+});
+
 test('events reduce into one authoritative task_state with server-computed actions', () => {
   const db = freshDb();
   appendEvent(db, taskEvent({ phase: 'intake', plainLanguage: 'Got the request' }));

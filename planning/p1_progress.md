@@ -19,7 +19,19 @@ First code of v2: the append-only event log, reducers, projections, and the proj
 
 **What the next person should do:** either (a) Builder object-model tables + closure invariant on top of this spine, or (b) minimal HTTP server + SSE endpoint replaying events from a client-supplied last seq. Both build directly on `appendEvent`/`rebuildProjections`. Run `npm test` in `app/` first to confirm a green start.
 
+### 2026-07-05 (later) — event-spine hardening per PlanningProposal 001
+
+ChatGPT reviewed the first slice (source + itemized dispositions: `planning/proposals/`). All 8 items accepted; 3 implemented immediately.
+
+**What changed:** `events.ts` — idempotency-key reuse with a different payload now throws a conflict (silent ignore forbidden); `plain_language` capped at 2000 chars (code + schema CHECK in `db.ts`); 3 new tests (collision, edge-case lengths, failed-append-leaves-projections-untouched). `DECISIONS.md` +2 entries. `GIT_SETUP.md` gotcha made operational (read-only git also forbidden in sandbox; host verification protocol). `package.json` test script simplified to a direct file path (Windows-safe, no glob quoting).
+
+**What I verified:** 13/13 tests pass (Node v22.22.3). NOTE: run in a sandbox-local copy because the mount served stale/truncated views of freshly written files — host `npm test` is the authoritative verification (proposal item 7; record host Node version here when run).
+
+**What is still open:** unchanged from above, plus: cost-ledger slice must implement pre-append hard-cap guard + near-cap crossing tests (proposal item 3); object-model slice should add the batch/transaction helper (item 4).
+
+**What the next person should do:** revised slice order per proposal item 6: (1) Builder object-model tables + closure invariant → (2) cost-ledger stub + hard-cap/restart reconciliation → (3) HTTP/SSE replay from last seq → (4) NoopHarnessEngine + engine-swap test → (5) SPA/orb/reload detector.
+
 **Risks or weirdness:**
-- Git-in-sandbox corruption struck twice this session: (1) the 5 truncated files above; (2) a stale `.git/index.lock` + confused index from a `git status` run inside the sandbox. Treat ALL git commands as host-only, including read-only ones.
+- Git-in-sandbox corruption struck three times this session: (1) the 5 truncated files above; (2) a stale `.git/index.lock` + confused index from a `git status` run inside the sandbox; (3) the mount serving stale/truncated views of freshly written app files. Treat ALL git commands as host-only, and treat sandbox reads of just-written files as suspect — protocol now in `GIT_SETUP.md`.
 - `appendEvent` uses `BEGIN IMMEDIATE` and is not nestable inside an outer transaction — fine now, worth revisiting when batch writes appear.
 - Reducer status/action mappings are recorded placeholders (DECISIONS.md 2026-07-05); the engine slice will refine them without schema changes (that's a checked prediction).

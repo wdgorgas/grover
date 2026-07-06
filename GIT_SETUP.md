@@ -39,3 +39,9 @@ The repo is `https://github.com/wdgorgas/grover.git`. One repo, one `master` bra
 ## Known gotcha
 
 Git commands must run on the **host machine** (Windows), not from inside a Claude sandbox mount — the mount corrupts git lock files. Claude prepares files; you run git. (Claude instances: tell your human exactly which commands to run rather than running git yourself through the mount.)
+
+**This includes "read-only" git commands.** On 2026-07-05 a sandbox `git status` left a stale `.git/index.lock` and a confused index (fix: `del .git\index.lock` then `git reset` on the host). The mount can also serve **stale or truncated file contents** to the sandbox after writes. Operational protocol, host side, before every commit of Claude-prepared work:
+
+1. `git status` — confirm only the expected files changed.
+2. `git diff` / review — confirm files are complete (no mid-line truncation at the end).
+3. Run the verification the handoff names (usually `cd app && npm test`) — this is the authoritative check; sandbox test runs are advisory only.
