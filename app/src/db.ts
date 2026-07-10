@@ -30,6 +30,20 @@ CREATE TABLE IF NOT EXISTS events (
   signoff_state    TEXT
 );
 
+-- "Append-only" is a database invariant, not an application convention.
+-- Only a deliberately versioned migration may replace these guards.
+CREATE TRIGGER IF NOT EXISTS events_reject_update
+BEFORE UPDATE ON events
+BEGIN
+  SELECT RAISE(ABORT, 'events are immutable: UPDATE is forbidden');
+END;
+
+CREATE TRIGGER IF NOT EXISTS events_reject_delete
+BEFORE DELETE ON events
+BEGIN
+  SELECT RAISE(ABORT, 'events are append-only: DELETE is forbidden');
+END;
+
 -- Denormalized projections. Updated EXCLUSIVELY by reducers (src/reducers.ts).
 -- Disposable by design: deleting + replaying events must recreate them (§4.3).
 CREATE TABLE IF NOT EXISTS task_state (

@@ -218,3 +218,22 @@ test('events table rejects invalid enum values at the schema level', () => {
     appendEvent(db, taskEvent({ phase: 'vibing' as never }))
   );
 });
+
+test('events are structurally immutable — direct UPDATE and DELETE are rejected', () => {
+  const db = freshDb();
+  const { event } = appendEvent(db, taskEvent({ plainLanguage: 'Permanent audit fact' }));
+
+  assert.throws(
+    () => db.prepare('UPDATE events SET plain_language = ? WHERE event_id = ?')
+      .run('Rewritten history', event.event_id),
+    /immutable|UPDATE is forbidden/
+  );
+  assert.throws(
+    () => db.prepare('DELETE FROM events WHERE event_id = ?').run(event.event_id),
+    /append-only|DELETE is forbidden/
+  );
+
+  const stored = db.prepare('SELECT plain_language FROM events WHERE event_id = ?')
+    .get(event.event_id) as { plain_language: string };
+  assert.equal(stored.plain_language, 'Permanent audit fact');
+});
