@@ -35,3 +35,15 @@ ChatGPT reviewed the first slice (source + itemized dispositions: `planning/prop
 - Git-in-sandbox corruption struck three times this session: (1) the 5 truncated files above; (2) a stale `.git/index.lock` + confused index from a `git status` run inside the sandbox; (3) the mount serving stale/truncated views of freshly written app files. Treat ALL git commands as host-only, and treat sandbox reads of just-written files as suspect — protocol now in `GIT_SETUP.md`.
 - `appendEvent` uses `BEGIN IMMEDIATE` and is not nestable inside an outer transaction — fine now, worth revisiting when batch writes appear.
 - Reducer status/action mappings are recorded placeholders (DECISIONS.md 2026-07-05); the engine slice will refine them without schema changes (that's a checked prediction).
+
+### 2026-07-10 — event immutability + product/process review package
+
+**What changed:** SQLite now rejects direct `UPDATE` and `DELETE` against `events`, with a regression test. Repository contracts now agree that every change uses a branch and that mounted Cowork sandboxes run no Git commands. Added the cross-client `AGENTS.md`, daily-driver north star, bounded maker/checker playbook, and pending PlanningProposal 002. README and build-board status now reflect the actual P1 slice.
+
+**What I verified:** Baseline was 13/13 tests; after the repair, `npm test` passes 14/14. `git diff --check` passes. The binding master-prompt hash remains `9487324c232b6a1a2951bab86e7101ec7bac34e5`.
+
+**What is still open:** PlanningProposal 002 requires Will's decision. P1 remains open for object model, cost ledger, HTTP/SSE, engine adapter, kill switch, DomainContract stubs, SPA/orb, and reload evidence.
+
+**What the next person should do:** Will reviews Proposal 002 items C and D before SPA implementation. Meanwhile the next safe code slice remains Builder object-model tables + closure invariant, as previously sequenced.
+
+**Risks or weirdness:** This checkout required a per-command Git safe-directory override because Windows reports different folder ownership. The supplied patch used abbreviated hunk markers, so its two intended changes were applied directly and verified rather than passed to `git apply`.

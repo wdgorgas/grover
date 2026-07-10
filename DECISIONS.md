@@ -39,3 +39,11 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 ## 2026-07-05 — Sandbox treats the mounted repo as read-suspect
 
 **Decision:** Claude sandbox sessions must not run ANY git command against the mount (a read-only `git status` corrupted the index on 2026-07-05), and must not trust the mount's view of recently written files (stale/truncated reads observed same day). Tests run on a sandbox-local copy; the authoritative verification is `npm test` on the host before committing. Recorded in `GIT_SETUP.md`.
+
+## 2026-07-10 — Cross-client contract and bounded maker/checker workflow
+
+**Decision:** `AGENTS.md` is the cross-client development contract; client-specific files such as `CLAUDE.md` remain compatible supplements. Every change uses a slice branch. The default development loop is one maker pass, deterministic verification, one fresh-context checker pass, and at most two repair cycles, with the stopping rules in `planning/DEVELOPMENT_PROCESS.md`.
+
+**Why:** The repository previously gave different agents contradictory Git instructions and allowed documentation to bypass the binding branch discipline. A bounded evidence-driven loop preserves independent review without creating an open-ended agent conversation.
+
+**Prediction (checked at P1 exit):** The unified contract will produce complete five-line handoffs and independently reviewable evidence without requiring more than two repair cycles for any remaining P1 slice.
