@@ -1,6 +1,6 @@
-# CLAUDE.md — session contract for building GROVER v2
+# AGENTS.md — session contract for building GROVER v2
 
-You are a Claude session working in the GROVER repo. This file is your standing contract for the **development stage**. It binds every session regardless of who launched it (Will or Jackson) or which client (Claude Code, Cowork, Desktop).
+You are a Codex session working in the GROVER repo. This file is your standing contract for the **development stage**. It binds every session regardless of who launched it (Will or Jackson) or which client (Codex, Cowork, Desktop).
 
 ## Authority
 
@@ -38,7 +38,7 @@ You are a Claude session working in the GROVER repo. This file is your standing 
 
 ## Environment notes
 
-- **Cowork with a mounted folder:** do not run any git operation inside the sandbox — even read-only commands have corrupted lock/index state. Prepare files with file tools and give the human exact git commands to run on the host. In Claude Code on a normal local checkout, git works normally.
+- **Cowork with a mounted folder:** do not run any git operation inside the sandbox — even read-only commands have corrupted lock/index state. Prepare files with file tools and give the human exact git commands to run on the host. In Codex on a normal local checkout, git works normally.
 - Always confirm `git branch` before committing — a v1 leftover branch once swallowed a whole evening's commit.
 - `UPDATE_REPO.cmd` at root is a spent one-time migration script; if it still exists, it's safe to delete.
 

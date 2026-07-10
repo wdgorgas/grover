@@ -6,22 +6,23 @@ The repo is `https://github.com/wdgorgas/grover.git`. One repo, one `master` bra
 
 ## Daily workflow (Will and Jackson, identical)
 
-1. **Before any planning session:** `git pull` — always start from the latest state.
-2. Work (your Claude instance reads/writes files in this folder).
-3. **After the session:**
+1. **Before any session:** return to the intended base branch and `git pull` — always start from the latest state.
+2. Create a branch for the slice: `git checkout -b phase-pX-short-description` (use a descriptive `review/` branch for cross-cutting review/documentation work).
+3. Work (your approved agent reads/writes files in this folder).
+4. **After the session:**
    ```bat
    git add -A
    git status
    git commit -m "planning: <one line on what changed>"
    git push
    ```
-4. **Check `git status` before every commit:** nothing under `archive/grover_v1/data/`, no `vault/`, no `secrets.json` may ever appear staged.
-5. Push promptly — an unpushed session is invisible to the other person and invites collisions.
+5. **Check `git status` before every commit:** nothing under `archive/grover_v1/data/`, no `vault/`, no `secrets.json` may ever appear staged.
+6. Push promptly — an unpushed session is invisible to the other person and invites collisions.
 
 ## Branch hygiene
 
-- **Docs-only changes** (board updates, handoffs, planning files) go straight on `master`.
-- **Build/code slices** get a branch per slice — `git checkout -b phase-pX-short-description` — merged to `master` only after verification, per `CLAUDE.md`.
+- **Every change uses a branch**, including documentation, board, and handoff updates. This keeps review and verification consistent with the binding branch discipline.
+- **Build/code slices** use `phase-pX-short-description`; cross-cutting review/documentation work may use `review/short-description`. Only verified merges land on `master`.
 - **Always check `git branch` before committing.** (A leftover v1 branch once swallowed a whole evening's commit.)
 - Cleanup of dead v1 branches, if they still exist:
   ```bat
@@ -38,4 +39,10 @@ The repo is `https://github.com/wdgorgas/grover.git`. One repo, one `master` bra
 
 ## Known gotcha
 
-Git commands must run on the **host machine** (Windows), not from inside a Claude sandbox mount — the mount corrupts git lock files. Claude prepares files; you run git. (Claude instances: tell your human exactly which commands to run rather than running git yourself through the mount.)
+In **Cowork with a mounted folder**, Git commands must run on the host machine (Windows), not from inside the sandbox mount — the mount corrupts git lock files. The agent prepares files; the human runs Git. In Codex or Claude Code on a normal local checkout, Git may run locally.
+
+**This includes "read-only" git commands.** On 2026-07-05 a sandbox `git status` left a stale `.git/index.lock` and a confused index (fix: `del .git\index.lock` then `git reset` on the host). The mount can also serve **stale or truncated file contents** to the sandbox after writes. Operational protocol, host side, before every commit of Claude-prepared work:
+
+1. `git status` — confirm only the expected files changed.
+2. `git diff` / review — confirm files are complete (no mid-line truncation at the end).
+3. Run the verification the handoff names (usually `cd app && npm test`) — this is the authoritative check; sandbox test runs are advisory only.

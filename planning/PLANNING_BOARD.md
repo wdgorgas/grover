@@ -2,14 +2,14 @@
 
 **P0 APPROVED by Will, 2026-07-03. The build is green-lit. Current phase: P1 — spine skeleton.**
 
-Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → find the open phase/slice → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `CLAUDE.md`.
+Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`.
 
 ## Phase status
 
 | Phase | What | Status |
 |---|---|---|
 | P0 | Decision lock + master prompt | **APPROVED (Will, 2026-07-03)** — spec: `planning/grover_v2_master_prompt.md` |
-| P1 | Spine skeleton: SPA shell, orb port, events+projections, SSE, cost-ledger stub, kill switch, object-model schema, DomainContract stubs | **OPEN** — exits in master prompt §13; budget $25 soft / $50 hard |
+| P1 | Spine skeleton: SPA shell, orb port, events+projections, SSE, cost-ledger stub, kill switch, object-model schema, DomainContract stubs | **OPEN** — event spine implemented/hardened on `phase-p1-event-spine` (14 tests); remaining slices listed in `planning/p1_progress.md`; budget $25 soft / $50 hard |
 | P2 | Razor Builder slice (one real request end-to-end) | Blocked on P1 exit |
 | P3 | Builder reliability set (5 diverse requests) | Blocked on P2 exit |
 | P4 | Minimal memory core (10 tests + no-migration test) | Blocked on P3 exit |
@@ -22,6 +22,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → find the open ph
 | Acceptance-test catalog: expand master prompt §5/§13 into a numbered runnable checklist (this is also a strong P1 warm-up task) | open (relay) | Unclaimed | `planning/acceptance_test_catalog.md` |
 | Visual direction / UI design | **Will + Claude Design (Will's alone)** | Will owns this directly; Jackson routes ideas to Will, doesn't own the direction | `design/` |
 | Build-technique intake (external lists → adopt/skip) | main thread | Standing rule + first pass done | `planning/build_techniques_assessment.md` |
+| Daily-driver product contract | **Will** | PlanningProposal 002 pending; resolve front-door intent and progressive disclosure before SPA implementation | `planning/proposals/proposal_002_daily_driver_contract.md` |
 
 ## Decisions locked by Will (do not reopen in any workstream)
 
