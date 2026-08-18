@@ -353,6 +353,15 @@ ON conversation_messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS conversation_messages_by_task
 ON conversation_messages(task_id);
 
+-- One bounded local search row per conversation. This keeps project lookup
+-- instant without sending chat history to a model.
+CREATE VIRTUAL TABLE IF NOT EXISTS conversation_search USING fts5(
+  conversation_id UNINDEXED,
+  context UNINDEXED,
+  content,
+  tokenize = 'porter unicode61'
+);
+
 CREATE TABLE IF NOT EXISTS context_routing_decisions (
   conversation_id TEXT PRIMARY KEY REFERENCES conversations(id),
   initial_context TEXT NOT NULL,
@@ -361,6 +370,22 @@ CREATE TABLE IF NOT EXISTS context_routing_decisions (
   created_at      TEXT NOT NULL,
   corrected_at    TEXT
 );
+
+CREATE TABLE IF NOT EXISTS conversation_route_log (
+  id                     TEXT PRIMARY KEY,
+  task_id                TEXT NOT NULL,
+  source_conversation_id TEXT REFERENCES conversations(id),
+  target_conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  target_context         TEXT NOT NULL,
+  disposition            TEXT NOT NULL CHECK (disposition IN
+                           ('created','continued','branched','reopened','navigated')),
+  reason                 TEXT NOT NULL,
+  request                TEXT NOT NULL,
+  created_at             TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS conversation_route_log_by_task
+ON conversation_route_log(task_id, created_at);
 
 INSERT OR IGNORE INTO budgets(id, soft_micro_usd, hard_micro_usd, enabled)
 VALUES ('development-phase', 25000000, 50000000, 1);
@@ -433,5 +458,20 @@ export function openDb(path: string): DatabaseSync {
   ]) if (!memoryColumns.has(name)) db.exec(`ALTER TABLE memories ADD COLUMN ${name} ${definition}`);
   const proposalColumns = new Set((db.prepare("PRAGMA table_info('memory_update_proposals')").all() as unknown as { name: string }[]).map((column) => column.name));
   if (!proposalColumns.has('proposed_content')) db.exec('ALTER TABLE memory_update_proposals ADD COLUMN proposed_content TEXT');
+  const missingSearch = db.prepare(
+    `SELECT c.id, c.context, c.title FROM conversations c
+     LEFT JOIN conversation_search s ON s.conversation_id = c.id
+     WHERE s.conversation_id IS NULL`
+  ).all() as unknown as { id: string; context: string; title: string }[];
+  const searchMessages = db.prepare(
+    'SELECT content FROM conversation_messages WHERE conversation_id = ? ORDER BY rowid DESC LIMIT 80'
+  );
+  const insertSearch = db.prepare('INSERT INTO conversation_search(conversation_id, context, content) VALUES (?, ?, ?)');
+  for (const conversation of missingSearch) {
+    const messages = (searchMessages.all(conversation.id) as unknown as { content: string }[]).reverse();
+    const content = [conversation.title, ...messages.map((message) => message.content)]
+      .join(' ').toLowerCase().replace(/\btic[\s-]+tac[\s-]+toe\b/g, 'tictactoe').replace(/[^a-z0-9]+/g, ' ').trim().slice(-24_000);
+    insertSearch.run(conversation.id, conversation.context, content);
+  }
   return db;
 }

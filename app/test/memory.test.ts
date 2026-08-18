@@ -36,7 +36,7 @@ test('1 persistence across restart retains content and provenance', () => {
   reopened.close();
 });
 
-test('2 ordinary conversation proposes profile facts but never silently saves them', async () => {
+test('2 high-confidence profile facts save automatically while sensitive facts still require review', async () => {
   const { dataDir, db } = memoryFixture();
   const core = new GroverCore({
     db, dataDir, workspaceRoot: resolve(import.meta.dirname, '..', '..'),
@@ -44,13 +44,20 @@ test('2 ordinary conversation proposes profile facts but never silently saves th
   });
   core.submit({ text: 'hi, my name is Will' });
   let state = core.getSnapshot() as any;
-  assert.equal(state.memories.length, 0);
-  assert.equal(state.memoryProposals.length, 1);
-  assert.match(state.memoryProposals[0].proposed_content, /name is Will/i);
-  core.approveMemoryProposal(state.memoryProposals[0].id);
-  state = core.getSnapshot() as any;
   assert.equal(state.memories.length, 1);
   assert.equal(state.memoryProposals.length, 0);
+  assert.match(state.memories[0].content, /name is Will/i);
+
+  core.submit({ text: 'I prefer medication reminders at breakfast' });
+  state = core.getSnapshot() as any;
+  assert.equal(state.memories.length, 1);
+  assert.equal(state.memoryProposals.length, 1);
+  assert.match(state.memoryProposals[0].proposed_content, /medication reminders/i);
+
+  core.submit({ text: 'Please explain this ordinary throwaway sentence' });
+  state = core.getSnapshot() as any;
+  assert.equal(state.memories.length, 1, 'ordinary conversation is not copied into the vault');
+  assert.equal(state.memoryProposals.length, 1);
 });
 
 test('3 correction supersedes the old fact without retrieving it as current', () => {

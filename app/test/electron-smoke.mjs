@@ -54,16 +54,48 @@ try {
   await first.page.locator('#home-request').fill('hi, my name is Will');
   await first.page.locator('#home-request').press('Enter');
   await first.page.locator('[data-view="memory"]').click();
-  const proposedName = first.page.locator('#memory-proposals').getByText("Will's name is Will", { exact: false });
-  await proposedName.waitFor();
-  await proposedName.locator('xpath=ancestor::article').getByRole('button', { name: 'Remember' }).click();
   await first.page.locator('#memory-list').getByText("Will's name is Will", { exact: false }).waitFor();
   const greetingDomain = await first.page.evaluate(async () => {
     const state = await window.grover.snapshot();
     const message = state.messages.find((item) => item.role === 'user' && item.content === 'hi, my name is Will');
     return state.tasks.find((item) => item.task_id === message.task_id)?.domain;
   });
-  assert.equal(greetingDomain, 'general', 'memory proposal changed the application context');
+  assert.equal(greetingDomain, 'general', 'profile memory changed the application context');
+
+  await first.page.locator('[data-view="home"]').click();
+  await first.page.locator('#recent-conversations .conversation-button').first().click();
+  const generalId = await first.page.evaluate(async () => {
+    const state = await window.grover.snapshot();
+    return state.conversations.find((item) => item.context === 'general')?.id;
+  });
+  const generalMessagesBefore = await first.page.evaluate(async (conversationId) => {
+    const state = await window.grover.snapshot();
+    return state.messages.filter((item) => item.conversation_id === conversationId).length;
+  }, generalId);
+  await first.page.locator('#context-request').fill("Let's code tictactoe");
+  await first.page.locator('#context-request').press('Enter');
+  await first.page.locator('#context-title').getByText('Coding', { exact: true }).waitFor();
+  await first.page.locator('#context-route-status').getByText('Branched without changing', { exact: false }).waitFor();
+  await first.page.locator('#chat-messages').getByText('I could not finish that request', { exact: false }).waitFor();
+  const branchState = await first.page.evaluate(async () => window.grover.snapshot());
+  const codingConversation = branchState.conversations.find((item) => item.context === 'coding' && /tictactoe/i.test(item.title));
+  assert.ok(codingConversation, 'Coding branch was not created');
+  assert.equal(
+    branchState.messages.filter((item) => item.conversation_id === generalId).length,
+    generalMessagesBefore,
+    'branch request polluted the General conversation',
+  );
+  const codingMessagesBeforeNavigation = branchState.messages.filter((item) => item.conversation_id === codingConversation.id).length;
+  await first.page.locator('[data-view="home"]').click();
+  await first.page.locator('#home-request').fill('Reopen tic tac toe');
+  await first.page.locator('#home-request').press('Enter');
+  await first.page.locator('#context-route-status').getByText('Reopened', { exact: false }).waitFor();
+  const navigationState = await first.page.evaluate(async () => window.grover.snapshot());
+  assert.equal(
+    navigationState.messages.filter((item) => item.conversation_id === codingConversation.id).length,
+    codingMessagesBeforeNavigation,
+    'navigation command polluted the project conversation',
+  );
   await first.page.locator('#kill-switch').uncheck();
 
   await first.page.locator('[data-view="settings"]').click();

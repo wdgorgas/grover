@@ -129,3 +129,27 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** The RC.1 greeting path used `will-private` as the proposal event domain. The event reducer correctly treated that as a task-domain update, after which context retrieval crashed because `will-private` is a namespace, not an application context.
 
 **Prediction (checked immediately):** The exact greeting `hey grover my name is will` will create one reviewable memory proposal, retain `general` as the task context, call Codex, and finish. **Result: confirmed by deterministic and live Codex regression tests.**
+
+## 2026-08-18 — Local continuity coordinator before learned routing
+
+**Decision:** Under accepted PlanningProposal 007, GROVER resolves destination context, existing-conversation match, local navigation, policy, and bounded context assembly before selecting an execution engine. Context precedence follows the work being performed: software creation outranks the eventual product domain. Distinctive subject tokens and explicit continuation language may reopen an existing conversation; the prompt is written only to the resolved target.
+
+**Why:** A provider call is too slow and expensive for deterministic organization, while a keyword-only domain check is too shallow when terms overlap. Local indexed history is immediate, inspectable, and supplies labeled corrections for a future learned coordinator without making an untrained model authoritative.
+
+**Prediction (check at this slice exit):** The six routing examples in Proposal 007 will pass deterministically, local reopen will make zero engine calls, and every worker call will receive history from the target conversation only.
+
+## 2026-08-18 — Automatic non-sensitive profile memory
+
+**Decision:** High-confidence incidental profile patterns such as name, stable preference, major, and stated long-term goal are committed directly to `will-private` with conversation provenance. Incidental health and finance facts remain review proposals; direct Remember commands remain immediate. Project continuity stays in its conversation cache rather than being flattened into global profile facts.
+
+**Why:** Will explicitly prefers automatic useful memory with Correct/Forget afterward. Separating profile facts from project history prevents the global vault from becoming a copy of every chat and keeps retrieval bounded as records scale.
+
+**Prediction (check at this slice exit):** A name statement will create one active profile memory and no proposal, a sensitive incidental statement will create a proposal and no memory, and coding requests will not become profile memories.
+
+## 2026-08-18 — Bounded conversation history in worker prompts
+
+**Decision:** Worker prompts include a local, target-conversation-only history pack capped by both message count and characters. Navigation-only and local-memory answers bypass workers entirely. No new dependency is added; SQLite and deterministic token matching are sufficient for this first coordinator baseline.
+
+**Why:** The UI previously displayed persistent conversations without actually giving their earlier messages to the worker. A hard-bounded pack creates real continuity without dumping the vault or unrelated chats, and it remains fast at thousands of messages.
+
+**Prediction (check at this slice exit):** Follow-ups can reference an earlier message in the same conversation, unrelated conversation text is absent from the prompt, and the history pack never exceeds its configured cap.

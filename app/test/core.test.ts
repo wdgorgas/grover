@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { GroverCore } from '../src/core.ts';
 import { openDb } from '../src/db.ts';
 import { EngineRouter, type EngineRunOptions, type ExecutionEngine } from '../src/engine.ts';
-import { createBuild, createTask, transitionRun } from '../src/store.ts';
+import { addConversationMessage, createBuild, createConversation, createTask, transitionRun } from '../src/store.ts';
 
 class WaitingEngine implements ExecutionEngine {
   readonly id = 'codex-cli';
@@ -35,9 +35,11 @@ class NoopHarnessEngine implements ExecutionEngine {
   readonly capabilities = ['ask', 'work', 'build'] as const;
   readonly available = true;
   modes: string[] = [];
+  prompts: string[] = [];
 
   async run(options: EngineRunOptions): Promise<{ answer: string; costUsd: number }> {
     this.modes.push(options.mode);
+    this.prompts.push(options.prompt);
     options.onUpdate({ kind: 'started', plainLanguage: 'Harness started' });
     options.onUpdate({ kind: 'progress', plainLanguage: 'Harness streamed progress' });
     return { answer: 'Harness finished cleanly', costUsd: 0 };
@@ -92,7 +94,7 @@ test('Noop engine swap preserves streaming task, conversation, cost, and event s
   assert.equal(state.costs.estimated, 250_000);
 });
 
-test('profile greeting proposes memory without corrupting the conversation context', async () => {
+test('profile greeting saves locally and answers without invoking an external engine', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-profile-greeting-'));
   const db = openDb(':memory:');
   const engine = new NoopHarnessEngine();
@@ -105,9 +107,64 @@ test('profile greeting proposes memory without corrupting the conversation conte
   const state = core.getSnapshot() as any;
   const task = state.tasks.find((item: any) => item.task_id === submitted.taskId);
   assert.equal(task.domain, 'general');
-  assert.equal(state.memoryProposals.length, 1);
-  assert.match(state.memoryProposals[0].proposed_content, /Will's name is will/i);
-  assert.deepEqual(engine.modes, ['ask']);
+  assert.equal(state.memoryProposals.length, 0);
+  assert.equal(state.memories.length, 1);
+  assert.match(state.memories[0].content, /Will's name is will/i);
+  assert.deepEqual(engine.modes, []);
+  assert.equal(state.routing[0].selected_engine, 'grover-local');
+});
+
+test('General branches before writing and local navigation reopens without polluting either conversation', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-context-branch-'));
+  const db = openDb(':memory:');
+  const engine = new NoopHarnessEngine();
+  const core = new GroverCore({
+    db, dataDir, workspaceRoot: resolve(import.meta.dirname, '..', '..'), router: new EngineRouter([engine]),
+  });
+  const general = createConversation(db, 'general', 'General catch-up');
+  addConversationMessage(db, general, null, 'user', 'How are things?');
+  addConversationMessage(db, general, null, 'assistant', 'Ready when you are.');
+
+  const coding = core.submit({ text: "Let's code tictactoe", context: 'general', conversationId: general, engine: engine.id });
+  await waitFor(() => (core.getSnapshot() as any).tasks.some((item: any) => item.task_id === coding.taskId && item.status === 'done'), 'coding branch did not finish');
+  assert.equal(coding.context, 'coding');
+  assert.equal(coding.conversationDisposition, 'branched');
+  assert.notEqual(coding.conversationId, general);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ?').get(general) as any).count, 2);
+
+  const beforeNavigation = (db.prepare('SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ?').get(coding.conversationId) as any).count;
+  const reopened = core.submit({ text: 'Reopen tic tac toe', context: 'general', conversationId: general, engine: engine.id });
+  assert.equal(reopened.conversationId, coding.conversationId);
+  assert.equal(reopened.conversationDisposition, 'navigated');
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ?').get(coding.conversationId) as any).count, beforeNavigation);
+  assert.deepEqual(engine.modes, ['work'], 'navigation itself makes no second engine call');
+
+  const update = core.submit({ text: 'Update tic tac toe', engine: engine.id });
+  await waitFor(() => (core.getSnapshot() as any).tasks.some((item: any) => item.task_id === update.taskId && item.status === 'done'), 'project update did not finish');
+  assert.equal(update.conversationId, coding.conversationId);
+  assert.equal(update.context, 'coding');
+  assert.equal(update.conversationDisposition, 'reopened');
+  assert.deepEqual(engine.modes, ['work', 'work']);
+});
+
+test('worker receives bounded target conversation history and excludes unrelated conversations', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-history-'));
+  const db = openDb(':memory:');
+  const engine = new NoopHarnessEngine();
+  const core = new GroverCore({
+    db, dataDir, workspaceRoot: resolve(import.meta.dirname, '..', '..'), router: new EngineRouter([engine]),
+  });
+  const target = createConversation(db, 'coding', 'Tictactoe project');
+  addConversationMessage(db, target, null, 'user', 'Use a three by three board and call the project Juniper.');
+  addConversationMessage(db, target, null, 'assistant', 'Juniper will use a three by three board.');
+  const unrelated = createConversation(db, 'coding', 'Unrelated project');
+  addConversationMessage(db, unrelated, null, 'user', 'UNRELATED_SECRET_MARKER');
+
+  const submitted = core.submit({ text: 'What should we implement next?', context: 'coding', conversationId: target, engine: engine.id });
+  await waitFor(() => (core.getSnapshot() as any).tasks.some((item: any) => item.task_id === submitted.taskId && item.status === 'done'), 'follow-up did not finish');
+  assert.match(engine.prompts[0], /three by three board/);
+  assert.match(engine.prompts[0], /Juniper/);
+  assert.doesNotMatch(engine.prompts[0], /UNRELATED_SECRET_MARKER/);
 });
 
 test('Builder pause, resume, and cancel transitions work through the core', async () => {

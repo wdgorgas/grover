@@ -7,7 +7,7 @@ import { openDb } from '../src/db.ts';
 import {
   addEvidence, checkBudget, closureReady, completeReceipt, completeRoutingDecision,
   addConversationMessage, createBuild, createConversation, createTask, deleteMemory, engineRanking, inferContext, inferIntent, moveConversation, rateTaskRouting,
-  recordCost, recordRoutingDecision, saveMemory, snapshot, transitionRun,
+  recordCost, recordRoutingDecision, resolveConversation, saveMemory, snapshot, transitionRun,
 } from '../src/store.ts';
 
 test('intent routing distinguishes the five front-door commitments', () => {
@@ -27,6 +27,48 @@ test('context routing organizes common requests without a user intent selector',
   assert.equal(inferContext('Make a weekly workout and nutrition plan'), 'health');
   assert.equal(inferContext('Research the evidence and sources for this paper'), 'research');
   assert.equal(inferContext('Fix the GROVER app settings'), 'builder');
+  assert.equal(inferContext('Code a quant bot for investing'), 'coding', 'the work product outranks its eventual finance domain');
+  assert.equal(inferContext('Set my schedule for the research meeting'), 'general', 'meeting subject does not become the work context');
+});
+
+test('context branching preserves General and named continuation reopens the existing project', () => {
+  const db = openDb(':memory:');
+  const general = createConversation(db, 'general', 'Hi GROVER');
+  addConversationMessage(db, general, null, 'user', 'Hi GROVER');
+  addConversationMessage(db, general, null, 'assistant', 'Hi Will.');
+
+  const branch = resolveConversation(
+    db,
+    "Let's code tic tac toe",
+    { context: 'coding', explicit: true, reason: 'Software work.' },
+    general,
+    'general',
+  );
+  assert.equal(branch.context, 'coding');
+  assert.equal(branch.disposition, 'branched');
+  assert.notEqual(branch.conversationId, general);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ?').get(general) as any).count, 2);
+
+  addConversationMessage(db, branch.conversationId, null, 'user', "Let's code tic tac toe");
+  const reopen = resolveConversation(
+    db,
+    'Update tictactoe',
+    { context: 'general', explicit: false, reason: 'No specialist signal.' },
+  );
+  assert.equal(reopen.conversationId, branch.conversationId);
+  assert.equal(reopen.context, 'coding');
+  assert.equal(reopen.disposition, 'reopened');
+
+  const navigate = resolveConversation(
+    db,
+    'Reopen tic tac toe',
+    { context: 'general', explicit: false, reason: 'No specialist signal.' },
+    general,
+    'general',
+  );
+  assert.equal(navigate.conversationId, branch.conversationId);
+  assert.equal(navigate.disposition, 'navigated');
+  assert.equal(navigate.localNavigation, true);
 });
 
 test('conversations persist messages and remain grouped by context', () => {

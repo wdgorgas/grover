@@ -3,6 +3,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 let state = null;
 let activeContext = null;
 let activeConversationId = null;
+let routeNotice = '';
 
 function labelForContext(id) {
   if (id === 'general') return 'General';
@@ -23,6 +24,7 @@ function activateView(name) {
 function showUtility(name) {
   activeContext = null;
   activeConversationId = null;
+  routeNotice = '';
   activateView(name);
   if (name === 'home') $('#home-request').focus();
 }
@@ -34,6 +36,7 @@ function openContext(context, conversationId = null) {
   $('#context-eyebrow').textContent = context === 'general' ? 'Home conversation' : 'Workspace';
   $('#context-title').textContent = labelForContext(context);
   $('#context-description').textContent = contextDescription(context);
+  $('#context-route-status').textContent = routeNotice;
   $('#context-request').placeholder = activeConversationId ? 'Continue this conversation…' : `Start something in ${labelForContext(context)}…`;
   activateView('context');
   if (context === 'general') $('.utility-button[data-view="home"]').classList.add('active');
@@ -134,7 +137,10 @@ function conversationButton(conversation) {
   const meta = document.createElement('span');
   meta.textContent = `${labelForContext(conversation.context)} · ${new Date(conversation.updated_at).toLocaleString()}`;
   button.append(title, meta);
-  button.addEventListener('click', () => openContext(conversation.context, conversation.id));
+  button.addEventListener('click', () => {
+    routeNotice = '';
+    openContext(conversation.context, conversation.id);
+  });
   return button;
 }
 
@@ -245,7 +251,10 @@ function renderContexts() {
     button.dataset.context = context.id;
     button.textContent = context.label;
     button.title = context.description;
-    button.addEventListener('click', () => openContext(context.id));
+    button.addEventListener('click', () => {
+      routeNotice = '';
+      openContext(context.id);
+    });
     nav.append(button);
   }
   const mover = $('#move-conversation');
@@ -453,6 +462,9 @@ async function submitPrompt(form, textarea, engineSelect) {
       engine: engineSelect.value || undefined,
     });
     textarea.value = '';
+    routeNotice = ['branched', 'reopened', 'navigated'].includes(result.conversationDisposition)
+      ? result.routeReason
+      : '';
     openContext(result.context, result.conversationId);
   } catch (failure) {
     error.textContent = failure.message;
@@ -480,6 +492,7 @@ $$('.prompt-input').forEach((textarea) => textarea.addEventListener('keydown', (
 $$('.utility-button').forEach((button) => button.addEventListener('click', () => showUtility(button.dataset.view)));
 $('#new-conversation').addEventListener('click', () => {
   activeConversationId = null;
+  routeNotice = '';
   renderConversationWorkspace();
   $('#context-request').focus();
 });

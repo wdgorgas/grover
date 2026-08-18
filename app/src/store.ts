@@ -4,6 +4,16 @@ import { appendEvent, appendEventInTransaction, type Actor, type Phase } from '.
 
 export type Intent = 'ask' | 'work' | 'act' | 'build' | 'remember';
 export type Context = 'general' | 'coding' | 'research' | 'finance' | 'health' | 'business' | 'builder';
+export type ContextInference = { context: Context; explicit: boolean; reason: string };
+export type ConversationDisposition = 'created' | 'continued' | 'branched' | 'reopened' | 'navigated';
+export type ConversationResolution = {
+  conversationId: string;
+  context: Context;
+  disposition: ConversationDisposition;
+  reason: string;
+  sourceConversationId: string | null;
+  localNavigation: boolean;
+};
 
 export const CONTEXTS: { id: Context; label: string; description: string }[] = [
   { id: 'coding', label: 'Coding', description: 'Software, tools, automation, and technical projects' },
@@ -31,32 +41,39 @@ export function inferIntent(text: string): Intent {
   if (/^(remember|save this|keep this in mind)\b/.test(normalized)) return 'remember';
   if (/\b(change|build|add|fix|update|remove|implement|redesign|refactor|create)\b/.test(normalized) &&
       /\bgrover\b/.test(normalized)) return 'build';
-  if (/^(send|publish|buy|purchase|delete|deploy|email|message|schedule)\b/.test(normalized)) return 'act';
-  if (/^(let'?s\s+)?(write|draft|analyze|research|summarize|create|prepare|design|plan|compare|build|implement)\b/.test(normalized)) return 'work';
+  if (/^(send|publish|buy|purchase|delete|deploy|email|message|schedule|reschedule|set (?:up )?(?:my |the )?(?:schedule|calendar))\b/.test(normalized)) return 'act';
+  if (/^(let'?s\s+)?(write|draft|analyze|research|summarize|create|prepare|design|plan|compare|build|implement|code|update|continue|resume|audit|finish)\b/.test(normalized)) return 'work';
   return 'ask';
 }
 
-export function inferContext(text: string, intent: Intent = inferIntent(text)): Context {
+export function inferContextDecision(text: string, intent: Intent = inferIntent(text)): ContextInference {
   const normalized = text.trim().toLowerCase();
   if (intent === 'build' || (/\bgrover\b/.test(normalized) && /\b(app|interface|feature|setting|code|fix|change)\b/.test(normalized))) {
-    return 'builder';
+    return { context: 'builder', explicit: true, reason: 'The request changes GROVER itself.' };
+  }
+  if (/\b(schedule|calendar|appointment|meeting|agenda|today'?s plan|to.?do)\b/.test(normalized)) {
+    return { context: 'general', explicit: true, reason: 'Scheduling remains in General until the Lifestyle scheduler is connected.' };
+  }
+  if (/\b(code|coding|software|developer|programming|python|javascript|typescript|repository|repo|api|database|website|platform|debug|algorithm|script|bot|game)\b/.test(normalized)) {
+    return { context: 'coding', explicit: true, reason: 'The requested work is software creation or engineering.' };
   }
   if (/\b(health|medical|doctor|symptom|medicine|medication|workout|exercise|fitness|nutrition|diet|sleep|wellness)\b/.test(normalized)) {
-    return 'health';
-  }
-  if (/\b(finance|financial|money|budget|invest|investment|stock|market|portfolio|trading|quant|loan|mortgage|tax|retirement)\b/.test(normalized)) {
-    return 'finance';
-  }
-  if (/\b(code|coding|software|developer|programming|python|javascript|typescript|repository|repo|api|database|website|platform|debug|algorithm)\b/.test(normalized)) {
-    return 'coding';
+    return { context: 'health', explicit: true, reason: 'The request is primarily about health or fitness.' };
   }
   if (/\b(research|paper|study|evidence|source|citation|literature|fact.?check|analyze data|dataset)\b/.test(normalized)) {
-    return 'research';
+    return { context: 'research', explicit: true, reason: 'The request is primarily research or evidence work.' };
+  }
+  if (/\b(finance|financial|money|budget|invest|investment|stock|market|portfolio|trading|quant|loan|mortgage|tax|retirement)\b/.test(normalized)) {
+    return { context: 'finance', explicit: true, reason: 'The request is primarily financial work.' };
   }
   if (/\b(business|company|customer|sales|marketing|strategy|operations|revenue|proposal|client|startup)\b/.test(normalized)) {
-    return 'business';
+    return { context: 'business', explicit: true, reason: 'The request is primarily business work.' };
   }
-  return 'general';
+  return { context: 'general', explicit: false, reason: 'No specialist workspace signal was strong enough.' };
+}
+
+export function inferContext(text: string, intent: Intent = inferIntent(text)): Context {
+  return inferContextDecision(text, intent).context;
 }
 
 function conversationTitle(text: string): string {
@@ -72,7 +89,9 @@ export function createConversation(db: DatabaseSync, context: Context, text: str
       .run(id, context, conversationTitle(text), now, now);
     db.prepare(
       'INSERT INTO context_routing_decisions(conversation_id, initial_context, final_context, rule_version, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(id, context, context, 'keywords-v1', now);
+    ).run(id, context, context, 'continuity-v2', now);
+    db.prepare('INSERT INTO conversation_search(conversation_id, context, content) VALUES (?, ?, ?)')
+      .run(id, context, searchableText(text));
   });
   return id;
 }
@@ -90,6 +109,13 @@ export function moveConversation(db: DatabaseSync, id: string, context: Context)
     db.prepare(
       'UPDATE context_routing_decisions SET final_context = ?, corrected_at = ? WHERE conversation_id = ?'
     ).run(context, now, id);
+    const search = db.prepare('SELECT rowid, content FROM conversation_search WHERE conversation_id = ?').get(id) as
+      { rowid: number; content: string } | undefined;
+    if (search) {
+      db.prepare('DELETE FROM conversation_search WHERE rowid = ?').run(search.rowid);
+      db.prepare('INSERT INTO conversation_search(conversation_id, context, content) VALUES (?, ?, ?)')
+        .run(id, context, search.content);
+    }
   });
 }
 
@@ -108,7 +134,170 @@ export function addConversationMessage(
       'INSERT INTO conversation_messages(id, conversation_id, task_id, role, content, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(id, conversationId, taskId, role, content, state, now);
     db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, conversationId);
+    const search = db.prepare('SELECT rowid, context, content FROM conversation_search WHERE conversation_id = ?').get(conversationId) as
+      { rowid: number; context: Context; content: string } | undefined;
+    const nextSearch = `${search?.content ?? ''} ${searchableText(content)}`.trim().slice(-24_000);
+    if (search) db.prepare('DELETE FROM conversation_search WHERE rowid = ?').run(search.rowid);
+    const conversation = db.prepare('SELECT context FROM conversations WHERE id = ?').get(conversationId) as { context: Context };
+    db.prepare('INSERT INTO conversation_search(conversation_id, context, content) VALUES (?, ?, ?)')
+      .run(conversationId, conversation.context, nextSearch);
   });
+  return id;
+}
+
+const ROUTE_STOP_WORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'can', 'could', 'do', 'for', 'from', 'go', 'help', 'i', 'in', 'is',
+  'it', 'let', 'lets', 'me', 'my', 'of', 'on', 'our', 'please', 'project', 'the', 'this', 'to', 'we', 'with', 'you',
+  'ask', 'audit', 'build', 'change', 'check', 'code', 'continue', 'create', 'design', 'finish', 'fix', 'open', 'reopen',
+  'resume', 'return', 'show', 'start', 'update', 'work', 'coding', 'research', 'finance', 'health', 'business', 'grover',
+]);
+
+const WEAK_SUBJECT_WORDS = new Set(['app', 'application', 'bot', 'game', 'platform', 'site', 'tool', 'website']);
+
+function searchableText(text: string): string {
+  return text.toLowerCase().replace(/\btic[\s-]+tac[\s-]+toe\b/g, 'tictactoe').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function subjectTokens(text: string): string[] {
+  return [...new Set(searchableText(text).split(/\s+/).filter((token) =>
+    token.length >= 3 && !ROUTE_STOP_WORDS.has(token)
+  ))];
+}
+
+function continuationRequested(text: string): boolean {
+  return /\b(update|continue|resume|finish|audit|reopen|return to|go back to|check (?:on|progress)|work on|pick up)\b/i.test(text);
+}
+
+function navigationRequested(text: string): boolean {
+  return /^\s*(?:please\s+)?(?:open|reopen|show|go (?:back )?to|return to|take me (?:back )?to)\b/i.test(text);
+}
+
+function pureNavigationRequested(text: string): boolean {
+  return navigationRequested(text) &&
+    !/\b(update|change|fix|build|code|edit|run|delete|remove|send|deploy|schedule|buy|create|implement|audit)\b/i.test(text);
+}
+
+function explicitNewConversation(text: string): boolean {
+  return /\b(?:new|another|separate|fresh)\s+(?:chat|conversation|thread|project)\b/i.test(text);
+}
+
+export function findMatchingConversation(
+  db: DatabaseSync,
+  text: string,
+  preferredContext?: Context,
+  excludeId?: string,
+): { id: string; context: Context; title: string; score: number } | null {
+  const queryTokens = subjectTokens(text);
+  if (!queryTokens.length) return null;
+  const match = queryTokens.map((token) => `${token.replace(/[^a-z0-9]/g, '')}*`).filter(Boolean).join(' OR ');
+  const rows = db.prepare(
+    `SELECT c.id, c.context, c.title, s.content, bm25(conversation_search) AS rank
+     FROM conversation_search s JOIN conversations c ON c.id = s.conversation_id
+     WHERE conversation_search MATCH ? AND (? IS NULL OR c.context = ?) AND (? IS NULL OR c.id != ?)
+     ORDER BY rank LIMIT 30`
+  ).all(match, preferredContext ?? null, preferredContext ?? null, excludeId ?? null, excludeId ?? null) as
+    { id: string; context: Context; title: string; content: string; rank: number }[];
+  const continued = continuationRequested(text) || navigationRequested(text);
+  const scored = rows.map((row) => {
+    const candidate = new Set(subjectTokens(`${row.title} ${row.content}`));
+    let score = 0;
+    for (const token of queryTokens) {
+      if (!candidate.has(token)) continue;
+      score += WEAK_SUBJECT_WORDS.has(token) ? 1 : 3;
+    }
+    if (preferredContext && row.context === preferredContext) score += 1;
+    if (searchableText(row.title) === searchableText(text)) score += 4;
+    return { id: row.id, context: row.context, title: row.title, score };
+  }).filter((row) => row.score >= (continued ? 2 : 4))
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+  return scored[0] ?? null;
+}
+
+export function resolveConversation(
+  db: DatabaseSync,
+  text: string,
+  inference: ContextInference,
+  sourceConversationId?: string,
+  requestedContext?: Context,
+): ConversationResolution {
+  const source = sourceConversationId ? getConversation(db, sourceConversationId) : undefined;
+  if (sourceConversationId && !source) throw new Error('That conversation is no longer available. Start a new one.');
+  const wantsNew = explicitNewConversation(text);
+  const wantsContinuation = continuationRequested(text) || navigationRequested(text);
+  const preferredMatchContext = inference.explicit && inference.context !== 'general' ? inference.context : undefined;
+  const match = !wantsNew && wantsContinuation
+    ? findMatchingConversation(db, text, preferredMatchContext)
+    : null;
+
+  if (match && match.id !== source?.id) {
+    return {
+      conversationId: match.id,
+      context: match.context,
+      disposition: pureNavigationRequested(text) ? 'navigated' : 'reopened',
+      reason: `Reopened “${match.title}” from local conversation history.`,
+      sourceConversationId: source?.id ?? null,
+      localNavigation: pureNavigationRequested(text),
+    };
+  }
+  if (source && !wantsNew) {
+    const shouldBranch = inference.explicit && inference.context !== source.context;
+    if (!shouldBranch) {
+      return {
+        conversationId: source.id,
+        context: source.context,
+        disposition: 'continued',
+        reason: 'Kept the follow-up with its current conversation.',
+        sourceConversationId: source.id,
+        localNavigation: false,
+      };
+    }
+  }
+
+  const context = inference.explicit ? inference.context : (requestedContext ?? source?.context ?? 'general');
+  if (!wantsNew && !source && context === 'general') {
+    const recent = db.prepare(
+      "SELECT id, context, title FROM conversations WHERE context = 'general' ORDER BY updated_at DESC LIMIT 1"
+    ).get() as { id: string; context: Context; title: string } | undefined;
+    if (recent) {
+      return {
+        conversationId: recent.id,
+        context: 'general',
+        disposition: 'reopened',
+        reason: 'Continued the most recent General conversation.',
+        sourceConversationId: null,
+        localNavigation: false,
+      };
+    }
+  }
+
+  const conversationId = createConversation(db, context, text);
+  return {
+    conversationId,
+    context,
+    disposition: source && source.context !== context ? 'branched' : 'created',
+    reason: source && source.context !== context
+      ? `${inference.reason} Branched without changing the source conversation.`
+      : inference.reason,
+    sourceConversationId: source?.id ?? null,
+    localNavigation: false,
+  };
+}
+
+export function recordConversationResolution(
+  db: DatabaseSync,
+  taskId: string,
+  resolution: ConversationResolution,
+  request: string,
+): string {
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO conversation_route_log
+      (id, task_id, source_conversation_id, target_conversation_id, target_context, disposition, reason, request, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id, taskId, resolution.sourceConversationId, resolution.conversationId, resolution.context,
+    resolution.disposition, resolution.reason, request, new Date().toISOString(),
+  );
   return id;
 }
 
@@ -464,6 +653,9 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   const contextRouting = db.prepare(
     'SELECT * FROM context_routing_decisions ORDER BY created_at DESC LIMIT 200'
   ).all();
+  const conversationRoutes = db.prepare(
+    'SELECT * FROM conversation_route_log ORDER BY created_at DESC LIMIT 200'
+  ).all();
   const policyRules = db.prepare(
     'SELECT * FROM policy_registry WHERE active = 1 ORDER BY rule_id'
   ).all();
@@ -475,7 +667,7 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   ).all();
   return {
     tasks, features, events, memories, memoryProposals, memoryNamespaces, costs, budget, engines, routing,
-    contextRouting, conversations, messages, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
+    contextRouting, conversationRoutes, conversations, messages, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',
       workspaceRoot: getSetting(db, 'workspace_root'),

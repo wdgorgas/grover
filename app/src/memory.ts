@@ -19,6 +19,12 @@ type MemoryInput = {
   source: string;
 };
 
+export type IncidentalMemoryResult = {
+  kind: 'saved' | 'proposed' | 'unchanged';
+  id: string;
+  content: string;
+};
+
 export type RetrievedMemory = {
   id: string;
   namespace: string;
@@ -262,23 +268,48 @@ export class MemoryService {
     return id;
   }
 
-  considerIncidental(taskId: string, text: string): string | null {
+  considerIncidental(taskId: string, text: string): IncidentalMemoryResult | null {
     const value = text.trim();
     let content: string | null = null;
+    let category = 'profile';
     const name = value.match(/\bmy name is\s+([^.!?]+)/i);
     const prefer = value.match(/\bi prefer\s+([^.!?]+)/i);
     const like = value.match(/\bi like\s+([^.!?]+)/i);
-    const am = value.match(/\bi(?:'m| am)\s+([^.!?]+)/i);
-    const have = value.match(/\bi have\s+([^.!?]+)/i);
-    if (name) content = `Will's name is ${name[1].trim()}.`;
-    else if (prefer) content = `Will prefers ${prefer[1].trim()}.`;
-    else if (like) content = `Will likes ${like[1].trim()}.`;
-    else if (am) content = `Will is ${am[1].trim()}.`;
-    else if (have) content = `Will has ${have[1].trim()}.`;
+    const major = value.match(/\bmy major is\s+([^.!?]+)/i);
+    const goal = value.match(/\b(?:my (?:long[- ]term )?goal is|i want to become|i plan to become)\s+([^.!?]+)/i);
+    const next = value.match(/\bmy next steps? (?:are|is)\s+([^.!?]+)/i);
+    if (name) { content = `Will's name is ${name[1].trim()}.`; category = 'profile:name'; }
+    else if (major) { content = `Will's major is ${major[1].trim()}.`; category = 'profile:major'; }
+    else if (goal) { content = `Will's goal is ${goal[1].trim()}.`; category = 'profile:goal'; }
+    else if (next) { content = `Will's next steps are ${next[1].trim()}.`; category = 'profile:next-steps'; }
+    else if (prefer) { content = `Will prefers ${prefer[1].trim()}.`; category = 'profile:preference'; }
+    else if (like) { content = `Will likes ${like[1].trim()}.`; category = 'profile:preference'; }
     if (!content) return null;
-    const sensitivity = /\b(health|medical|diagnos|medication|finance|income|salary|debt|account)\b/i.test(value)
+    const sensitivity = /\b(medical|diagnos|medication|symptom|health condition|income|salary|debt|account balance|bank account)\b/i.test(value)
       ? 'sensitive' : 'private';
-    return this.propose(taskId, content, sensitivity);
+    if (sensitivity === 'sensitive') {
+      const id = this.propose(taskId, content, sensitivity);
+      return { kind: 'proposed', id, content };
+    }
+    const duplicate = this.db.prepare(
+      `SELECT id FROM memories
+       WHERE namespace = 'will-private' AND lower(content) = lower(?)
+         AND deleted_at IS NULL AND superseded_by IS NULL LIMIT 1`
+    ).get(content) as { id: string } | undefined;
+    if (duplicate) return { kind: 'unchanged', id: duplicate.id, content };
+    const singleValue = new Set(['profile:name', 'profile:major', 'profile:goal', 'profile:next-steps']);
+    const existing = singleValue.has(category) ? this.db.prepare(
+      `SELECT id FROM memories
+       WHERE namespace = 'will-private' AND category = ?
+         AND deleted_at IS NULL AND superseded_by IS NULL
+       ORDER BY updated_at DESC LIMIT 1`
+    ).get(category) as { id: string } | undefined : undefined;
+    const id = existing
+      ? this.correct(existing.id, content, `auto-profile:${taskId}`)
+      : this.remember({
+        content, category, sensitivity, source: `conversation:${taskId}`, confidence: 'high', importance: 'normal',
+      });
+    return { kind: 'saved', id, content };
   }
 
   approveProposal(id: string): string {
