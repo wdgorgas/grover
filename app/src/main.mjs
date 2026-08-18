@@ -55,6 +55,9 @@ function installIpc() {
   ipcMain.handle('grover:task-action', (_event, { taskId, action }) => core.taskAction(taskId, action));
   ipcMain.handle('grover:kill-switch', (_event, enabled) => core.setKillSwitch(Boolean(enabled)));
   ipcMain.handle('grover:preferred-engine', (_event, engineId) => core.setPreferredEngine(engineId));
+  ipcMain.handle('grover:refresh-engines', () => core.refreshEngineStatus());
+  ipcMain.handle('grover:sign-in-engine', (_event, engineId) => core.signInEngine(engineId));
+  ipcMain.handle('grover:move-conversation', (_event, { conversationId, context }) => core.moveConversation(conversationId, context));
   ipcMain.handle('grover:forget', (_event, memoryId) => core.forget(memoryId));
   ipcMain.handle('grover:rate-task', (_event, { taskId, rating }) => core.rateTask(taskId, rating));
   ipcMain.handle('grover:choose-workspace', async () => {
@@ -79,6 +82,7 @@ app.whenReady().then(() => {
   core.on('state', sendState);
   installIpc();
   createWindow();
+  void core.refreshEngineStatus();
 });
 
 app.on('second-instance', () => {

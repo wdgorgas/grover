@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { openDb } from '../src/db.ts';
 import {
   addEvidence, checkBudget, closureReady, completeReceipt, completeRoutingDecision,
-  createBuild, createTask, deleteMemory, engineRanking, inferIntent, rateTaskRouting,
+  addConversationMessage, createBuild, createConversation, createTask, deleteMemory, engineRanking, inferContext, inferIntent, moveConversation, rateTaskRouting,
   recordCost, recordRoutingDecision, saveMemory, snapshot, transitionRun,
 } from '../src/store.ts';
 
@@ -13,6 +13,33 @@ test('intent routing distinguishes the five front-door commitments', () => {
   assert.equal(inferIntent('Deploy the app'), 'act');
   assert.equal(inferIntent('Fix the GROVER app settings'), 'build');
   assert.equal(inferIntent('Remember that I prefer local apps'), 'remember');
+});
+
+test('context routing organizes common requests without a user intent selector', () => {
+  assert.equal(inferContext('hi, my name is Will'), 'general');
+  assert.equal(inferContext("Let's design a new coding platform that does xyz"), 'coding');
+  assert.equal(inferContext('Help me compare retirement portfolio options'), 'finance');
+  assert.equal(inferContext('Make a weekly workout and nutrition plan'), 'health');
+  assert.equal(inferContext('Research the evidence and sources for this paper'), 'research');
+  assert.equal(inferContext('Fix the GROVER app settings'), 'builder');
+});
+
+test('conversations persist messages and remain grouped by context', () => {
+  const db = openDb(':memory:');
+  const conversationId = createConversation(db, 'coding', 'Design a coding platform');
+  const taskId = createTask(db, 'work', 'Design a coding platform', 'coding');
+  addConversationMessage(db, conversationId, taskId, 'user', 'Design a coding platform');
+  addConversationMessage(db, conversationId, taskId, 'assistant', 'Here is a practical architecture.');
+  let state = snapshot(db) as any;
+  assert.equal(state.conversations[0].context, 'coding');
+  assert.deepEqual(state.messages.map((message: any) => message.role), ['user', 'assistant']);
+  assert.equal(state.tasks[0].domain, 'coding');
+  moveConversation(db, conversationId, 'business');
+  state = snapshot(db) as any;
+  assert.equal(state.conversations[0].context, 'business');
+  assert.equal(state.contextRouting[0].initial_context, 'coding');
+  assert.equal(state.contextRouting[0].final_context, 'business');
+  assert.ok(state.contextRouting[0].corrected_at);
 });
 
 test('Builder object creation is atomic and records the selected engine', () => {

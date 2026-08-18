@@ -71,3 +71,15 @@ ChatGPT reviewed the first slice (source + itemized dispositions: `planning/prop
 **What the next person should do:** Launch the portable executable, use Ask and Remember immediately, then try one small “Build GROVER” request from a clean project branch. Record friction before visual redesign.
 
 **Risks or weirdness:** Portable size is 149.46 MiB because it embeds Electron and the Codex runtime. The build is not publisher code-signed and uses the default Electron icon by design until the new visual direction is ready.
+
+### 2026-08-18 — fluid context workspaces and repaired portable agent runtime
+
+**What changed:** Replaced the Command/Activity split and user-facing intent selector with Home plus persistent Coding, Research, Finance, Health, Business, GROVER, and General conversations. Home now classifies a request, creates a conversation, and opens it in the matching workspace. Enter sends; Shift+Enter inserts a line. Conversations can be moved when routing guesses wrong, and those corrections are stored as future router-training examples. Added explicit agent status, refresh, and sign-in controls. The portable package now ships Codex at a stable resource path rather than an ephemeral `app.asar.unpacked` path.
+
+**What I verified:** 29/29 deterministic tests pass; Electron smoke covers Home intake, Enter/Shift+Enter, direct memory, conversation display and movement, kill switch, restart persistence, renderer isolation, and zero document navigation. A live Codex run passed for the exact greeting `hi, my name is Will`. The final single-file portable executable passed a live bundled-Codex test. Artifact: `app/release/GROVER-2.0.0-p1-portable.exe`, 156,735,180 bytes, SHA-256 `191F81DA56BC958162F7F7C860EC7153ED8D25EB32F3CC036B66C375827BA9F4`.
+
+**What is still open:** Formal P1 exit checklist review, then the remaining P2–P5 development and drills. Visual redesign remains intentionally deferred.
+
+**What the next person should do:** Close the formal P1 checklist, then continue directly into P2/P3 Builder reliability without waiting for routine approval.
+
+**Risks or weirdness:** The single-file portable wrapper takes several seconds on a cold first launch because it extracts the bundled 299 MB Codex runtime. The unpacked application launches faster. Claude is installed but signed out; Settings now says that explicitly and provides a sign-in action. The build remains unsigned and uses the temporary Electron icon until Will's visual pass.

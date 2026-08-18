@@ -49,20 +49,22 @@ export function applyEventToProjections(db: DatabaseSync, ev: EventRow): void {
 function applyToTaskState(db: DatabaseSync, ev: EventRow): void {
   const existing = db
     .prepare('SELECT * FROM task_state WHERE task_id = ?')
-    .get(ev.task_id) as { status: string; origin: string; cost_total: number } | undefined;
+    .get(ev.task_id) as { status: string; origin: string; domain: string | null; cost_total: number } | undefined;
 
   const isLifecycle = TASK_LIFECYCLE.has(ev.phase);
   const status = isLifecycle ? ev.phase : (existing?.status ?? 'intake');
   // Foreground vs background derives from the first event's actor (§4.3; DECISIONS.md).
   const origin = existing?.origin ?? (ev.actor === 'will' ? 'foreground' : 'background');
+  const domain = ev.domain ?? existing?.domain ?? null;
   const costTotal = (existing?.cost_total ?? 0) + (ev.cost_delta ?? 0);
 
   db.prepare(
     `INSERT INTO task_state
-       (task_id, status, origin, plain_language, actions, cost_total, updated_seq, updated_ts)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       (task_id, status, origin, domain, plain_language, actions, cost_total, updated_seq, updated_ts)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(task_id) DO UPDATE SET
        status = excluded.status,
+       domain = excluded.domain,
        plain_language = excluded.plain_language,
        actions = excluded.actions,
        cost_total = excluded.cost_total,
@@ -72,6 +74,7 @@ function applyToTaskState(db: DatabaseSync, ev: EventRow): void {
     ev.task_id,
     status,
     origin,
+    domain,
     ev.plain_language,
     JSON.stringify(availableActions(status)),
     costTotal,

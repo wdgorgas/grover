@@ -1,23 +1,53 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 let state = null;
+let activeContext = null;
+let activeConversationId = null;
 
-function showView(name) {
+function labelForContext(id) {
+  if (id === 'general') return 'General';
+  return state?.contexts?.find((context) => context.id === id)?.label ?? id;
+}
+
+function contextDescription(id) {
+  if (id === 'general') return 'Everyday questions and conversations';
+  return state?.contexts?.find((context) => context.id === id)?.description ?? '';
+}
+
+function activateView(name) {
   $$('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`));
-  $$('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name));
+  $$('.utility-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name));
+  $$('.context-button').forEach((button) => button.classList.toggle('active', name === 'context' && button.dataset.context === activeContext));
+}
+
+function showUtility(name) {
+  activeContext = null;
+  activeConversationId = null;
+  activateView(name);
+  if (name === 'home') $('#home-request').focus();
+}
+
+function openContext(context, conversationId = null) {
+  activeContext = context;
+  const conversations = (state?.conversations ?? []).filter((item) => item.context === context);
+  activeConversationId = conversationId ?? conversations[0]?.id ?? null;
+  $('#context-eyebrow').textContent = context === 'general' ? 'Home conversation' : 'Workspace';
+  $('#context-title').textContent = labelForContext(context);
+  $('#context-description').textContent = contextDescription(context);
+  $('#context-request').placeholder = activeConversationId ? 'Continue this conversation…' : `Start something in ${labelForContext(context)}…`;
+  activateView('context');
+  if (context === 'general') $('.utility-button[data-view="home"]').classList.add('active');
+  renderConversationWorkspace();
+  $('#context-request').focus();
 }
 
 function formatMoney(micro) {
   return `$${((Number(micro) || 0) / 1_000_000).toFixed(2)}`;
 }
 
-function parseDetail(value) {
-  if (!value) return '';
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed.request) return parsed.request;
-    return JSON.stringify(parsed, null, 2);
-  } catch { return value; }
+function parseActions(task) {
+  try { return JSON.parse(task.actions || '[]'); }
+  catch { return []; }
 }
 
 function taskCard(task) {
@@ -32,19 +62,10 @@ function taskCard(task) {
   status.textContent = task.status;
   head.append(title, status);
   card.append(head);
-
-  const detailText = parseDetail(task.internal_detail);
-  if (detailText) {
-    const detail = document.createElement('details');
-    detail.className = 'detail';
-    const summary = document.createElement('summary');
-    summary.textContent = task.status === 'done' ? 'View result' : 'View details';
-    const pre = document.createElement('pre');
-    pre.textContent = detailText;
-    detail.append(summary, pre);
-    card.append(detail);
-  }
-  const actions = JSON.parse(task.actions || '[]');
+  const context = document.createElement('p');
+  context.textContent = labelForContext(task.domain);
+  card.append(context);
+  const actions = parseActions(task);
   if (actions.length) {
     const area = document.createElement('div');
     area.className = 'task-actions';
@@ -62,42 +83,156 @@ function taskCard(task) {
     }
     card.append(area);
   }
-  if (task.status === 'done' && ['ask', 'work', 'builder', 'build'].includes(task.domain)) {
-    const feedback = document.createElement('div');
-    feedback.className = 'task-feedback';
-    const prompt = document.createElement('span');
-    prompt.textContent = 'Help routing improve:';
-    for (const [rating, label] of [['positive', 'Useful'], ['negative', 'Needs improvement']]) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = label;
-      button.addEventListener('click', async () => {
-        await window.grover.rateTask(task.task_id, rating);
-        feedback.replaceChildren(document.createTextNode('Feedback saved.'));
-      });
-      feedback.append(button);
-    }
-    feedback.prepend(prompt);
-    card.append(feedback);
-  }
   return card;
 }
 
-function renderTasks(container, tasks) {
+function renderCurrentWork() {
+  const container = $('#current-work');
+  const active = (state.tasks ?? []).filter((task) => !['done', 'failed', 'cancelled'].includes(task.status));
   container.replaceChildren();
-  if (!tasks.length) {
+  if (!active.length) {
     container.className = 'task-list empty-state';
-    container.textContent = 'No work recorded yet.';
+    container.textContent = 'Nothing running right now.';
     return;
   }
   container.className = 'task-list';
-  tasks.forEach((task) => container.append(taskCard(task)));
+  active.slice(0, 6).forEach((task) => container.append(taskCard(task)));
+}
+
+function conversationButton(conversation) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'conversation-button';
+  button.classList.toggle('active', conversation.id === activeConversationId);
+  const title = document.createElement('strong');
+  title.textContent = conversation.title;
+  const meta = document.createElement('span');
+  meta.textContent = `${labelForContext(conversation.context)} · ${new Date(conversation.updated_at).toLocaleString()}`;
+  button.append(title, meta);
+  button.addEventListener('click', () => openContext(conversation.context, conversation.id));
+  return button;
+}
+
+function renderRecentConversations() {
+  const container = $('#recent-conversations');
+  container.replaceChildren();
+  const conversations = state.conversations ?? [];
+  if (!conversations.length) {
+    container.className = 'conversation-list empty-state';
+    container.textContent = 'No conversations yet.';
+    return;
+  }
+  container.className = 'conversation-list';
+  conversations.slice(0, 8).forEach((conversation) => container.append(conversationButton(conversation)));
+}
+
+function feedbackForTask(taskId) {
+  const routing = (state.routing ?? []).find((item) => item.task_id === taskId);
+  const area = document.createElement('div');
+  area.className = 'message-feedback';
+  if (routing?.rating) {
+    area.textContent = routing.rating === 'positive' ? 'Marked useful' : 'Marked for improvement';
+    return area;
+  }
+  area.append(document.createTextNode('Was this useful? '));
+  for (const [rating, label] of [['positive', 'Yes'], ['negative', 'No']]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', async () => {
+      await window.grover.rateTask(taskId, rating);
+      area.textContent = 'Feedback saved.';
+    });
+    area.append(button);
+  }
+  return area;
+}
+
+function renderConversationWorkspace() {
+  if (!state || !activeContext) return;
+  const mover = $('#move-conversation');
+  mover.disabled = !activeConversationId;
+  mover.value = activeContext;
+  const list = $('#workspace-conversations');
+  list.replaceChildren();
+  const conversations = state.conversations.filter((item) => item.context === activeContext);
+  if (!conversations.length) {
+    const empty = document.createElement('p');
+    empty.className = 'small-empty';
+    empty.textContent = 'No conversations yet.';
+    list.append(empty);
+  } else {
+    conversations.forEach((conversation) => list.append(conversationButton(conversation)));
+  }
+
+  const panel = $('#chat-messages');
+  panel.replaceChildren();
+  const messages = activeConversationId
+    ? state.messages.filter((message) => message.conversation_id === activeConversationId)
+    : [];
+  if (!messages.length) {
+    panel.className = 'chat-messages empty-state';
+    panel.textContent = `Start a conversation in ${labelForContext(activeContext)}.`;
+    return;
+  }
+  panel.className = 'chat-messages';
+  for (const message of messages) {
+    const bubble = document.createElement('article');
+    bubble.className = `message ${message.role} ${message.state}`;
+    const role = document.createElement('strong');
+    role.textContent = message.role === 'user' ? 'You' : 'GROVER';
+    const content = document.createElement('div');
+    content.className = 'message-content';
+    content.textContent = message.content;
+    bubble.append(role, content);
+    if (message.role === 'assistant' && message.task_id && message.state === 'complete') {
+      bubble.append(feedbackForTask(message.task_id));
+    }
+    panel.append(bubble);
+  }
+  const taskIds = new Set(messages.map((message) => message.task_id).filter(Boolean));
+  const running = state.tasks.find((task) => taskIds.has(task.task_id) && !['done', 'failed', 'cancelled'].includes(task.status));
+  if (running) {
+    const progress = document.createElement('article');
+    progress.className = 'message assistant working';
+    const role = document.createElement('strong');
+    role.textContent = 'GROVER';
+    const content = document.createElement('div');
+    content.className = 'message-content';
+    content.textContent = `${running.plain_language}…`;
+    progress.append(role, content);
+    panel.append(progress);
+  }
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function renderContexts() {
+  const nav = $('#context-navigation');
+  nav.replaceChildren();
+  for (const context of state.contexts ?? []) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'context-button';
+    button.dataset.context = context.id;
+    button.textContent = context.label;
+    button.title = context.description;
+    button.addEventListener('click', () => openContext(context.id));
+    nav.append(button);
+  }
+  const mover = $('#move-conversation');
+  mover.replaceChildren();
+  for (const context of [{ id: 'general', label: 'General' }, ...(state.contexts ?? [])]) {
+    const option = document.createElement('option');
+    option.value = context.id;
+    option.textContent = context.label;
+    mover.append(option);
+  }
 }
 
 function renderEvents(events) {
   const container = $('#event-list');
   container.replaceChildren();
-  for (const event of [...events].reverse()) {
+  for (const event of [...events].reverse().slice(0, 60)) {
     const row = document.createElement('div');
     row.className = 'event';
     const label = document.createElement('strong');
@@ -134,72 +269,156 @@ function renderMemories(memories) {
   }
 }
 
+function engineName(id) {
+  return state.engines?.find((engine) => engine.id === id)?.display_name ?? (id.startsWith('codex') ? 'Codex' : 'Claude');
+}
+
+function engineStateLabel(status) {
+  if (status.state === 'ready') return 'Ready';
+  if (status.state === 'sign-in-required') return 'Sign-in required';
+  if (status.state === 'unavailable') return 'Not installed';
+  if (status.state === 'error') return 'Needs attention';
+  return 'Checking';
+}
+
+function renderEngines() {
+  const statuses = state.runtime?.engineStatus ?? {};
+  const entries = Object.entries(statuses);
+  const ready = entries.filter(([, status]) => status.state === 'ready').map(([id]) => engineName(id));
+  const needsSignIn = entries.filter(([, status]) => status.state === 'sign-in-required').map(([id]) => engineName(id));
+  const problems = entries.filter(([, status]) => ['unavailable', 'error'].includes(status.state)).map(([id]) => engineName(id));
+  const summary = [
+    ready.length ? `${ready.join(' + ')} ready` : '',
+    needsSignIn.length ? `${needsSignIn.join(' + ')} sign-in needed` : '',
+    problems.length ? `${problems.join(' + ')} unavailable` : '',
+  ].filter(Boolean).join(' · ') || 'Checking agents…';
+  $('#engine-status').textContent = summary;
+  $('#engine-status').classList.toggle('good', ready.length > 0);
+  $('#engine-status').classList.toggle('attention', needsSignIn.length > 0 || problems.length > 0);
+
+  const container = $('#engine-connections');
+  container.replaceChildren();
+  for (const [id, status] of entries) {
+    const card = document.createElement('div');
+    card.className = 'settings-card engine-card';
+    const info = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = engineName(id);
+    const detail = document.createElement('p');
+    detail.textContent = status.state === 'error' && status.lastError
+      ? `${engineStateLabel(status)}. ${status.lastError}`
+      : engineStateLabel(status);
+    info.append(name, detail);
+    card.append(info);
+    if (status.installed) {
+      const signIn = document.createElement('button');
+      signIn.type = 'button';
+      signIn.textContent = status.state === 'ready' ? 'Sign in again' : 'Sign in';
+      signIn.addEventListener('click', async () => {
+        signIn.disabled = true;
+        try {
+          await window.grover.signInEngine(id);
+          detail.textContent = 'Sign-in opened. Finish it in the browser, then press Refresh.';
+        } catch (error) { detail.textContent = error.message; }
+        finally { signIn.disabled = false; }
+      });
+      card.append(signIn);
+    }
+    container.append(card);
+  }
+}
+
 function render(next) {
   state = next;
-  const availability = state.runtime?.engineAvailability ?? {};
-  const availableNames = Object.entries(availability).filter(([, value]) => value).map(([id]) => id.startsWith('codex') ? 'Codex' : 'Claude');
-  const statuses = state.runtime?.engineStatus ?? {};
-  const needsLogin = Object.entries(statuses).filter(([, value]) => value.installed && value.healthy === false)
-    .map(([id]) => id.startsWith('codex') ? 'Codex' : 'Claude');
-  $('#engine-status').textContent = availableNames.length
-    ? `${availableNames.join(' + ')} installed${needsLogin.length ? ` · ${needsLogin.join(' + ')} needs sign-in` : ''}`
-    : 'No AI engine found';
-  $('#engine-status').classList.toggle('good', availableNames.length > 0);
+  renderContexts();
+  renderEngines();
   $('#cost-status').textContent = `${formatMoney(state.costs?.actual)} used`;
   $('#kill-switch').checked = Boolean(state.settings?.killSwitch);
   $('#workspace-path').textContent = state.runtime?.workspaceRoot ?? 'Not selected';
   $('#preferred-engine').value = state.settings?.preferredEngine ?? 'auto';
-  const active = state.tasks.filter((task) => !['done', 'failed', 'cancelled'].includes(task.status));
-  renderTasks($('#current-work'), active.slice(0, 6));
-  renderTasks($('#all-tasks'), state.tasks);
-  renderEvents(state.events);
-  renderMemories(state.memories);
+  renderCurrentWork();
+  renderRecentConversations();
+  renderEvents(state.events ?? []);
+  renderMemories(state.memories ?? []);
+  renderConversationWorkspace();
 }
 
-$$('.nav-button').forEach((button) => button.addEventListener('click', () => showView(button.dataset.view)));
-$$('[data-go]').forEach((button) => button.addEventListener('click', () => showView(button.dataset.go)));
-
-$('#composer').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const submit = $('#submit');
-  const error = $('#composer-error');
+async function submitPrompt(form, textarea, engineSelect) {
+  const submit = form.querySelector('.submit-prompt');
+  const error = form.querySelector('.composer-error');
   submit.disabled = true;
   error.textContent = '';
   try {
-    await window.grover.submit({
-      text: $('#request').value,
-      intent: $('#intent').value || undefined,
-      engine: $('#engine').value || undefined,
+    const result = await window.grover.submit({
+      text: textarea.value,
+      context: form.id === 'context-composer' ? activeContext : undefined,
+      conversationId: form.id === 'context-composer' ? activeConversationId : undefined,
+      engine: engineSelect.value || undefined,
     });
-    $('#request').value = '';
-    showView('activity');
+    textarea.value = '';
+    openContext(result.context, result.conversationId);
   } catch (failure) {
     error.textContent = failure.message;
   } finally {
     submit.disabled = false;
   }
+}
+
+$('#home-composer').addEventListener('submit', (event) => {
+  event.preventDefault();
+  void submitPrompt(event.currentTarget, $('#home-request'), $('#home-engine'));
+});
+$('#context-composer').addEventListener('submit', (event) => {
+  event.preventDefault();
+  void submitPrompt(event.currentTarget, $('#context-request'), $('#context-engine'));
 });
 
-$('#request').addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && event.ctrlKey) {
+$$('.prompt-input').forEach((textarea) => textarea.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
-    $('#composer').requestSubmit();
+    textarea.form.requestSubmit();
   }
+}));
+
+$$('.utility-button').forEach((button) => button.addEventListener('click', () => showUtility(button.dataset.view)));
+$('#new-conversation').addEventListener('click', () => {
+  activeConversationId = null;
+  renderConversationWorkspace();
+  $('#context-request').focus();
+});
+$('#move-conversation').addEventListener('change', async (event) => {
+  if (!activeConversationId) return;
+  const conversationId = activeConversationId;
+  const context = event.target.value;
+  event.target.disabled = true;
+  try {
+    await window.grover.moveConversation(conversationId, context);
+    openContext(context, conversationId);
+  } catch (error) {
+    window.alert(error.message);
+    event.target.value = activeContext;
+  } finally {
+    event.target.disabled = false;
+  }
+});
+$('#engine-status').addEventListener('click', () => showUtility('settings'));
+$('#kill-switch').addEventListener('change', (event) => window.grover.setKillSwitch(event.target.checked));
+$('#choose-workspace').addEventListener('click', () => window.grover.chooseWorkspace());
+$('#preferred-engine').addEventListener('change', (event) => window.grover.setPreferredEngine(event.target.value));
+$('#refresh-engines').addEventListener('click', async (event) => {
+  event.currentTarget.disabled = true;
+  try { await window.grover.refreshEngines(); }
+  finally { event.currentTarget.disabled = false; }
 });
 
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
-    showView('command');
-    $('#request').focus();
+    showUtility('home');
   }
 });
 
-$('#kill-switch').addEventListener('change', (event) => window.grover.setKillSwitch(event.target.checked));
-$('#choose-workspace').addEventListener('click', () => window.grover.chooseWorkspace());
-$('#preferred-engine').addEventListener('change', (event) => window.grover.setPreferredEngine(event.target.value));
-
 window.grover.onState(render);
 window.grover.snapshot().then(render).catch((error) => {
-  $('#composer-error').textContent = `GROVER could not start: ${error.message}`;
+  $('.composer-error').textContent = `GROVER could not start: ${error.message}`;
 });

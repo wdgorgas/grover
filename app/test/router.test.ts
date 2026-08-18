@@ -26,3 +26,21 @@ test('explicit preference and availability override the initial priority', () =>
   router = new EngineRouter([fake('codex-cli', false), fake('claude-cli')]);
   assert.equal(router.route('build').selected.id, 'claude-cli');
 });
+
+test('authentication status is separate from installation and excludes signed-out engines', async () => {
+  const signedOut = {
+    ...fake('claude-cli'),
+    async probeAuth() { return 'sign-in-required' as const; },
+    signIn() {},
+  };
+  const ready = {
+    ...fake('codex-cli'),
+    async probeAuth() { return 'signed-in' as const; },
+    signIn() {},
+  };
+  const router = new EngineRouter([signedOut, ready]);
+  await router.refreshStatus();
+  assert.equal(router.status()['claude-cli'].state, 'sign-in-required');
+  assert.equal(router.status()['codex-cli'].state, 'ready');
+  assert.equal(router.route('ask', 'claude-cli').selected.id, 'codex-cli');
+});

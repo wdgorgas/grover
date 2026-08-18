@@ -3,6 +3,16 @@ import type { DatabaseSync } from 'node:sqlite';
 import { appendEvent, appendEventInTransaction, type Actor, type Phase } from './events.ts';
 
 export type Intent = 'ask' | 'work' | 'act' | 'build' | 'remember';
+export type Context = 'general' | 'coding' | 'research' | 'finance' | 'health' | 'business' | 'builder';
+
+export const CONTEXTS: { id: Context; label: string; description: string }[] = [
+  { id: 'coding', label: 'Coding', description: 'Software, tools, automation, and technical projects' },
+  { id: 'research', label: 'Research', description: 'Questions, evidence, sources, and analysis' },
+  { id: 'finance', label: 'Finance', description: 'Markets, budgets, investing, and quantitative work' },
+  { id: 'health', label: 'Health', description: 'Health, fitness, food, and wellbeing' },
+  { id: 'business', label: 'Business', description: 'Plans, operations, writing, and decisions' },
+  { id: 'builder', label: 'GROVER', description: 'Changes to this application' },
+];
 
 export function transaction<T>(db: DatabaseSync, fn: () => T): T {
   db.exec('BEGIN IMMEDIATE;');
@@ -19,14 +29,90 @@ export function transaction<T>(db: DatabaseSync, fn: () => T): T {
 export function inferIntent(text: string): Intent {
   const normalized = text.trim().toLowerCase();
   if (/^(remember|save this|keep this in mind)\b/.test(normalized)) return 'remember';
-  if (/^(change|build|add|fix|update|remove|implement|redesign)\b/.test(normalized) &&
-      /\b(grover|app|application|interface|ui|code|feature|setting)\b/.test(normalized)) return 'build';
+  if (/\b(change|build|add|fix|update|remove|implement|redesign|refactor)\b/.test(normalized) &&
+      /\bgrover\b/.test(normalized)) return 'build';
   if (/^(send|publish|buy|purchase|delete|deploy|email|message|schedule)\b/.test(normalized)) return 'act';
-  if (/^(write|draft|analyze|research|summarize|create|prepare)\b/.test(normalized)) return 'work';
+  if (/^(let'?s\s+)?(write|draft|analyze|research|summarize|create|prepare|design|plan|compare)\b/.test(normalized)) return 'work';
   return 'ask';
 }
 
-export function createTask(db: DatabaseSync, intent: Intent, text: string): string {
+export function inferContext(text: string, intent: Intent = inferIntent(text)): Context {
+  const normalized = text.trim().toLowerCase();
+  if (intent === 'build' || (/\bgrover\b/.test(normalized) && /\b(app|interface|feature|setting|code|fix|change)\b/.test(normalized))) {
+    return 'builder';
+  }
+  if (/\b(health|medical|doctor|symptom|medicine|medication|workout|exercise|fitness|nutrition|diet|sleep|wellness)\b/.test(normalized)) {
+    return 'health';
+  }
+  if (/\b(finance|financial|money|budget|invest|investment|stock|market|portfolio|trading|quant|loan|mortgage|tax|retirement)\b/.test(normalized)) {
+    return 'finance';
+  }
+  if (/\b(code|coding|software|developer|programming|python|javascript|typescript|repository|repo|api|database|website|platform|debug|algorithm)\b/.test(normalized)) {
+    return 'coding';
+  }
+  if (/\b(research|paper|study|evidence|source|citation|literature|fact.?check|analyze data|dataset)\b/.test(normalized)) {
+    return 'research';
+  }
+  if (/\b(business|company|customer|sales|marketing|strategy|operations|revenue|proposal|client|startup)\b/.test(normalized)) {
+    return 'business';
+  }
+  return 'general';
+}
+
+function conversationTitle(text: string): string {
+  const title = text.replace(/\s+/g, ' ').trim().replace(/^let'?s\s+/i, '');
+  return title.length <= 72 ? title : `${title.slice(0, 71)}…`;
+}
+
+export function createConversation(db: DatabaseSync, context: Context, text: string): string {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  transaction(db, () => {
+    db.prepare('INSERT INTO conversations(id, context, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+      .run(id, context, conversationTitle(text), now, now);
+    db.prepare(
+      'INSERT INTO context_routing_decisions(conversation_id, initial_context, final_context, rule_version, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(id, context, context, 'keywords-v1', now);
+  });
+  return id;
+}
+
+export function getConversation(db: DatabaseSync, id: string): { id: string; context: Context; title: string } | undefined {
+  return db.prepare('SELECT id, context, title FROM conversations WHERE id = ?').get(id) as
+    { id: string; context: Context; title: string } | undefined;
+}
+
+export function moveConversation(db: DatabaseSync, id: string, context: Context): void {
+  const now = new Date().toISOString();
+  transaction(db, () => {
+    const result = db.prepare('UPDATE conversations SET context = ?, updated_at = ? WHERE id = ?').run(context, now, id);
+    if (result.changes !== 1) throw new Error('That conversation is no longer available.');
+    db.prepare(
+      'UPDATE context_routing_decisions SET final_context = ?, corrected_at = ? WHERE conversation_id = ?'
+    ).run(context, now, id);
+  });
+}
+
+export function addConversationMessage(
+  db: DatabaseSync,
+  conversationId: string,
+  taskId: string | null,
+  role: 'user' | 'assistant' | 'system',
+  content: string,
+  state: 'pending' | 'complete' | 'failed' = 'complete',
+): string {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  transaction(db, () => {
+    db.prepare(
+      'INSERT INTO conversation_messages(id, conversation_id, task_id, role, content, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, conversationId, taskId, role, content, state, now);
+    db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, conversationId);
+  });
+  return id;
+}
+
+export function createTask(db: DatabaseSync, intent: Intent, text: string, context: Context = inferContext(text, intent)): string {
   const taskId = randomUUID();
   appendEvent(db, {
     scopeType: 'task',
@@ -34,7 +120,7 @@ export function createTask(db: DatabaseSync, intent: Intent, text: string): stri
     taskId,
     idempotencyKey: `${taskId}:created`,
     actor: 'will',
-    domain: intent === 'build' ? 'builder' : intent,
+    domain: context,
     phase: 'intake',
     plainLanguage: intent === 'build' ? 'Preparing a GROVER change' : `Starting ${intent}`,
     internalDetail: JSON.stringify({ intent, request: text }),
@@ -121,10 +207,11 @@ export function appendTaskProgress(
   message: string,
   detail = '',
   costDelta?: number,
+  domain?: Context,
 ): void {
   appendEvent(db, {
     scopeType: 'task', scopeId: taskId, taskId,
-    idempotencyKey: `${taskId}:${phase}:${randomUUID()}`, actor: 'grover', phase,
+    idempotencyKey: `${taskId}:${phase}:${randomUUID()}`, actor: 'grover', domain, phase,
     plainLanguage: message, internalDetail: detail, costDelta,
   });
 }
@@ -314,7 +401,7 @@ export function engineRanking(db: DatabaseSync, intent: Intent): { id: string; s
 
 export function snapshot(db: DatabaseSync): Record<string, unknown> {
   const tasks = db.prepare(
-    `SELECT t.*, e.internal_detail, e.domain
+    `SELECT t.*, e.internal_detail
      FROM task_state t JOIN events e ON e.seq = t.updated_seq
      ORDER BY t.updated_seq DESC LIMIT 100`
   ).all();
@@ -336,8 +423,19 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   const budget = db.prepare("SELECT * FROM budgets WHERE id = 'development-phase'").get();
   const engines = db.prepare('SELECT * FROM engine_registry ORDER BY priority').all();
   const routing = db.prepare('SELECT * FROM routing_decisions ORDER BY created_at DESC LIMIT 50').all();
+  const conversations = db.prepare(
+    'SELECT * FROM conversations ORDER BY updated_at DESC LIMIT 200'
+  ).all();
+  const messages = db.prepare(
+    `SELECT m.* FROM conversation_messages m
+     JOIN conversations c ON c.id = m.conversation_id
+     ORDER BY m.rowid`
+  ).all();
+  const contextRouting = db.prepare(
+    'SELECT * FROM context_routing_decisions ORDER BY created_at DESC LIMIT 200'
+  ).all();
   return {
-    tasks, features, events, memories, costs, budget, engines, routing,
+    tasks, features, events, memories, costs, budget, engines, routing, contextRouting, conversations, messages, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',
       workspaceRoot: getSetting(db, 'workspace_root'),

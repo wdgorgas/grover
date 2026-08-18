@@ -6,14 +6,15 @@ import { promisify } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
 import { EngineRouter, type EngineUpdate, type ExecutionEngine, type Route } from './engine.ts';
 import {
-  addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt, completeRoutingDecision, createBuild,
-  createTask, deleteMemory, engineRanking, getSetting, inferIntent, rateTaskRouting, recordCommit, recordCost, saveMemory,
-  recordRoutingDecision, setSetting, snapshot, transitionRun, type Intent,
+  addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
+  completeRoutingDecision, createBuild, createConversation, createTask, deleteMemory, engineRanking, getConversation,
+  getSetting, inferContext, inferIntent, moveConversation, rateTaskRouting, recordCommit, recordCost, saveMemory,
+  recordRoutingDecision, setSetting, snapshot, transitionRun, type Context, type Intent,
 } from './store.ts';
 
 const execFileAsync = promisify(execFile);
 
-type SubmitInput = { text: string; intent?: Intent; engine?: string };
+type SubmitInput = { text: string; context?: Context; conversationId?: string; engine?: string };
 
 function truncate(value: string, max = 180): string {
   const oneLine = value.replace(/\s+/g, ' ').trim();
@@ -92,6 +93,29 @@ export class GroverCore extends EventEmitter {
     this.emit('state', this.getSnapshot());
   }
 
+  private conversationForTask(taskId: string): string | null {
+    const row = this.db.prepare(
+      "SELECT conversation_id FROM conversation_messages WHERE task_id = ? AND role = 'user' ORDER BY created_at LIMIT 1"
+    ).get(taskId) as { conversation_id: string } | undefined;
+    return row?.conversation_id ?? null;
+  }
+
+  private addAssistantMessage(taskId: string, content: string, state: 'complete' | 'failed' = 'complete'): void {
+    const conversationId = this.conversationForTask(taskId);
+    if (conversationId && content.trim()) addConversationMessage(this.db, conversationId, taskId, 'assistant', content.trim(), state);
+  }
+
+  private friendlyFailure(error: unknown): string {
+    const detail = String(error);
+    if (/login|logged.?in|oauth|authentication|unauthorized|credential/i.test(detail)) {
+      return 'I could not start an agent because it needs to be signed in. Open Settings and use the sign-in button, then send this again.';
+    }
+    if (/ENOENT|not installed|cannot find|no installed engine/i.test(detail)) {
+      return 'I could not find a working local agent. Open Settings to check the installed agents and repair or sign in.';
+    }
+    return 'I could not finish that request. Check agent status in Settings, then retry it from this conversation.';
+  }
+
   setWorkspaceRoot(root: string): void {
     const found = findRepoRoot(root);
     if (!found) throw new Error('That folder is not the GROVER repository. Choose the folder containing AGENTS.md and .git.');
@@ -100,13 +124,45 @@ export class GroverCore extends EventEmitter {
     this.changed();
   }
 
-  submit(input: SubmitInput): { taskId: string; intent: Intent } {
+  async refreshEngineStatus(): Promise<Record<string, unknown>> {
+    await this.router.refreshStatus();
+    const next = this.getSnapshot();
+    this.changed();
+    return next;
+  }
+
+  signInEngine(engineId: string): void {
+    this.router.signIn(engineId);
+    this.changed();
+  }
+
+  moveConversation(conversationId: string, context: Context): void {
+    if (!['general', 'coding', 'research', 'finance', 'health', 'business', 'builder'].includes(context)) {
+      throw new Error('Unknown conversation workspace.');
+    }
+    moveConversation(this.db, conversationId, context);
+    this.changed();
+  }
+
+  submit(input: SubmitInput): { taskId: string; intent: Intent; context: Context; conversationId: string } {
     const text = input.text?.trim();
     if (!text) throw new Error('Type a request first.');
     if (text.length > 10_000) throw new Error('Keep a single request under 10,000 characters.');
-    const intent = input.intent ?? inferIntent(text);
-    if (!['ask', 'work', 'act', 'build', 'remember'].includes(intent)) throw new Error('Unknown request intent.');
-    const taskId = createTask(this.db, intent, text);
+    const intent = inferIntent(text);
+    if (input.context && !['general', 'coding', 'research', 'finance', 'health', 'business', 'builder'].includes(input.context)) {
+      throw new Error('Unknown conversation workspace.');
+    }
+    let context = input.context ?? inferContext(text, intent);
+    let conversationId = input.conversationId;
+    if (conversationId) {
+      const existing = getConversation(this.db, conversationId);
+      if (!existing) throw new Error('That conversation is no longer available. Start a new one.');
+      context = existing.context;
+    } else {
+      conversationId = createConversation(this.db, context, text);
+    }
+    const taskId = createTask(this.db, intent, text, context);
+    addConversationMessage(this.db, conversationId, taskId, 'user', text);
     this.taskIntents.set(taskId, intent);
     this.changed();
 
@@ -120,30 +176,45 @@ export class GroverCore extends EventEmitter {
       ].join('\n');
       writeFileSync(join(this.dataDir, 'vault', 'will-private', `${memoryId}.md`), note, 'utf8');
       appendTaskProgress(this.db, taskId, 'done', 'Remembered that locally', content);
+      this.addAssistantMessage(taskId, 'I’ll remember that on this computer.');
       this.changed();
     } else if (intent === 'act') {
       appendTaskProgress(
-        this.db, taskId, 'blocked',
+        this.db, taskId, 'failed',
         'External actions are not configured in this local build',
         'Ask, project work, GROVER changes, and direct memory are available. External account actions remain intentionally disconnected.',
       );
+      this.addAssistantMessage(taskId, 'That requires an external action, which is not connected in this local build yet. I kept the request here so it can be retried when the connection is available.', 'failed');
       this.changed();
     } else if (intent === 'build') {
-      const route = this.routeTask(taskId, intent, input.engine);
-      const { runId } = createBuild(this.db, taskId, text, route.selected.id);
-      this.routingByRun.set(runId, route.decisionId);
-      this.changed();
-      void this.runBuild(runId, text, false, route).catch((error) => this.handleBuildFailure(runId, error));
-    } else {
-      const route = this.routeTask(taskId, intent, input.engine);
-      void this.runConversation(taskId, intent, text, route).catch((error) => {
-        if (this.stopReasons.has(taskId)) return;
-        completeRoutingDecision(this.db, route.decisionId, `failed:${route.selected.id}`);
-        appendTaskProgress(this.db, taskId, 'failed', 'The request stopped before completion', String(error));
+      try {
+        const route = this.routeTask(taskId, intent, input.engine);
+        const { runId } = createBuild(this.db, taskId, text, route.selected.id);
+        this.routingByRun.set(runId, route.decisionId);
         this.changed();
-      });
+        void this.runBuild(runId, text, false, route).catch((error) => this.handleBuildFailure(runId, error));
+      } catch (error) {
+        appendTaskProgress(this.db, taskId, 'failed', 'No agent could start this request', String(error));
+        this.addAssistantMessage(taskId, this.friendlyFailure(error), 'failed');
+        this.changed();
+      }
+    } else {
+      try {
+        const route = this.routeTask(taskId, intent, input.engine);
+        void this.runConversation(taskId, intent, text, route).catch((error) => {
+          if (this.stopReasons.has(taskId)) return;
+          completeRoutingDecision(this.db, route.decisionId, `failed:${route.selected.id}`);
+          appendTaskProgress(this.db, taskId, 'failed', 'The request stopped before completion', String(error));
+          this.addAssistantMessage(taskId, this.friendlyFailure(error), 'failed');
+          this.changed();
+        });
+      } catch (error) {
+        appendTaskProgress(this.db, taskId, 'failed', 'No agent could start this request', String(error));
+        this.addAssistantMessage(taskId, this.friendlyFailure(error), 'failed');
+        this.changed();
+      }
     }
-    return { taskId, intent };
+    return { taskId, intent, context, conversationId };
   }
 
   private routeTask(taskId: string, intent: 'ask' | 'work' | 'build', engineOverride?: string): Route & { decisionId: string } {
@@ -213,6 +284,7 @@ export class GroverCore extends EventEmitter {
     const actual = Math.max(0, Math.round(result.costUsd * 1_000_000));
     recordCost(this.db, taskId, null, 'actual', actual, `${intent} actual; usage ${JSON.stringify(result.usage ?? {})}`, selected.id);
     appendTaskProgress(this.db, taskId, 'done', 'Finished', result.answer, actual);
+    this.addAssistantMessage(taskId, result.answer || 'Finished without a text response.');
     completeRoutingDecision(this.db, route.decisionId, `passed:${selected.id}`);
     this.changed();
   }
@@ -318,6 +390,7 @@ export class GroverCore extends EventEmitter {
     transitionRun(this.db, runId, 'passed', 'done', 'The change passed its checks and was committed', {
       actor: 'system', detail: `${result.answer}\n\nCommit: ${commitHash}`,
     });
+    this.addAssistantMessage(run.task_id, `${result.answer}\n\nThe change passed its checks and was committed as ${commitHash.slice(0, 8)}.`);
     if (initialRoute?.decisionId) completeRoutingDecision(this.db, initialRoute.decisionId, `passed:${selectedEngine.id}`);
     this.routingByRun.delete(runId);
     this.changed();
@@ -337,6 +410,8 @@ export class GroverCore extends EventEmitter {
     transitionRun(this.db, runId, 'failed', 'failed', 'The build stopped and needs attention', {
       failure: String(error), detail: String(error),
     });
+    const task = this.db.prepare('SELECT task_id FROM build_runs WHERE id = ?').get(runId) as { task_id: string } | undefined;
+    if (task) this.addAssistantMessage(task.task_id, this.friendlyFailure(error), 'failed');
     this.changed();
   }
 

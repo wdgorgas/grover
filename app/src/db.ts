@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS task_state (
   task_id         TEXT PRIMARY KEY,
   status          TEXT NOT NULL,
   origin          TEXT NOT NULL CHECK (origin IN ('foreground','background')),
+  domain          TEXT,
   plain_language  TEXT NOT NULL,
   actions         TEXT NOT NULL,            -- JSON array; computed server-side, never by clients
   cost_total      INTEGER NOT NULL DEFAULT 0, -- micro-USD
@@ -233,6 +234,42 @@ CREATE TABLE IF NOT EXISTS routing_decisions (
   completed_at    TEXT
 );
 
+-- Local conversation index. Task execution remains recorded in the immutable
+-- event spine; these rows make those results reopenable as normal conversations.
+CREATE TABLE IF NOT EXISTS conversations (
+  id         TEXT PRIMARY KEY,
+  context    TEXT NOT NULL CHECK (context IN
+               ('general','coding','research','finance','health','business','builder')),
+  title      TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  task_id         TEXT,
+  role            TEXT NOT NULL CHECK (role IN ('user','assistant','system')),
+  content         TEXT NOT NULL,
+  state           TEXT NOT NULL CHECK (state IN ('pending','complete','failed')),
+  created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS conversation_messages_by_conversation
+ON conversation_messages(conversation_id, created_at);
+
+CREATE INDEX IF NOT EXISTS conversation_messages_by_task
+ON conversation_messages(task_id);
+
+CREATE TABLE IF NOT EXISTS context_routing_decisions (
+  conversation_id TEXT PRIMARY KEY REFERENCES conversations(id),
+  initial_context TEXT NOT NULL,
+  final_context   TEXT NOT NULL,
+  rule_version    TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  corrected_at    TEXT
+);
+
 INSERT OR IGNORE INTO budgets(id, soft_micro_usd, hard_micro_usd, enabled)
 VALUES ('development-phase', 25000000, 50000000, 1);
 
@@ -267,5 +304,10 @@ export function openDb(path: string): DatabaseSync {
   const names = new Set(routingColumns.map((column) => column.name));
   if (!names.has('rating')) db.exec("ALTER TABLE routing_decisions ADD COLUMN rating TEXT CHECK (rating IN ('positive','negative'))");
   if (!names.has('feedback_note')) db.exec('ALTER TABLE routing_decisions ADD COLUMN feedback_note TEXT');
+  const taskColumns = db.prepare("PRAGMA table_info('task_state')").all() as unknown as { name: string }[];
+  if (!taskColumns.some((column) => column.name === 'domain')) db.exec('ALTER TABLE task_state ADD COLUMN domain TEXT');
+  db.exec(`UPDATE task_state
+    SET domain = (SELECT domain FROM events WHERE events.task_id = task_state.task_id AND domain IS NOT NULL ORDER BY seq DESC LIMIT 1)
+    WHERE domain IS NULL`);
   return db;
 }

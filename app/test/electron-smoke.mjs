@@ -34,9 +34,9 @@ async function launch() {
 let first = await launch();
 try {
   assert.equal(await first.page.title(), 'GROVER');
-  assert.equal(await first.page.locator('h1').first().textContent(), 'What do you want to do?');
+  assert.equal(await first.page.locator('h1').first().textContent(), 'What are we working on?');
   await first.page.waitForFunction(() => !document.querySelector('#engine-status')?.textContent?.includes('Checking'));
-  assert.match(await first.page.locator('#engine-status').textContent(), /Codex(?: \+ Claude)? installed/);
+  assert.match(await first.page.locator('#engine-status').textContent(), /Codex ready/);
   assert.equal(await first.page.evaluate(() => typeof process), 'undefined', 'renderer has no Node process access');
   assert.equal(await first.page.evaluate(() => typeof require), 'undefined', 'renderer has no CommonJS access');
   const navigationStart = await first.page.evaluate(() => ({
@@ -44,29 +44,34 @@ try {
     origin: performance.timeOrigin,
   }));
 
-  await first.page.locator('#request').fill('Remember that the Windows desktop app is the primary delivery target');
-  await first.page.locator('#intent').selectOption('remember');
-  await first.page.locator('#submit').click();
+  await first.page.locator('#home-request').fill('Remember that the Windows desktop app is the primary delivery target');
+  await first.page.locator('#home-request').press('Enter');
   await first.page.locator('[data-view="memory"]').click();
   await first.page.locator('#memory-list').getByText('the Windows desktop app is the primary delivery target', { exact: false }).waitFor();
 
-  await first.page.locator('[data-view="command"]').click();
-  await first.page.locator('#request').fill('Deploy the application publicly');
-  await first.page.locator('#intent').selectOption('act');
-  await first.page.locator('#submit').click();
-  await first.page.locator('#all-tasks').getByText('External actions are not configured in this local build', { exact: true }).waitFor();
+  await first.page.locator('[data-view="home"]').click();
+  await first.page.locator('#home-request').fill('Deploy the application publicly');
+  await first.page.locator('#home-request').press('Enter');
+  await first.page.locator('#chat-messages').getByText('That requires an external action', { exact: false }).waitFor();
+  await first.page.locator('#move-conversation').selectOption('business');
+  await first.page.locator('#context-title').getByText('Business', { exact: true }).waitFor();
+
+  await first.page.locator('[data-view="home"]').click();
+  await first.page.locator('#home-request').fill('Line one');
+  await first.page.locator('#home-request').press('Shift+Enter');
+  assert.match(await first.page.locator('#home-request').inputValue(), /Line one\n/);
+  await first.page.locator('#home-request').fill('');
 
   await first.page.locator('#kill-switch').check();
   assert.equal(await first.page.locator('#kill-switch').isChecked(), true);
   await first.page.locator('#kill-switch').uncheck();
 
   if (process.env.GROVER_LIVE_ENGINE === 'true') {
-    await first.page.locator('[data-view="command"]').click();
-    await first.page.locator('#request').fill('Reply with exactly: GROVER_PACKAGED_ENGINE_OK');
-    await first.page.locator('#intent').selectOption('ask');
-    await first.page.locator('#engine').selectOption('codex-cli');
-    await first.page.locator('#submit').click();
-    const packagedResult = first.page.locator('#all-tasks').getByText('GROVER_PACKAGED_ENGINE_OK', { exact: false });
+    await first.page.locator('[data-view="home"]').click();
+    await first.page.locator('#home-request').fill('Reply with exactly: GROVER_PACKAGED_ENGINE_OK');
+    await first.page.locator('#home-engine').selectOption('codex-cli');
+    await first.page.locator('#home-request').press('Enter');
+    const packagedResult = first.page.locator('#chat-messages').getByText('GROVER_PACKAGED_ENGINE_OK', { exact: false });
     await packagedResult.waitFor({ state: 'attached', timeout: 90_000 });
     assert.match(await packagedResult.textContent(), /GROVER_PACKAGED_ENGINE_OK/);
   }

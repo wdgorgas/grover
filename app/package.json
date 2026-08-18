@@ -11,6 +11,7 @@
     "start": "electron .",
     "test": "node --test test/event-spine.test.ts test/store.test.ts test/router.test.ts test/core.test.ts",
     "test:desktop": "node test/electron-smoke.mjs",
+    "test:portable": "node test/portable-smoke.mjs",
     "test:engine": "node test/live-engine-smoke.mjs",
     "test:builder": "node test/live-builder-smoke.mjs",
     "dist": "electron-builder --win portable",
@@ -20,14 +21,19 @@
     "appId": "com.will.grover",
     "productName": "GROVER",
     "artifactName": "GROVER-${version}-portable.${ext}",
+    "compression": "normal",
     "asar": true,
-    "asarUnpack": [
-      "node_modules/@openai/codex-win32-x64/**/*"
+    "extraResources": [
+      {
+        "from": "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc",
+        "to": "codex-runtime"
+      }
     ],
     "files": [
       "src/**/*",
       "renderer/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/@openai/codex-win32-x64/**/*"
     ],
     "directories": {
       "output": "release"

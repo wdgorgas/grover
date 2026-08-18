@@ -12,71 +12,96 @@
     <header class="topbar">
       <div class="brand">
         <div class="orb" aria-hidden="true"></div>
-        <div><strong>GROVER</strong><span>Local command center</span></div>
+        <div><strong>GROVER</strong><span>Your local workspace</span></div>
       </div>
       <div class="top-status">
-        <span id="engine-status" class="status-pill">Checking engines…</span>
-        <span id="cost-status" class="status-pill">$0.00</span>
+        <button id="engine-status" class="status-pill status-button" type="button">Checking agents…</button>
+        <span id="cost-status" class="status-pill">$0.00 used</span>
         <label class="kill-control"><input id="kill-switch" type="checkbox"> Stop all AI</label>
       </div>
     </header>
 
-    <aside class="sidebar" aria-label="Primary navigation">
-      <button class="nav-button active" data-view="command">Command</button>
-      <button class="nav-button" data-view="activity">Activity</button>
-      <button class="nav-button" data-view="memory">Memory</button>
-      <button class="nav-button" data-view="settings">Settings</button>
-      <div class="sidebar-note">Runs entirely on this computer. No GROVER server is connected.</div>
+    <aside class="sidebar" aria-label="Workspaces">
+      <div class="context-heading">Workspaces</div>
+      <nav id="context-navigation" class="context-navigation"></nav>
+      <nav class="utility-navigation" aria-label="Utilities">
+        <button class="utility-button active" data-view="home" type="button" title="Home" aria-label="Home">⌂</button>
+        <button class="utility-button" data-view="memory" type="button" title="Memory" aria-label="Memory">M</button>
+        <button class="utility-button" data-view="settings" type="button" title="Settings" aria-label="Settings">⚙</button>
+      </nav>
     </aside>
 
     <main class="main-content">
-      <section id="view-command" class="view active">
+      <section id="view-home" class="view active">
         <div class="welcome">
-          <p class="eyebrow">One front door</p>
-          <h1>What do you want to do?</h1>
-          <p>Ask a question, produce work, change GROVER, or remember something. The intent and chosen agent stay visible.</p>
+          <p class="eyebrow">Home</p>
+          <h1>What are we working on?</h1>
+          <p>Start naturally. GROVER will organize the conversation into the right workspace.</p>
         </div>
-        <form id="composer" class="composer">
-          <textarea id="request" rows="5" maxlength="10000" placeholder="Describe the outcome you want…" required></textarea>
+        <form id="home-composer" class="composer">
+          <textarea id="home-request" class="prompt-input" rows="5" maxlength="10000" placeholder="Ask a question or start a project…" required></textarea>
           <div class="composer-controls">
-            <label>Intent
-              <select id="intent">
-                <option value="">Auto-detect</option>
-                <option value="ask">Ask</option>
-                <option value="work">Work</option>
-                <option value="act">Act</option>
-                <option value="build">Build GROVER</option>
-                <option value="remember">Remember</option>
-              </select>
-            </label>
             <label>Agent
-              <select id="engine">
+              <select id="home-engine" class="engine-select">
                 <option value="">Auto</option>
                 <option value="codex-cli">Codex</option>
                 <option value="claude-cli">Claude</option>
               </select>
             </label>
-            <span class="shortcut">Ctrl + Enter</span>
-            <button id="submit" class="primary" type="submit">Start</button>
+            <span class="shortcut">Enter to send · Shift+Enter for a new line</span>
+            <button class="primary submit-prompt" type="submit">Send</button>
           </div>
-          <p id="composer-error" class="error" role="alert"></p>
+          <p class="error composer-error" role="alert"></p>
         </form>
+
         <section class="section-block">
-          <div class="section-heading"><h2>Current work</h2><button class="text-button" data-go="activity">See all activity</button></div>
-          <div id="current-work" class="task-list empty-state">Nothing running yet.</div>
+          <div class="section-heading"><h2>In progress</h2></div>
+          <div id="current-work" class="task-list empty-state">Nothing running right now.</div>
         </section>
+        <section class="section-block">
+          <div class="section-heading"><h2>Recent conversations</h2></div>
+          <div id="recent-conversations" class="conversation-list empty-state">No conversations yet.</div>
+        </section>
+        <details class="event-details"><summary>Technical activity</summary><div id="event-list" class="event-list"></div></details>
       </section>
 
-      <section id="view-activity" class="view">
-        <div class="section-heading"><div><p class="eyebrow">Return path</p><h1>Activity</h1></div></div>
-        <div id="all-tasks" class="task-list empty-state">No work recorded yet.</div>
-        <details class="event-details"><summary>Technical event history</summary><div id="event-list" class="event-list"></div></details>
+      <section id="view-context" class="view context-view">
+        <div class="context-header">
+          <div><p id="context-eyebrow" class="eyebrow">Workspace</p><h1 id="context-title">Coding</h1><p id="context-description"></p></div>
+          <div class="context-actions">
+            <label>Move conversation
+              <select id="move-conversation" disabled></select>
+            </label>
+            <button id="new-conversation" type="button">New conversation</button>
+          </div>
+        </div>
+        <div class="conversation-shell">
+          <aside id="workspace-conversations" class="workspace-conversations" aria-label="Conversations"></aside>
+          <section class="chat-panel">
+            <div id="chat-messages" class="chat-messages empty-state">Start a conversation in this workspace.</div>
+            <form id="context-composer" class="composer compact-composer">
+              <textarea id="context-request" class="prompt-input" rows="3" maxlength="10000" placeholder="Continue this conversation…" required></textarea>
+              <div class="composer-controls">
+                <label>Agent
+                  <select id="context-engine" class="engine-select">
+                    <option value="">Auto</option>
+                    <option value="codex-cli">Codex</option>
+                    <option value="claude-cli">Claude</option>
+                  </select>
+                </label>
+                <span class="shortcut">Enter to send · Shift+Enter for a new line</span>
+                <button class="primary submit-prompt" type="submit">Send</button>
+              </div>
+              <p class="error composer-error" role="alert"></p>
+            </form>
+          </section>
+        </div>
       </section>
 
       <section id="view-memory" class="view">
         <p class="eyebrow">Local and inspectable</p>
         <h1>Memory</h1>
-        <p>Only direct “remember this” requests are stored automatically in this build.</p>
+        <p>Direct “remember this” requests are stored on this computer and can be removed here.</p>
         <div id="memory-list" class="memory-list empty-state">No saved memories yet.</div>
       </section>
 
@@ -88,15 +113,19 @@
           <button id="choose-workspace" type="button">Choose folder</button>
         </div>
         <div class="settings-card">
-          <div><strong>Preferred agent</strong><p>Auto currently prefers Codex and keeps Claude available as fallback/checker.</p></div>
+          <div><strong>Preferred agent</strong><p>Auto chooses from available agents and learns from your result feedback.</p></div>
           <select id="preferred-engine">
             <option value="auto">Auto</option>
             <option value="codex-cli">Codex</option>
             <option value="claude-cli">Claude</option>
           </select>
         </div>
+        <section class="settings-section">
+          <div class="section-heading"><div><h2>Agent connections</h2><p>Sign in here when an agent needs attention.</p></div><button id="refresh-engines" type="button">Refresh</button></div>
+          <div id="engine-connections" class="engine-connections"></div>
+        </section>
         <div class="settings-card">
-          <div><strong>Delivery mode</strong><p>Local Windows application. Server deployment and external actions are disconnected.</p></div>
+          <div><strong>Delivery mode</strong><p>Local Windows application. Server deployment and external actions remain disconnected.</p></div>
           <span class="status-pill good">Local only</span>
         </div>
       </section>

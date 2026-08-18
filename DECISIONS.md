@@ -71,3 +71,19 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** Electron's built-in primitives create the window but do not provide an external interaction harness. The desktop proposal replaces browser smoke evidence with equivalent Electron-window evidence; Playwright's Electron driver supplies that missing test primitive without downloading a second browser.
 
 **Prediction (checked at packaging):** The same smoke test will pass before and after packaging-oriented changes without adding a browser runtime to the portable application.
+
+## 2026-08-18 — Persistent conversations and deterministic context routing
+
+**Decision:** Home requests are classified into General, Coding, Research, Finance, Health, Business, or GROVER using a small deterministic keyword router. Conversations and messages are stored in local SQLite and linked to the existing task/event records. The classification is automatic but remains visible and correctable through normal workspace navigation; it is not presented as a required intent form.
+
+**Why:** Will wants GROVER to feel self-organizing while remaining fast and understandable. A deterministic first router supplies an immediate functional workflow and creates labeled examples without requiring another model call just to decide where a message belongs.
+
+**Prediction (check after 25 varied real prompts):** At least 80% of Home prompts will open in the context Will expects, and misses will be explainable from stored rules/examples rather than opaque model behavior.
+
+## 2026-08-18 — Codex native runtime shipped as an explicit portable resource
+
+**Decision:** The Windows Codex executable is copied into Electron's resources as `codex-runtime/bin/codex.exe`; runtime discovery checks that stable packaged location before module-resolution fallbacks. The application probes provider authentication separately from execution health and exposes provider sign-in actions in Settings.
+
+**Why:** Electron's portable self-extractor cannot reliably spawn an executable addressed through an old temporary `app.asar.unpacked` path. An explicit resource gives the packaged app a predictable executable path and prevents a missing file from being mislabeled as a login failure.
+
+**Prediction (check in packaged smoke):** The portable executable will find and start Codex after a clean launch even when no development `node_modules` path is available, and a missing executable will display as unavailable rather than sign-in-required.

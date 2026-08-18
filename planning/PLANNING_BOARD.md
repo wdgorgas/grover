@@ -25,6 +25,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Daily-driver product contract | **Will** | PlanningProposal 002 accepted 2026-08-18; implement front-door intent and progressive disclosure in the functional shell | `planning/proposals/proposal_002_daily_driver_contract.md` |
 | Local Windows delivery | **Codex** | PlanningProposal 003 accepted 2026-08-18; active implementation | `planning/proposals/proposal_003_local_windows_desktop.md` |
 | Provider-neutral agent manager | **Codex** | PlanningProposal 004 accepted 2026-08-18; Codex preferred, Claude fallback/checker | `planning/proposals/proposal_004_provider_neutral_agent_manager.md` |
+| Fluid context workspaces | **Codex** | PlanningProposal 005 accepted 2026-08-18; functional shell implemented and packaged | `planning/proposals/proposal_005_fluid_context_workspaces.md` |
 
 ## Decisions locked by Will (do not reopen in any workstream)
 

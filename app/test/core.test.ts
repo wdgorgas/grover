@@ -44,9 +44,9 @@ test('kill switch cancels active conversational work instead of leaving it runni
   assert.deepEqual(JSON.parse(task.actions), []);
 });
 
-test('renderer-like invalid intent input is rejected at runtime', () => {
+test('renderer-like invalid workspace input is rejected at runtime', () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-invalid-'));
   const db = openDb(':memory:');
   const core = new GroverCore({ db, dataDir, workspaceRoot: resolve(import.meta.dirname, '..', '..') });
-  assert.throws(() => core.submit({ text: 'bad', intent: 'teleport' as never }), /Unknown request intent/);
+  assert.throws(() => core.submit({ text: 'bad', context: 'teleport' as never }), /Unknown conversation workspace/);
 });

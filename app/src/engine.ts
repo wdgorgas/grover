@@ -27,6 +27,8 @@ export interface ExecutionEngine {
   readonly available: boolean;
   run(options: EngineRunOptions): Promise<EngineResult>;
   cancel(runKey: string): boolean;
+  probeAuth?(): Promise<'signed-in' | 'sign-in-required' | 'unknown'>;
+  signIn?(): void;
 }
 
 export type EngineRunOptions = {
@@ -45,6 +47,31 @@ export function findClaudeExecutable(): string | null {
     process.env.APPDATA ? join(process.env.APPDATA, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe') : null,
   ].filter(Boolean) as string[];
   return candidates.find(existsSync) ?? null;
+}
+
+function runStatus(executable: string, args: string[], timeoutMs = 12_000): Promise<{ code: number | null; output: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(executable, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    const timer = setTimeout(() => child.kill(), timeoutMs);
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => { output += chunk; });
+    child.stderr?.on('data', (chunk: string) => { output += chunk; });
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      resolve({ code: null, output: String(error) });
+    });
+    child.once('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code, output: output.trim() });
+    });
+  });
+}
+
+function openSignIn(executable: string, args: string[]): void {
+  const child = spawn(executable, args, { detached: true, windowsHide: true, stdio: 'ignore' });
+  child.unref();
 }
 
 function progressFromRecord(record: Record<string, any>): EngineUpdate | null {
@@ -92,6 +119,19 @@ export class ClaudeCliEngine {
 
   get available(): boolean {
     return Boolean(this.executable);
+  }
+
+  async probeAuth(): Promise<'signed-in' | 'sign-in-required' | 'unknown'> {
+    if (!this.executable) return 'unknown';
+    const result = await runStatus(this.executable, ['auth', 'status', '--json']);
+    if (/"loggedIn"\s*:\s*true/i.test(result.output)) return 'signed-in';
+    if (/"loggedIn"\s*:\s*false/i.test(result.output)) return 'sign-in-required';
+    return 'unknown';
+  }
+
+  signIn(): void {
+    if (!this.executable) throw new Error('Claude is not installed on this computer.');
+    openSignIn(this.executable, ['auth', 'login']);
   }
 
   async run(options: EngineRunOptions): Promise<EngineResult> {
@@ -166,6 +206,7 @@ export class ClaudeCliEngine {
 export function findCodexExecutable(): string | null {
   const candidates: string[] = [];
   if (process.env.CODEX_PATH) candidates.push(process.env.CODEX_PATH);
+  if (process.resourcesPath) candidates.push(join(process.resourcesPath, 'codex-runtime', 'bin', 'codex.exe'));
   try {
     const require = createRequire(import.meta.url);
     const packageJson = require.resolve('@openai/codex-win32-x64/package.json');
@@ -175,6 +216,9 @@ export function findCodexExecutable(): string | null {
     candidates.push(raw.replace('app.asar', 'app.asar.unpacked'), raw);
   } catch {
     // Optional platform package is absent on non-Windows machines.
+  }
+  if (process.env.APPDATA) {
+    candidates.push(join(process.env.APPDATA, 'npm', 'node_modules', '@openai', 'codex', 'node_modules', '@openai', 'codex-win32-x64', 'vendor', 'x86_64-pc-windows-msvc', 'bin', 'codex.exe'));
   }
   return candidates.find(existsSync) ?? null;
 }
@@ -215,6 +259,19 @@ export class CodexCliEngine implements ExecutionEngine {
 
   get available(): boolean {
     return Boolean(this.executable);
+  }
+
+  async probeAuth(): Promise<'signed-in' | 'sign-in-required' | 'unknown'> {
+    if (!this.executable) return 'unknown';
+    const result = await runStatus(this.executable, ['login', 'status']);
+    if (/logged in/i.test(result.output)) return 'signed-in';
+    if (/not logged in|login required|sign in/i.test(result.output)) return 'sign-in-required';
+    return 'unknown';
+  }
+
+  signIn(): void {
+    if (!this.executable) throw new Error('Codex is not installed on this computer.');
+    openSignIn(this.executable, ['login']);
   }
 
   async run(options: EngineRunOptions): Promise<EngineResult> {
@@ -289,16 +346,20 @@ export type Route = {
 export class EngineRouter {
   readonly engines: ExecutionEngine[];
   private active = new Map<string, ExecutionEngine>();
-  private health = new Map<string, { healthy: boolean | null; lastError: string | null }>();
+  private health = new Map<string, {
+    healthy: boolean | null;
+    auth: 'signed-in' | 'sign-in-required' | 'unknown';
+    lastError: string | null;
+  }>();
 
   constructor(engines: ExecutionEngine[] = [new CodexCliEngine(), new ClaudeCliEngine()]) {
     this.engines = engines;
-    for (const engine of engines) this.health.set(engine.id, { healthy: null, lastError: null });
+    for (const engine of engines) this.health.set(engine.id, { healthy: null, auth: 'unknown', lastError: null });
   }
 
   route(intent: EngineMode, preference: string = 'auto', excludeId?: string): Route {
     const capable = this.engines.filter((engine) =>
-      engine.available && this.health.get(engine.id)?.healthy !== false &&
+      engine.available && this.health.get(engine.id)?.healthy !== false && this.health.get(engine.id)?.auth !== 'sign-in-required' &&
       engine.capabilities.includes(intent) && engine.id !== excludeId
     );
     if (!capable.length) throw new Error(`No installed engine can handle ${intent}.`);
@@ -322,10 +383,14 @@ export class EngineRouter {
     this.active.set(options.runKey, engine);
     try {
       const result = await engine.run(options);
-      this.health.set(engine.id, { healthy: true, lastError: null });
+      this.health.set(engine.id, { healthy: true, auth: 'signed-in', lastError: null });
       return result;
     } catch (error) {
-      this.health.set(engine.id, { healthy: false, lastError: String(error) });
+      const previous = this.health.get(engine.id) ?? { healthy: null, auth: 'unknown' as const, lastError: null };
+      const detail = String(error);
+      const auth = /login|logged.?in|oauth|authentication|unauthorized|credential/i.test(detail)
+        ? 'sign-in-required' as const : previous.auth;
+      this.health.set(engine.id, { healthy: false, auth, lastError: detail });
       throw error;
     } finally {
       this.active.delete(options.runKey);
@@ -349,10 +414,53 @@ export class EngineRouter {
     return Object.fromEntries(this.engines.map((engine) => [engine.id, engine.available]));
   }
 
-  status(): Record<string, { installed: boolean; healthy: boolean | null; lastError: string | null }> {
+  async refreshStatus(): Promise<void> {
+    await Promise.all(this.engines.map(async (engine) => {
+      const current = this.health.get(engine.id) ?? { healthy: null, auth: 'unknown' as const, lastError: null };
+      if (!engine.available) {
+        this.health.set(engine.id, { healthy: false, auth: 'unknown', lastError: 'Not installed' });
+        return;
+      }
+      if (!engine.probeAuth) return;
+      try {
+        const auth = await engine.probeAuth();
+        this.health.set(engine.id, {
+          healthy: auth === 'sign-in-required' ? false : null,
+          auth,
+          lastError: auth === 'sign-in-required' ? 'Sign-in required' : null,
+        });
+      } catch (error) {
+        this.health.set(engine.id, { ...current, lastError: String(error) });
+      }
+    }));
+  }
+
+  signIn(engineId: string): void {
+    const engine = this.engines.find((candidate) => candidate.id === engineId);
+    if (!engine?.available || !engine.signIn) throw new Error('That agent is not installed or cannot sign in from GROVER.');
+    engine.signIn();
+    const current = this.health.get(engineId) ?? { healthy: null, auth: 'unknown' as const, lastError: null };
+    this.health.set(engineId, { ...current, auth: 'unknown', healthy: null, lastError: 'Sign-in opened' });
+  }
+
+  status(): Record<string, {
+    installed: boolean;
+    healthy: boolean | null;
+    auth: 'signed-in' | 'sign-in-required' | 'unknown';
+    state: 'ready' | 'sign-in-required' | 'unavailable' | 'error' | 'checking';
+    lastError: string | null;
+  }> {
     return Object.fromEntries(this.engines.map((engine) => [
       engine.id,
-      { installed: engine.available, ...(this.health.get(engine.id) ?? { healthy: null, lastError: null }) },
+      (() => {
+        const status = this.health.get(engine.id) ?? { healthy: null, auth: 'unknown' as const, lastError: null };
+        const state = !engine.available ? 'unavailable'
+          : status.auth === 'sign-in-required' ? 'sign-in-required'
+          : status.healthy === false ? 'error'
+          : status.auth === 'signed-in' || status.healthy === true ? 'ready'
+          : 'checking';
+        return { installed: engine.available, ...status, state };
+      })(),
     ]));
   }
 }
