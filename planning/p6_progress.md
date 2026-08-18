@@ -25,3 +25,27 @@ P6 advances the accepted v2.1 continuity direction without beginning the deferre
 **What the next person should do:** Version and package RC.3, run packaged routing plus live Codex smokes, then launch it on Will's existing database so eligible old memory proposals migrate and the new conversation/project indexes populate.
 
 **Any risks or weirdness:** Codex CLI startup still carries nontrivial fixed overhead, so deterministic local answers are the main route to instant behavior. A learned local coordinator should not be downloaded or trained until real corrections form an eval set that can prove it improves ambiguous cases.
+
+## 2026-08-18 — RC.3 packaged continuity candidate
+
+**What changed:** Versioned the continuity core as `2.0.0-rc.3` and rebuilt the single-file Windows application. A packaged screenshot review found and fixed project-folder controls leaking into General; the rebuilt artifact has an explicit regression assertion.
+
+**What I verified:** The final 156,790,943-byte portable executable (SHA-256 `934700B1F07621126909FFED1060F7F649BA70C41ABE2D79CC3706EB718E521D`) passed packaged automatic profile memory, indexed search, General-to-Coding branch isolation, local project reopen without message pollution, project-folder creation, tier-profile presence, and a live bundled-Codex assistant response. The final screenshot is `app/test-results/packaged-portable-functional.png`. All 62 deterministic checks pass, including durable education-role auto-memory without transient `I am` capture.
+
+**What is still open:** Will's hands-on UX pass plus the later functional slices listed above.
+
+**What the next person should do:** Continue with functional friction in RC.3 before any visual redesign. The first larger domain slice should be the Lifestyle scheduling contract after the coordinator's real routing corrections are collected.
+
+**Any risks or weirdness:** Direct Playwright Electron launch is not compatible with the slow portable self-extractor and hit the old single-instance path; the successful packaged verifier uses the executable's debugging endpoint, asserts the same DOM/state behaviors, and kills only its isolated process tree afterward.
+
+## 2026-08-18 — real-data launch
+
+**What changed:** Backed up the existing user database, launched the exact RC.3 portable executable against the normal Windows user-data location, and allowed the one-time conservative memory migration to run.
+
+**What I verified:** The visible GROVER window is responsive. Active memories moved from 1 to 2, pending proposals moved from 1 to 0, all six model profiles and six conversation-search rows remain available, and no invalid context records exist. The pre-migration backup is `C:\Users\wdgor\AppData\Roaming\grover\grover-pre-rc3-continuity.db`.
+
+**What is still open:** Will's hands-on functional and UX troubleshooting.
+
+**What the next person should do:** Fix observed functional friction before implementing the new visual direction.
+
+**Any risks or weirdness:** The portable parent process stays open while the extracted Electron child runs; this is expected for a single-file portable build.

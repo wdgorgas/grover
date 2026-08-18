@@ -208,7 +208,7 @@ function renderConversationWorkspace() {
   if (!state || !activeContext) return;
   const projectArea = $('#coding-project');
   const project = (state.projects ?? []).find((item) => item.conversation_id === activeConversationId);
-  projectArea.hidden = activeContext !== 'coding';
+  projectArea.classList.toggle('is-hidden', activeContext !== 'coding');
   $('#coding-project-path').textContent = project?.root_path ?? 'Created automatically when Coding begins making files.';
   $('#choose-project-folder').disabled = activeContext !== 'coding' || !activeConversationId;
   $('#open-project-folder').disabled = !project;

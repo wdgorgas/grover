@@ -1,6 +1,6 @@
 # Planning board → Build board
 
-**P0 APPROVED by Will, 2026-07-03. P1–P5 mechanical exits passed 2026-08-18. GROVER 2.0.0-rc.2 is packaged and live-smoked; final hands-on and visual acceptance remain.**
+**P0 APPROVED by Will, 2026-07-03. P1–P5 plus the P6 continuity core are mechanically green. GROVER 2.0.0-rc.3 is packaged and live-smoked; hands-on UX, follow-on domain functions, and visual acceptance remain.**
 
 Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`.
 

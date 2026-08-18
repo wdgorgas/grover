@@ -278,10 +278,14 @@ export class MemoryService {
     const major = value.match(/\bmy major is\s+([^.!?]+)/i);
     const goal = value.match(/\b(?:my (?:long[- ]term )?goal is|i want to become|i plan to become)\s+([^.!?]+)/i);
     const next = value.match(/\bmy next steps? (?:are|is)\s+([^.!?]+)/i);
+    const education = value.match(
+      /\bi(?:'m| am)\s+([^.!?]{0,100}\b(?:undergraduate|graduate student|college student|student|senior|junior|sophomore|freshman|researcher|engineer|developer)\b[^.!?]*)/i,
+    );
     if (name) { content = `Will's name is ${name[1].trim()}.`; category = 'profile:name'; }
     else if (major) { content = `Will's major is ${major[1].trim()}.`; category = 'profile:major'; }
     else if (goal) { content = `Will's goal is ${goal[1].trim()}.`; category = 'profile:goal'; }
     else if (next) { content = `Will's next steps are ${next[1].trim()}.`; category = 'profile:next-steps'; }
+    else if (education) { content = `Will is ${education[1].trim()}.`; category = 'profile:education-role'; }
     else if (prefer) { content = `Will prefers ${prefer[1].trim()}.`; category = 'profile:preference'; }
     else if (like) { content = `Will likes ${like[1].trim()}.`; category = 'profile:preference'; }
     if (!content) return null;
@@ -335,7 +339,9 @@ export class MemoryService {
     let applied = 0;
     for (const proposal of proposals) {
       const content = String(proposal.proposed_content ?? '').trim();
-      if (!/^(?:Will's (?:name|major|goal|next steps)|Will (?:prefers|likes))\b/i.test(content)) continue;
+      const standardProfile = /^(?:Will's (?:name|major|goal|next steps)|Will (?:prefers|likes))\b/i.test(content);
+      const durableRole = /^Will is\b.*\b(?:undergraduate|graduate student|college student|student|senior|junior|sophomore|freshman|researcher|engineer|developer|grad school)\b/i.test(content);
+      if (!standardProfile && !durableRole) continue;
       const duplicate = this.db.prepare(
         `SELECT id FROM memories WHERE namespace = ? AND lower(content) = lower(?)
          AND deleted_at IS NULL AND superseded_by IS NULL LIMIT 1`
@@ -345,6 +351,7 @@ export class MemoryService {
           : /^Will's major\b/i.test(content) ? 'profile:major'
           : /^Will's goal\b/i.test(content) ? 'profile:goal'
           : /^Will's next steps\b/i.test(content) ? 'profile:next-steps'
+          : /^Will is\b/i.test(content) ? 'profile:education-role'
           : 'profile:preference';
         this.remember({
           content, namespace: proposal.namespace, source: `auto-policy:${proposal.provenance}`,

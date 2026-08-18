@@ -79,6 +79,7 @@ try {
   await first.page.locator('#context-request').fill("Let's code tictactoe");
   await first.page.locator('#context-request').press('Enter');
   await first.page.locator('#context-title').getByText('Coding', { exact: true }).waitFor();
+  assert.equal(await first.page.locator('#coding-project').isVisible(), true);
   await first.page.locator('#context-route-status').getByText('Branched without changing', { exact: false }).waitFor();
   await first.page.locator('#coding-project-path').getByText('tictactoe', { exact: false }).waitFor();
   assert.equal(await first.page.locator('#open-project-folder').isEnabled(), true);
@@ -102,6 +103,9 @@ try {
     codingMessagesBeforeNavigation,
     'navigation command polluted the project conversation',
   );
+  await first.page.locator('[data-view="home"]').click();
+  await first.page.locator('#recent-conversations .conversation-button').filter({ hasText: 'Remember that the Windows desktop app' }).click();
+  assert.equal(await first.page.locator('#coding-project').isVisible(), false, 'project controls leaked into General');
   await first.page.locator('#kill-switch').uncheck();
 
   await first.page.locator('[data-view="settings"]').click();
@@ -133,7 +137,7 @@ try {
     await first.page.locator('#home-request').fill('Reply with exactly: GROVER_PACKAGED_ENGINE_OK');
     await first.page.locator('#home-engine').selectOption('codex-cli');
     await first.page.locator('#home-request').press('Enter');
-    const packagedResult = first.page.locator('#chat-messages').getByText('GROVER_PACKAGED_ENGINE_OK', { exact: false });
+    const packagedResult = first.page.locator('#chat-messages .message.assistant .message-content').filter({ hasText: 'GROVER_PACKAGED_ENGINE_OK' }).last();
     await packagedResult.waitFor({ state: 'attached', timeout: 90_000 });
     assert.match(await packagedResult.textContent(), /GROVER_PACKAGED_ENGINE_OK/);
   }

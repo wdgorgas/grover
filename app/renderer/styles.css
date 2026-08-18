@@ -114,6 +114,7 @@ select, button:not(.context-button):not(.utility-button):not(.conversation-butto
 .memory-card p, .settings-card p { margin: 4px 0 0; font-size: 12px; }
 .memory-actions { display: flex; gap: 7px; flex-shrink: 0; }
 .settings-card + .settings-card { margin-top: 9px; }
+.is-hidden { display: none !important; }
 .settings-section { margin: 26px 0; }
 .settings-section .section-heading p { margin: 4px 0 0; font-size: 12px; }
 .engine-connections { display: grid; gap: 9px; }

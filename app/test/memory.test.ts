@@ -72,6 +72,18 @@ test('previous safe profile proposals auto-apply once under the new memory polic
   assert.match(state.memories[0].content, /computer science/i);
 });
 
+test('durable education and role statements auto-save without accepting transient I-am facts', () => {
+  const { db, memory } = memoryFixture();
+  const durableTask = createTask(db, 'ask', 'I am a physics undergraduate looking at grad schools', 'general');
+  const durable = memory.considerIncidental(durableTask, 'I am a physics undergraduate looking at grad schools');
+  assert.equal(durable?.kind, 'saved');
+  assert.match((snapshot(db) as any).memories[0].content, /physics undergraduate/i);
+
+  const transientTask = createTask(db, 'ask', 'I am tired today', 'general');
+  assert.equal(memory.considerIncidental(transientTask, 'I am tired today'), null);
+  assert.equal((snapshot(db) as any).memories.length, 1);
+});
+
 test('memory snapshots stay bounded while indexed search reaches older records', () => {
   const { db, memory } = memoryFixture();
   const insert = db.prepare(
