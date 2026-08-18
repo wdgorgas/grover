@@ -47,3 +47,11 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** The repository previously gave different agents contradictory Git instructions and allowed documentation to bypass the binding branch discipline. A bounded evidence-driven loop preserves independent review without creating an open-ended agent conversation.
 
 **Prediction (checked at P1 exit):** The unified contract will produce complete five-line handoffs and independently reviewable evidence without requiring more than two repair cycles for any remaining P1 slice.
+
+## 2026-08-18 — Electron host and portable Windows package
+
+**Decision:** GROVER's first complete delivery is a local Electron desktop application with a sandboxed renderer, a narrow preload bridge, and authoritative application logic in the main process. Desktop IPC replaces SSE inside the packaged app. `electron-builder` produces a portable Windows executable; server deployment remains deferred.
+
+**Why:** Will explicitly requires a runnable Windows application rather than a browser product and wants local development until functionality is complete. This machine already has Node but has neither a .NET SDK nor Rust, so Electron is the smallest implementation change that reuses the tested TypeScript core and produces a normal Windows app. Node built-ins cannot create or package a Windows GUI, so Electron and its packager satisfy the dependency exception in master prompt §11.8.
+
+**Prediction (checked at the desktop P1 exit):** The packaged executable will launch without a browser or development server, preserve event and task state across restart, and support the golden functional flow with the renderer unable to access Node directly.

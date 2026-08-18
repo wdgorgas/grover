@@ -9,7 +9,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Phase | What | Status |
 |---|---|---|
 | P0 | Decision lock + master prompt | **APPROVED (Will, 2026-07-03)** — spec: `planning/grover_v2_master_prompt.md` |
-| P1 | Spine skeleton: SPA shell, orb port, events+projections, SSE, cost-ledger stub, kill switch, object-model schema, DomainContract stubs | **OPEN** — event spine implemented/hardened on `phase-p1-event-spine` (14 tests); remaining slices listed in `planning/p1_progress.md`; budget $25 soft / $50 hard |
+| P1 | Spine skeleton: Windows desktop shell, events+projections, desktop IPC, cost ledger, kill switch, object-model schema, DomainContract stubs | **ACTIVE** — Windows desktop completion slice on `phase-p1-windows-desktop`; event spine baseline is green (14 tests); budget $25 soft / $50 hard |
 | P2 | Razor Builder slice (one real request end-to-end) | Blocked on P1 exit |
 | P3 | Builder reliability set (5 diverse requests) | Blocked on P2 exit |
 | P4 | Minimal memory core (10 tests + no-migration test) | Blocked on P3 exit |
@@ -20,9 +20,10 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Track | Owner | Status | Output |
 |---|---|---|---|
 | Acceptance-test catalog: expand master prompt §5/§13 into a numbered runnable checklist (this is also a strong P1 warm-up task) | open (relay) | Unclaimed | `planning/acceptance_test_catalog.md` |
-| Visual direction / UI design | **Will + Claude Design (Will's alone)** | Will owns this directly; Jackson routes ideas to Will, doesn't own the direction | `design/` |
+| Visual direction / UI design | **Will** | New direction pending; visual polish deferred until the local desktop application is functional | `design/` |
 | Build-technique intake (external lists → adopt/skip) | main thread | Standing rule + first pass done | `planning/build_techniques_assessment.md` |
-| Daily-driver product contract | **Will** | PlanningProposal 002 pending; resolve front-door intent and progressive disclosure before SPA implementation | `planning/proposals/proposal_002_daily_driver_contract.md` |
+| Daily-driver product contract | **Will** | PlanningProposal 002 accepted 2026-08-18; implement front-door intent and progressive disclosure in the functional shell | `planning/proposals/proposal_002_daily_driver_contract.md` |
+| Local Windows delivery | **Codex** | PlanningProposal 003 accepted 2026-08-18; active implementation | `planning/proposals/proposal_003_local_windows_desktop.md` |
 
 ## Decisions locked by Will (do not reopen in any workstream)
 

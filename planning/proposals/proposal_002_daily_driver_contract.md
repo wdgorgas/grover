@@ -3,14 +3,14 @@
 - **proposal_id:** 002
 - **source_file:** `planning/PRODUCT_NORTH_STAR.md`, `planning/DEVELOPMENT_PROCESS.md`
 - **proposer:** ChatGPT product/architecture review, requested by Will on 2026-07-10
-- **status:** proposed
+- **status:** accepted
 - **area:** product identity, v2.0 framing, front-door behavior, phase evidence, development process
 - **affected_decisions:** v2.0 Definition of Done framing; P1/P2 user-experience acceptance; post-v2.0 sequencing; development harness
 - **summary:** Preserve the current P0 trust architecture, but explicitly frame v2.0 as the trust kernel rather than the finished everyday AI hub. Add a daily-driver contract: one natural-language front door; explicit Ask/Work/Act/Build/Remember intent semantics; progressive disclosure of machine activity; safe moldability/undo; and real-use friction evidence. Adopt a bounded maker/verifier/checker loop independent of any particular model pairing.
 - **acceptance_implications:** Proposed additions below.
 - **conflicts_with_locked_decisions:** No required architectural reversal. A visible non-Builder front-door behavior in v2.0 may narrow or reinterpret the current UI/non-scope guard and therefore requires Will's explicit decision before changing the master prompt.
-- **requires_will_decision:** yes
-- **resolution:** pending
+- **requires_will_decision:** resolved by Will's 2026-08-18 instruction to finish a functional local application before visual redesign
+- **resolution:** Accepted in full. The functional desktop front door implements the Ask/Work/Act/Build/Remember distinction and progressive disclosure before visual redesign. Real-use friction remains product evidence after each runnable increment.
 
 ## Proposed decisions
 
