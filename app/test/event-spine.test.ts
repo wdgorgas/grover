@@ -106,6 +106,23 @@ test('events reduce into one authoritative task_state with server-computed actio
   assert.deepEqual(JSON.parse(t.actions as string), [], 'terminal task exposes no actions');
 });
 
+test('auxiliary audit events cannot replace the task application context', () => {
+  const db = freshDb();
+  appendEvent(db, taskEvent({ domain: 'general', plainLanguage: 'Started in General' }));
+  for (const [scopeType, domain] of [
+    ['memory', 'will-private'], ['budget', 'budget'], ['policy', 'policy'],
+  ] as const) {
+    appendEvent(db, taskEvent({
+      scopeType, domain, phase: scopeType, plainLanguage: `Recorded ${scopeType} audit evidence`,
+    }));
+  }
+  const task = db.prepare('SELECT domain FROM task_state WHERE task_id = ?').get('task-1') as { domain: string };
+  assert.equal(task.domain, 'general');
+  rebuildProjections(db);
+  const replayed = db.prepare('SELECT domain FROM task_state WHERE task_id = ?').get('task-1') as { domain: string };
+  assert.equal(replayed.domain, 'general');
+});
+
 test('active task exposes pause/cancel; blocked task only cancel; never verify', () => {
   const db = freshDb();
   appendEvent(db, taskEvent({ phase: 'editing' }));

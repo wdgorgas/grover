@@ -58,6 +58,12 @@ try {
   await proposedName.waitFor();
   await proposedName.locator('xpath=ancestor::article').getByRole('button', { name: 'Remember' }).click();
   await first.page.locator('#memory-list').getByText("Will's name is Will", { exact: false }).waitFor();
+  const greetingDomain = await first.page.evaluate(async () => {
+    const state = await window.grover.snapshot();
+    const message = state.messages.find((item) => item.role === 'user' && item.content === 'hi, my name is Will');
+    return state.tasks.find((item) => item.task_id === message.task_id)?.domain;
+  });
+  assert.equal(greetingDomain, 'general', 'memory proposal changed the application context');
   await first.page.locator('#kill-switch').uncheck();
 
   await first.page.locator('[data-view="settings"]').click();

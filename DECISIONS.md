@@ -121,3 +121,11 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** These choices make P5 safety behavior local, inspectable, reversible, and testable without teaching a model to make governance decisions. Preserving a failed branch is safer than guessing which edits belonged to the user, while the recovery card supplies a concrete next step.
 
 **Prediction (checked at P5 exit):** All five triggers will be independently provokable, hostile retrieved instructions will never reach an engine prompt, a tampered backup will leave live memory unchanged and health non-green, and a forced UI verification failure will retain the changed file with a complete recovery card. **Result: confirmed.**
+
+## 2026-08-18 — Memory events preserve task context
+
+**Decision:** A memory proposal linked to a task records the task's application context (`general`, `coding`, and so on) in the event domain. Its storage namespace remains inside the proposal payload/table and may never replace the task projection's context. Retrieval also falls back safely to the General namespace map if migrated data contains an unknown context.
+
+**Why:** The RC.1 greeting path used `will-private` as the proposal event domain. The event reducer correctly treated that as a task-domain update, after which context retrieval crashed because `will-private` is a namespace, not an application context.
+
+**Prediction (checked immediately):** The exact greeting `hey grover my name is will` will create one reviewable memory proposal, retain `general` as the task context, call Codex, and finish. **Result: confirmed by deterministic and live Codex regression tests.**

@@ -8,7 +8,9 @@ import { chromium } from 'playwright-core';
 
 const appDir = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(appDir, '..');
-const executable = process.env.GROVER_PORTABLE_EXE ?? join(appDir, 'release', 'GROVER-2.0.0-rc.1-portable.exe');
+const executable = process.env.GROVER_PORTABLE_EXE ?? join(appDir, 'release', 'GROVER-2.0.0-rc.2-portable.exe');
+const prompt = process.env.GROVER_PORTABLE_PROMPT ?? 'Reply with exactly: GROVER_PORTABLE_CODEX_OK';
+const expected = process.env.GROVER_PORTABLE_EXPECT ?? 'GROVER_PORTABLE_CODEX_OK';
 const dataDir = mkdtempSync(join(tmpdir(), 'grover-portable-smoke-'));
 const port = 19333;
 
@@ -51,12 +53,12 @@ try {
   const page = pages.find((candidate) => candidate.url().startsWith('file:')) ?? pages[0];
   await page.waitForSelector('#home-request');
   await page.waitForFunction(() => document.querySelector('#engine-status')?.textContent?.includes('Codex ready'));
-  await page.locator('#home-request').fill('Reply with exactly: GROVER_PORTABLE_CODEX_OK');
+  await page.locator('#home-request').fill(prompt);
   await page.locator('#home-engine').selectOption('codex-cli');
   await page.locator('#home-request').press('Enter');
-  const answer = page.locator('#chat-messages').getByText('GROVER_PORTABLE_CODEX_OK', { exact: false });
+  const answer = page.locator('#chat-messages').getByText(expected, { exact: false });
   await answer.waitFor({ timeout: 90_000 });
-  assert.match(await answer.textContent(), /GROVER_PORTABLE_CODEX_OK/);
+  assert.match(await answer.textContent(), new RegExp(expected));
   console.log('Portable executable smoke passed with live bundled Codex.');
 } finally {
   await browser?.close().catch(() => {});

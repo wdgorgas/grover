@@ -18,4 +18,10 @@ Mechanical P5 exit completed on 2026-08-18 under accepted PlanningProposal 006. 
 
 **What changed:** Versioned the finished functional scope as `2.0.0-rc.1` and built the single-file portable Windows application with the native Codex runtime embedded.
 
-**What I verified:** The exact portable file answered a live request through bundled Codex. The RC source then passed 51 deterministic checks, rendered desktop smoke, live Ask, live restart-backed memory recall, and the full four-case live Builder reliability suite. Artifact details are recorded in `planning/functional_candidate_handoff.md`.
+**What I verified:** The exact portable file answered a live request through bundled Codex. The RC source then passed the deterministic suite, rendered desktop smoke, live Ask, live restart-backed memory recall, and the full four-case live Builder reliability suite. Artifact details are recorded in `planning/functional_candidate_handoff.md`.
+
+## 2026-08-18 — RC.2 profile-greeting repair
+
+**What changed:** Fixed auxiliary memory, budget, and policy audit events so their internal domains cannot replace a task's application context. Added reducer replay coverage, a core regression for `hey grover my name is will`, and a rendered desktop assertion.
+
+**What I verified:** 53 deterministic checks pass. The exact greeting passes through live Codex in source and through the packaged RC.2 executable with bundled Codex. It remains in General and produces one reviewable memory proposal instead of crashing before the engine call.

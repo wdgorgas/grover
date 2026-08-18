@@ -106,7 +106,9 @@ export function readableNamespaces(context: Context): string[] {
     business: ['will-private', 'shared-business'],
     builder: ['will-private', 'shared-grover-dev'],
   };
-  return map[context];
+  // A stale or migrated event must never turn an internal namespace into an
+  // application context and crash an otherwise valid request.
+  return map[context] ?? map.general;
 }
 
 export class MemoryService {
@@ -240,6 +242,8 @@ export class MemoryService {
     const source = this.db.prepare('SELECT event_id FROM events WHERE task_id = ? ORDER BY seq LIMIT 1').get(taskId) as
       { event_id: string } | undefined;
     if (!source) throw new Error('A memory proposal needs a source event.');
+    const task = this.db.prepare('SELECT domain FROM task_state WHERE task_id = ?').get(taskId) as
+      { domain: Context | null } | undefined;
     const id = randomUUID();
     const now = new Date().toISOString();
     transact(this.db, () => {
@@ -249,7 +253,8 @@ export class MemoryService {
          VALUES (?, ?, 'create', ?, 'proposed', ?, ?, ?, ?, ?)`
       ).run(id, source.event_id, namespace, `conversation:${taskId}`, sensitivity, 'Possible profile fact from ordinary conversation', content, now);
       appendEventInTransaction(this.db, {
-        scopeType: 'memory', scopeId: id, taskId, idempotencyKey: `${id}:proposed`, actor: 'grover', domain: namespace,
+        scopeType: 'memory', scopeId: id, taskId, idempotencyKey: `${id}:proposed`, actor: 'grover',
+        domain: task?.domain ?? undefined,
         phase: 'memory', plainLanguage: 'Proposed a possible memory for review',
         internalDetail: JSON.stringify({ proposalId: id, sensitivity }),
       });

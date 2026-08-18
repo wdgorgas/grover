@@ -92,6 +92,24 @@ test('Noop engine swap preserves streaming task, conversation, cost, and event s
   assert.equal(state.costs.estimated, 250_000);
 });
 
+test('profile greeting proposes memory without corrupting the conversation context', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-profile-greeting-'));
+  const db = openDb(':memory:');
+  const engine = new NoopHarnessEngine();
+  const core = new GroverCore({
+    db, dataDir, workspaceRoot: resolve(import.meta.dirname, '..', '..'),
+    router: new EngineRouter([engine]),
+  });
+  const submitted = core.submit({ text: 'hey grover my name is will', engine: engine.id });
+  await waitFor(() => (core.getSnapshot() as any).tasks[0]?.status === 'done', 'profile greeting did not finish');
+  const state = core.getSnapshot() as any;
+  const task = state.tasks.find((item: any) => item.task_id === submitted.taskId);
+  assert.equal(task.domain, 'general');
+  assert.equal(state.memoryProposals.length, 1);
+  assert.match(state.memoryProposals[0].proposed_content, /Will's name is will/i);
+  assert.deepEqual(engine.modes, ['ask']);
+});
+
 test('Builder pause, resume, and cancel transitions work through the core', async () => {
   const fixture = mkdtempSync(join(tmpdir(), 'grover-core-build-actions-'));
   writeFileSync(join(fixture, 'AGENTS.md'), '# Test fixture\n');

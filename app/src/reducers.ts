@@ -55,7 +55,10 @@ function applyToTaskState(db: DatabaseSync, ev: EventRow): void {
   const status = isLifecycle ? ev.phase : (existing?.status ?? 'intake');
   // Foreground vs background derives from the first event's actor (§4.3; DECISIONS.md).
   const origin = existing?.origin ?? (ev.actor === 'will' ? 'foreground' : 'background');
-  const domain = ev.domain ?? existing?.domain ?? null;
+  // Memory, budget, and policy events may be linked to a task for auditability,
+  // but their internal domains are not application conversation contexts.
+  const carriesTaskDomain = ['task', 'build_run', 'feature_request'].includes(ev.scope_type);
+  const domain = carriesTaskDomain ? (ev.domain ?? existing?.domain ?? null) : (existing?.domain ?? null);
   const costTotal = (existing?.cost_total ?? 0) + (ev.cost_delta ?? 0);
 
   db.prepare(
