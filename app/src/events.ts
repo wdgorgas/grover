@@ -11,7 +11,7 @@ export type ScopeType =
   | 'task' | 'build_run' | 'feature_request' | 'system' | 'policy' | 'budget' | 'memory';
 export type Actor = 'will' | 'grover' | 'engine' | 'tool' | 'system';
 export type Phase =
-  | 'intake' | 'planning' | 'editing' | 'verifying' | 'blocked' | 'done' | 'failed'
+  | 'intake' | 'planning' | 'queued' | 'editing' | 'paused' | 'verifying' | 'blocked' | 'done' | 'failed'
   | 'cancelled' | 'policy' | 'budget' | 'memory' | 'system';
 
 export interface EventInput {
@@ -96,7 +96,7 @@ function payloadMismatches(existing: EventRow, input: EventInput): string[] {
   }).map(([col]) => col);
 }
 
-export function appendEvent(db: DatabaseSync, input: EventInput): AppendResult {
+function validateInput(input: EventInput): void {
   if (!input.plainLanguage || input.plainLanguage.trim().length === 0) {
     throw new Error('plain_language is mandatory on every event (master prompt §4.3)');
   }
@@ -111,33 +111,34 @@ export function appendEvent(db: DatabaseSync, input: EventInput): AppendResult {
   if (input.costDelta !== undefined && !Number.isInteger(input.costDelta)) {
     throw new Error('cost_delta must be an integer (micro-USD)');
   }
+}
 
-  db.exec('BEGIN IMMEDIATE;');
-  try {
-    const existing = db
+/** Append while the caller already owns a transaction. */
+export function appendEventInTransaction(db: DatabaseSync, input: EventInput): AppendResult {
+  validateInput(input);
+  const existing = db
       .prepare('SELECT * FROM events WHERE idempotency_key = ?')
       .get(input.idempotencyKey) as EventRow | undefined;
-    if (existing) {
-      const mismatches = payloadMismatches(existing, input);
-      if (mismatches.length > 0) {
-        throw new Error(
-          `idempotency conflict: key '${input.idempotencyKey}' was already used with a ` +
-          `different payload (differs in: ${mismatches.join(', ')}). Reusing a key must ` +
-          `mean an identical retry, never a new event.`
-        );
-      }
-      db.exec('COMMIT;');
-      return { event: existing, deduplicated: true };
+  if (existing) {
+    const mismatches = payloadMismatches(existing, input);
+    if (mismatches.length > 0) {
+      throw new Error(
+        `idempotency conflict: key '${input.idempotencyKey}' was already used with a ` +
+        `different payload (differs in: ${mismatches.join(', ')}). Reusing a key must ` +
+        `mean an identical retry, never a new event.`
+      );
     }
+    return { event: existing, deduplicated: true };
+  }
 
-    const eventId = randomUUID();
-    db.prepare(
+  const eventId = randomUUID();
+  db.prepare(
       `INSERT INTO events
          (event_id, scope_type, scope_id, task_id, build_run_id, parent_event_id,
           idempotency_key, ts, actor, domain, phase, plain_language, internal_detail,
           evidence_ref, cost_delta, model_run_id, signoff_state)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
+  ).run(
       eventId,
       input.scopeType,
       input.scopeId ?? null,
@@ -155,16 +156,22 @@ export function appendEvent(db: DatabaseSync, input: EventInput): AppendResult {
       input.costDelta ?? null,
       input.modelRunId ?? null,
       input.signoffState ?? null
-    );
+  );
 
-    const row = db
-      .prepare('SELECT * FROM events WHERE event_id = ?')
-      .get(eventId) as EventRow;
+  const row = db
+    .prepare('SELECT * FROM events WHERE event_id = ?')
+    .get(eventId) as EventRow;
 
-    applyEventToProjections(db, row);
+  applyEventToProjections(db, row);
+  return { event: row, deduplicated: false };
+}
 
+export function appendEvent(db: DatabaseSync, input: EventInput): AppendResult {
+  db.exec('BEGIN IMMEDIATE;');
+  try {
+    const result = appendEventInTransaction(db, input);
     db.exec('COMMIT;');
-    return { event: row, deduplicated: false };
+    return result;
   } catch (err) {
     db.exec('ROLLBACK;');
     throw err;

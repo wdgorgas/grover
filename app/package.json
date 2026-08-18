@@ -6,7 +6,42 @@
   "engines": {
     "node": ">=22.18"
   },
+  "main": "src/main.mjs",
   "scripts": {
-    "test": "node --test test/event-spine.test.ts"
+    "start": "electron .",
+    "test": "node --test test/event-spine.test.ts test/store.test.ts test/router.test.ts test/core.test.ts",
+    "test:desktop": "node test/electron-smoke.mjs",
+    "test:engine": "node test/live-engine-smoke.mjs",
+    "test:builder": "node test/live-builder-smoke.mjs",
+    "dist": "electron-builder --win portable",
+    "pack": "electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.will.grover",
+    "productName": "GROVER",
+    "artifactName": "GROVER-${version}-portable.${ext}",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/@openai/codex-win32-x64/**/*"
+    ],
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "portable"
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.62.1"
+  },
+  "dependencies": {
+    "@openai/codex": "^0.147.0"
   }
 }

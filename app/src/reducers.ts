@@ -10,7 +10,7 @@ import type { EventRow } from './events.ts';
 
 /** Task lifecycle phases — the events.phase values that change a task's status. */
 const TASK_LIFECYCLE = new Set([
-  'intake', 'planning', 'editing', 'verifying', 'blocked', 'done', 'failed', 'cancelled',
+  'intake', 'planning', 'queued', 'editing', 'paused', 'verifying', 'blocked', 'done', 'failed', 'cancelled',
 ]);
 
 const TERMINAL = new Set(['done', 'failed', 'cancelled']);
@@ -22,6 +22,7 @@ const TERMINAL = new Set(['done', 'failed', 'cancelled']);
  */
 export function availableActions(status: string): string[] {
   if (TERMINAL.has(status)) return [];
+  if (status === 'paused') return ['resume', 'cancel'];
   if (status === 'blocked') return ['cancel'];
   return ['pause', 'cancel'];
 }
@@ -30,6 +31,8 @@ export function availableActions(status: string): string[] {
 function buildRunStatus(phase: string): string {
   switch (phase) {
     case 'verifying': return 'verifying';
+    case 'queued': return 'queued';
+    case 'paused': return 'paused';
     case 'blocked': return 'blocked';
     case 'done': return 'passed';
     case 'failed': return 'failed';

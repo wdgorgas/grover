@@ -55,3 +55,19 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** Will explicitly requires a runnable Windows application rather than a browser product and wants local development until functionality is complete. This machine already has Node but has neither a .NET SDK nor Rust, so Electron is the smallest implementation change that reuses the tested TypeScript core and produces a normal Windows app. Node built-ins cannot create or package a Windows GUI, so Electron and its packager satisfy the dependency exception in master prompt §11.8.
 
 **Prediction (checked at the desktop P1 exit):** The packaged executable will launch without a browser or development server, preserve event and task state across restart, and support the golden functional flow with the renderer unable to access Node directly.
+
+## 2026-08-18 — Provider-neutral engine router; Codex preferred initially
+
+**Decision:** GROVER owns an engine registry and deterministic router. Codex and Claude implement the same normalized execution contract. Auto routing initially prefers Codex for Ask, Work, and Build, uses Claude as fallback and independent build checker, and records every selection, reason, fallback, and outcome. A per-request override remains available.
+
+**Why:** Will explicitly rejected a single-model backbone and prefers Codex at this stage. A provider-neutral manager preserves that preference without turning it into architectural lock-in. Deterministic routing is inspectable and testable now; stored outcomes create the evidence needed to improve or later learn routing policy without self-reinforcing guesses.
+
+**Prediction (checked after the first five real runs):** Disabling either provider will leave the same task, progress, cancel, evidence, and receipt flows working through the remaining engine, and routing records will make every selection explainable.
+
+## 2026-08-18 — Playwright Core for Electron functional evidence
+
+**Decision:** Use `playwright-core` only in development tests to launch the Electron application, drive its real renderer, assert state/DOM behavior, detect document navigation, capture console errors, and save a screenshot. It is not shipped in the production package.
+
+**Why:** Electron's built-in primitives create the window but do not provide an external interaction harness. The desktop proposal replaces browser smoke evidence with equivalent Electron-window evidence; Playwright's Electron driver supplies that missing test primitive without downloading a second browser.
+
+**Prediction (checked at packaging):** The same smoke test will pass before and after packaging-oriented changes without adding a browser runtime to the portable application.

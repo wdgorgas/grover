@@ -47,3 +47,15 @@ ChatGPT reviewed the first slice (source + itemized dispositions: `planning/prop
 **What the next person should do:** Will reviews Proposal 002 items C and D before SPA implementation. Meanwhile the next safe code slice remains Builder object-model tables + closure invariant, as previously sequenced.
 
 **Risks or weirdness:** This checkout required a per-command Git safe-directory override because Windows reports different folder ownership. The supplied patch used abbreviated hunk markers, so its two intended changes were applied directly and verified rather than passed to `git apply`.
+
+### 2026-08-18 — functional local Windows desktop application
+
+**What changed:** Accepted PlanningProposals 002–004. GROVER is now a local Electron application rather than a browser-delivered SPA. Added the complete Builder object schema, cost ledger and hard-cap preflight, kill switch, paused/resumable task state, DomainContract lane records, local memory/vault writes, provider-neutral engine registry, outcome/feedback-based routing, Codex and Claude adapters, a sandboxed desktop renderer, and portable-Windows packaging configuration. Codex is the initial preference; Claude is fallback/checker, not a backbone dependency.
+
+**What I verified:** 26/26 deterministic tests pass; zero npm audit vulnerabilities; Electron smoke drives the real desktop window, confirms renderer isolation, direct memory, blocked external action, kill switch, persistence across restart, zero document navigation, and captures `app/test-results/electron-smoke.png`. Live Codex Ask passes. A live isolated Builder fixture passes the full branch → edit → test → protected-path check → evidence → commit → receipt flow and leaves the fixture repo clean.
+
+**What is still open:** Build and launch the portable Windows executable; verify packaged Codex discovery and persistence; finish final maker/checker diff review. Real user UX feedback and the new visual direction intentionally follow the functional package.
+
+**What the next person should do:** Run `npm run dist`, launch the resulting portable `.exe`, rerun the desktop smoke after any packaging repair, and record the exact artifact path/hash.
+
+**Risks or weirdness:** Claude CLI is installed but its current OAuth session is expired; GROVER detected the run failure and safely fell back to Codex. The local executable will be unsigned, so Windows SmartScreen may warn on first launch. Server deployment remains deliberately disconnected.

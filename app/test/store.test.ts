@@ -1,0 +1,96 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { openDb } from '../src/db.ts';
+import {
+  addEvidence, checkBudget, closureReady, completeReceipt, completeRoutingDecision,
+  createBuild, createTask, deleteMemory, engineRanking, inferIntent, rateTaskRouting,
+  recordCost, recordRoutingDecision, saveMemory, snapshot, transitionRun,
+} from '../src/store.ts';
+
+test('intent routing distinguishes the five front-door commitments', () => {
+  assert.equal(inferIntent('What does this architecture do?'), 'ask');
+  assert.equal(inferIntent('Write a concise project brief'), 'work');
+  assert.equal(inferIntent('Deploy the app'), 'act');
+  assert.equal(inferIntent('Fix the GROVER app settings'), 'build');
+  assert.equal(inferIntent('Remember that I prefer local apps'), 'remember');
+});
+
+test('Builder object creation is atomic and records the selected engine', () => {
+  const db = openDb(':memory:');
+  const taskId = createTask(db, 'build', 'Add a useful local feature');
+  const { featureId, runId } = createBuild(db, taskId, 'Add a useful local feature', 'codex-cli');
+  const feature = db.prepare('SELECT * FROM feature_requests WHERE id = ?').get(featureId) as Record<string, unknown>;
+  const run = db.prepare('SELECT * FROM build_runs WHERE id = ?').get(runId) as Record<string, unknown>;
+  const checks = db.prepare('SELECT COUNT(*) AS count FROM acceptance_checks WHERE build_run_id = ?').get(runId) as { count: number };
+  assert.equal(feature.active_build_run_id, runId);
+  assert.equal(run.engine_id, 'codex-cli');
+  assert.equal(checks.count, 2);
+});
+
+test('pause and resume actions come only from the reducer projection', () => {
+  const db = openDb(':memory:');
+  const taskId = createTask(db, 'build', 'Change GROVER');
+  const { runId } = createBuild(db, taskId, 'Change GROVER');
+  transitionRun(db, runId, 'paused', 'paused', 'Paused safely');
+  const task = db.prepare('SELECT status, actions FROM task_state WHERE task_id = ?').get(taskId) as { status: string; actions: string };
+  assert.equal(task.status, 'paused');
+  assert.deepEqual(JSON.parse(task.actions), ['resume', 'cancel']);
+});
+
+test('closure requires every required trusted evidence type and a receipt', () => {
+  const db = openDb(':memory:');
+  const taskId = createTask(db, 'build', 'Change GROVER');
+  const { runId } = createBuild(db, taskId, 'Change GROVER');
+  addEvidence(db, runId, `${runId}:automated-tests`, 'test_output', 'test_runner', 'test.txt', 'passed');
+  addEvidence(db, runId, `${runId}:recorded-change`, 'git_diff', 'git', 'diff.txt', 'diff');
+  completeReceipt(db, runId, 'receipt');
+  assert.equal(closureReady(db, runId), false, 'commit evidence is still missing');
+  addEvidence(db, runId, `${runId}:recorded-change`, 'commit', 'git', 'git:abc', 'commit');
+  assert.equal(closureReady(db, runId), true);
+});
+
+test('hard-cap check blocks a near-cap crossing before model work', () => {
+  const db = openDb(':memory:');
+  recordCost(db, 'task', null, 'actual', 49_500_000, 'seed');
+  assert.doesNotThrow(() => checkBudget(db, 500_000));
+  assert.throws(() => checkBudget(db, 500_001), /hard cap/);
+});
+
+test('direct memory persists, deletes from active retrieval, and routing stays explainable', () => {
+  const db = openDb(':memory:');
+  const memoryId = saveMemory(db, 'Prefer local desktop applications');
+  const routingId = recordRoutingDecision(db, 'task', 'ask', 'codex-cli', 'claude-cli', 'Codex preferred', false);
+  completeRoutingDecision(db, routingId, 'passed:codex-cli');
+  rateTaskRouting(db, 'task', 'positive');
+  let state = snapshot(db) as any;
+  assert.equal(state.memories.length, 1);
+  assert.equal(state.routing[0].reason, 'Codex preferred');
+  assert.equal(state.routing[0].outcome, 'passed:codex-cli');
+  assert.equal(state.routing[0].rating, 'positive');
+  deleteMemory(db, memoryId);
+  state = snapshot(db) as any;
+  assert.equal(state.memories.length, 0);
+});
+
+test('manager ranking learns from outcomes and explicit usefulness feedback', () => {
+  const db = openDb(':memory:');
+  for (let i = 0; i < 3; i += 1) {
+    const id = recordRoutingDecision(db, `task-${i}`, 'ask', 'claude-cli', null, 'test', false);
+    completeRoutingDecision(db, id, 'passed:claude-cli');
+    rateTaskRouting(db, `task-${i}`, 'positive');
+  }
+  const ranking = engineRanking(db, 'ask');
+  assert.equal(ranking[0].id, 'claude-cli', 'enough successful positive evidence can outrank the initial Codex prior');
+});
+
+test('lane contracts refuse cross-lane authority and jackson-private access', () => {
+  const db = openDb(':memory:');
+  const rows = db.prepare('SELECT * FROM domain_contracts').all() as any[];
+  const builder = rows.find((row) => row.domain === 'builder');
+  const coding = rows.find((row) => row.domain === 'coding');
+  assert.equal(builder.can_edit_grover, 1);
+  assert.equal(coding.can_edit_grover, 0);
+  for (const row of rows) {
+    assert.ok(!JSON.parse(row.readable_namespaces).includes('jackson-private'));
+  }
+});

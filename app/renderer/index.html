@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>GROVER</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="orb" aria-hidden="true"></div>
+        <div><strong>GROVER</strong><span>Local command center</span></div>
+      </div>
+      <div class="top-status">
+        <span id="engine-status" class="status-pill">Checking engines…</span>
+        <span id="cost-status" class="status-pill">$0.00</span>
+        <label class="kill-control"><input id="kill-switch" type="checkbox"> Stop all AI</label>
+      </div>
+    </header>
+
+    <aside class="sidebar" aria-label="Primary navigation">
+      <button class="nav-button active" data-view="command">Command</button>
+      <button class="nav-button" data-view="activity">Activity</button>
+      <button class="nav-button" data-view="memory">Memory</button>
+      <button class="nav-button" data-view="settings">Settings</button>
+      <div class="sidebar-note">Runs entirely on this computer. No GROVER server is connected.</div>
+    </aside>
+
+    <main class="main-content">
+      <section id="view-command" class="view active">
+        <div class="welcome">
+          <p class="eyebrow">One front door</p>
+          <h1>What do you want to do?</h1>
+          <p>Ask a question, produce work, change GROVER, or remember something. The intent and chosen agent stay visible.</p>
+        </div>
+        <form id="composer" class="composer">
+          <textarea id="request" rows="5" maxlength="10000" placeholder="Describe the outcome you want…" required></textarea>
+          <div class="composer-controls">
+            <label>Intent
+              <select id="intent">
+                <option value="">Auto-detect</option>
+                <option value="ask">Ask</option>
+                <option value="work">Work</option>
+                <option value="act">Act</option>
+                <option value="build">Build GROVER</option>
+                <option value="remember">Remember</option>
+              </select>
+            </label>
+            <label>Agent
+              <select id="engine">
+                <option value="">Auto</option>
+                <option value="codex-cli">Codex</option>
+                <option value="claude-cli">Claude</option>
+              </select>
+            </label>
+            <span class="shortcut">Ctrl + Enter</span>
+            <button id="submit" class="primary" type="submit">Start</button>
+          </div>
+          <p id="composer-error" class="error" role="alert"></p>
+        </form>
+        <section class="section-block">
+          <div class="section-heading"><h2>Current work</h2><button class="text-button" data-go="activity">See all activity</button></div>
+          <div id="current-work" class="task-list empty-state">Nothing running yet.</div>
+        </section>
+      </section>
+
+      <section id="view-activity" class="view">
+        <div class="section-heading"><div><p class="eyebrow">Return path</p><h1>Activity</h1></div></div>
+        <div id="all-tasks" class="task-list empty-state">No work recorded yet.</div>
+        <details class="event-details"><summary>Technical event history</summary><div id="event-list" class="event-list"></div></details>
+      </section>
+
+      <section id="view-memory" class="view">
+        <p class="eyebrow">Local and inspectable</p>
+        <h1>Memory</h1>
+        <p>Only direct “remember this” requests are stored automatically in this build.</p>
+        <div id="memory-list" class="memory-list empty-state">No saved memories yet.</div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <p class="eyebrow">Local configuration</p>
+        <h1>Settings</h1>
+        <div class="settings-card">
+          <div><strong>GROVER project folder</strong><p id="workspace-path">Not selected</p></div>
+          <button id="choose-workspace" type="button">Choose folder</button>
+        </div>
+        <div class="settings-card">
+          <div><strong>Preferred agent</strong><p>Auto currently prefers Codex and keeps Claude available as fallback/checker.</p></div>
+          <select id="preferred-engine">
+            <option value="auto">Auto</option>
+            <option value="codex-cli">Codex</option>
+            <option value="claude-cli">Claude</option>
+          </select>
+        </div>
+        <div class="settings-card">
+          <div><strong>Delivery mode</strong><p>Local Windows application. Server deployment and external actions are disconnected.</p></div>
+          <span class="status-pill good">Local only</span>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js" defer></script>
+</body>
+</html>
