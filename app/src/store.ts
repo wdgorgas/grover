@@ -29,7 +29,7 @@ export function transaction<T>(db: DatabaseSync, fn: () => T): T {
 export function inferIntent(text: string): Intent {
   const normalized = text.trim().toLowerCase();
   if (/^(remember|save this|keep this in mind)\b/.test(normalized)) return 'remember';
-  if (/\b(change|build|add|fix|update|remove|implement|redesign|refactor)\b/.test(normalized) &&
+  if (/\b(change|build|add|fix|update|remove|implement|redesign|refactor|create)\b/.test(normalized) &&
       /\bgrover\b/.test(normalized)) return 'build';
   if (/^(send|publish|buy|purchase|delete|deploy|email|message|schedule)\b/.test(normalized)) return 'act';
   if (/^(let'?s\s+)?(write|draft|analyze|research|summarize|create|prepare|design|plan|compare|build|implement)\b/.test(normalized)) return 'work';
@@ -165,6 +165,28 @@ export function createBuild(db: DatabaseSync, taskId: string, text: string, engi
     });
   });
   return { featureId, runId };
+}
+
+export function addAcceptanceCheck(
+  db: DatabaseSync,
+  runId: string,
+  suffix: string,
+  title: string,
+  description: string,
+  checkType: string,
+  requiredEvidenceTypes: string[],
+): string {
+  const run = db.prepare('SELECT feature_request_id FROM build_runs WHERE id = ?').get(runId) as
+    { feature_request_id: string } | undefined;
+  if (!run) throw new Error(`Unknown build run: ${runId}`);
+  const id = `${runId}:${suffix}`;
+  db.prepare(
+    `INSERT OR IGNORE INTO acceptance_checks
+      (id, feature_request_id, build_run_id, title, description, check_type,
+       required_evidence_types, status, passes, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, 'system')`
+  ).run(id, run.feature_request_id, runId, title, description, checkType, JSON.stringify(requiredEvidenceTypes));
+  return id;
 }
 
 const FEATURE_STATUS: Record<string, string> = {

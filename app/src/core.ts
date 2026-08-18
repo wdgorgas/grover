@@ -1,12 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { execFile } from 'node:child_process';
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
 import { EngineRouter, type EngineUpdate, type ExecutionEngine, type Route } from './engine.ts';
 import {
-  addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
+  addAcceptanceCheck, addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
   completeRoutingDecision, createBuild, createConversation, createTask, deleteMemory, engineRanking, getConversation,
   getSetting, inferContext, inferIntent, moveConversation, rateTaskRouting, recordCommit, recordCost, saveMemory,
   recordRoutingDecision, setSetting, snapshot, transitionRun, type Context, type Intent,
@@ -44,17 +44,19 @@ async function git(root: string, args: string[]): Promise<string> {
   return command('git', ['-c', `safe.directory=${root.replace(/\\/g, '/')}`, ...args], root);
 }
 
-async function npmTest(root: string): Promise<string> {
+async function npmScript(root: string, script: string): Promise<string> {
   const appDir = join(root, 'app');
   if (process.platform === 'win32') {
-    return command(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'npm test'], appDir);
+    return command(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `npm run ${script}`], appDir);
   }
   const npmCmd = join(dirname(process.execPath), 'npm.cmd');
-  if (existsSync(npmCmd)) return command(npmCmd, ['test'], appDir);
+  if (existsSync(npmCmd)) return command(npmCmd, ['run', script], appDir);
   const systemNpm = process.env.APPDATA ? join(process.env.APPDATA, 'npm', 'npm.cmd') : 'npm.cmd';
-  if (existsSync(systemNpm)) return command(systemNpm, ['test'], appDir);
-  return command('npm', ['test'], appDir);
+  if (existsSync(systemNpm)) return command(systemNpm, ['run', script], appDir);
+  return command('npm', ['run', script], appDir);
 }
+
+const npmTest = (root: string) => npmScript(root, 'test');
 
 export class GroverCore extends EventEmitter {
   readonly db: DatabaseSync;
@@ -75,6 +77,25 @@ export class GroverCore extends EventEmitter {
     if (this.workspaceRoot) setSetting(this.db, 'workspace_root', this.workspaceRoot);
     mkdirSync(join(this.dataDir, 'evidence'), { recursive: true });
     mkdirSync(join(this.dataDir, 'vault', 'will-private'), { recursive: true });
+    this.recoverInterruptedBuilds();
+  }
+
+  private recoverInterruptedBuilds(): void {
+    const interrupted = this.db.prepare(
+      "SELECT id, branch_name, status FROM build_runs WHERE status IN ('queued','running','verifying')"
+    ).all() as { id: string; branch_name: string | null; status: string }[];
+    for (const run of interrupted) {
+      const recovery = JSON.stringify({
+        reason: 'app_restart',
+        previousStatus: run.status,
+        branch: run.branch_name,
+        nextAction: 'Resume the build or cancel it after reviewing the working tree.',
+      });
+      this.db.prepare('UPDATE build_runs SET recovery_state = ? WHERE id = ?').run(recovery, run.id);
+      transitionRun(this.db, run.id, 'paused', 'paused', 'Paused after GROVER restarted; the build can be resumed', {
+        detail: recovery,
+      });
+    }
   }
 
   getSnapshot(): Record<string, unknown> {
@@ -162,13 +183,20 @@ export class GroverCore extends EventEmitter {
       conversationId = createConversation(this.db, context, text);
     }
     if (context === 'builder' && !['act', 'remember'].includes(intent) &&
-        /\b(change|build|add|fix|update|remove|implement|redesign|refactor)\b/i.test(text)) {
+        /\b(change|build|add|fix|update|remove|implement|redesign|refactor|create)\b/i.test(text)) {
       intent = 'build';
     }
     const taskId = createTask(this.db, intent, text, context);
     addConversationMessage(this.db, conversationId, taskId, 'user', text);
     this.taskIntents.set(taskId, intent);
     this.changed();
+
+    if (/\bjackson-private\b/i.test(text)) {
+      appendTaskProgress(this.db, taskId, 'failed', 'Refused access to Jackson’s private space', 'jackson-private fails closed in GROVER v2.0.');
+      this.addAssistantMessage(taskId, 'I cannot read, write, export, or infer anything from Jackson’s private space. That boundary fails closed in this version.', 'failed');
+      this.changed();
+      return { taskId, intent, context, conversationId };
+    }
 
     if (intent === 'remember') {
       const content = text.replace(/^(remember|save this|keep this in mind)\s*(that|:)?\s*/i, '').trim() || text;
@@ -296,7 +324,12 @@ export class GroverCore extends EventEmitter {
   private async prepareBuildBranch(runId: string, resume: boolean): Promise<string> {
     const root = this.requireWorkspace();
     if (resume) {
-      return git(root, ['branch', '--show-current']);
+      const current = await git(root, ['branch', '--show-current']);
+      const run = this.db.prepare('SELECT branch_name FROM build_runs WHERE id = ?').get(runId) as { branch_name: string | null };
+      if (!run.branch_name || current !== run.branch_name) {
+        throw new Error(`Cannot resume safely: expected branch '${run.branch_name ?? 'not created'}' but the project is on '${current}'.`);
+      }
+      return current;
     }
     const status = await git(root, ['status', '--porcelain=v1']);
     if (status.trim()) throw new Error('The GROVER project has uncommitted changes. Finish or commit them before starting an automatic build.');
@@ -323,7 +356,8 @@ export class GroverCore extends EventEmitter {
       'Implement one bounded change in the GROVER repository.',
       'Follow AGENTS.md and the binding planning spec. Work only on this request.',
       'Do not deploy, change security boundaries, read ignored/private files, or commit.',
-      'Use the existing architecture, keep the result functional, and run relevant tests.',
+      'Use the existing architecture, keep the result functional, and run relevant non-GUI tests.',
+      'Do not launch Electron, browsers, Playwright, or test:desktop from inside the engine sandbox; GROVER runs rendered verification after you return.',
       '', 'User request:', request,
     ].join('\n');
     const result = await this.router.run(selectedEngine, {
@@ -346,6 +380,29 @@ export class GroverCore extends EventEmitter {
       /(?:archive[\\/]grover_v1[\\/](?:data|vault)|secrets\.json|\.env(?:\.|$))/i.test(line.slice(3))
     );
     if (forbidden) throw new Error('The Builder touched a protected or secret path. The change was not staged or committed.');
+    const changedPaths = status.split(/\r?\n/).filter(Boolean).map((line) => line.slice(3).replace(/\\/g, '/'));
+    const uiChanged = changedPaths.some((path) => /(?:^|\/)renderer\//i.test(path) || /\.(?:html|css)$/i.test(path));
+    let uiEvidence: { checkId: string; output: string; screenshotPath: string } | null = null;
+    if (uiChanged) {
+      const packagePath = join(root, 'app', 'package.json');
+      const packageJson = JSON.parse(readFileSync(packagePath, 'utf8')) as { scripts?: Record<string, string> };
+      if (!packageJson.scripts?.['test:desktop']) {
+        throw new Error('UI changes require a test:desktop script with a DOM assertion and screenshot.');
+      }
+      const checkId = addAcceptanceCheck(
+        this.db, runId, 'ui-interaction', 'Rendered interaction works',
+        'Drive the changed UI, assert the rendered state, and save a post-action screenshot.',
+        'ui_interaction', ['dom_assertion', 'screenshot'],
+      );
+      const output = await npmScript(root, 'test:desktop');
+      const screenshotCandidates = [
+        join(root, 'app', 'test-results', 'electron-smoke.png'),
+        join(root, 'app', 'test-results', 'ui-smoke.png'),
+      ];
+      const screenshotPath = screenshotCandidates.find(existsSync);
+      if (!screenshotPath) throw new Error('The UI smoke passed without producing its required screenshot.');
+      uiEvidence = { checkId, output, screenshotPath };
+    }
     const diff = await git(root, ['diff', '--stat']);
     const evidenceDir = join(this.dataDir, 'evidence', runId);
     mkdirSync(evidenceDir, { recursive: true });
@@ -355,6 +412,13 @@ export class GroverCore extends EventEmitter {
     writeFileSync(diffPath, `${status}\n\n${diff}`, 'utf8');
     addEvidence(this.db, runId, `${runId}:automated-tests`, 'test_output', 'test_runner', testPath, 'Project tests passed', testOutput);
     addEvidence(this.db, runId, `${runId}:recorded-change`, 'git_diff', 'git', diffPath, truncate(diff, 500), diff);
+    if (uiEvidence) {
+      addEvidence(this.db, runId, uiEvidence.checkId, 'dom_assertion', 'playwright', uiEvidence.screenshotPath, truncate(uiEvidence.output, 500), uiEvidence.output);
+      addEvidence(
+        this.db, runId, uiEvidence.checkId, 'screenshot', 'playwright', uiEvidence.screenshotPath,
+        'Post-action UI screenshot', readFileSync(uiEvidence.screenshotPath).toString('base64'),
+      );
+    }
 
     try {
       const checkerRoute = this.router.route('ask', 'auto', selectedEngine.id);
@@ -421,8 +485,8 @@ export class GroverCore extends EventEmitter {
 
   taskAction(taskId: string, action: 'pause' | 'resume' | 'cancel'): void {
     if (!['pause', 'resume', 'cancel'].includes(action)) throw new Error('Unknown task action.');
-    const run = this.db.prepare('SELECT id, status FROM build_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 1')
-      .get(taskId) as { id: string; status: string } | undefined;
+    const run = this.db.prepare('SELECT id, status, branch_name FROM build_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 1')
+      .get(taskId) as { id: string; status: string; branch_name: string | null } | undefined;
     const key = run?.id ?? taskId;
     if (action === 'cancel') {
       this.stopReasons.set(key, 'cancelled');
@@ -438,7 +502,7 @@ export class GroverCore extends EventEmitter {
       if (!run || run.status !== 'paused') throw new Error('This build is not paused.');
       const feature = this.db.prepare('SELECT description FROM feature_requests WHERE active_build_run_id = ?').get(run.id) as { description: string };
       this.stopReasons.delete(key);
-      void this.runBuild(run.id, feature.description, true).catch((error) => this.handleBuildFailure(run.id, error));
+      void this.runBuild(run.id, feature.description, Boolean(run.branch_name)).catch((error) => this.handleBuildFailure(run.id, error));
     }
     this.changed();
   }

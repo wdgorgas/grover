@@ -15,6 +15,7 @@ test('intent routing distinguishes the five front-door commitments', () => {
   assert.equal(inferIntent('Write a concise project brief'), 'work');
   assert.equal(inferIntent('Deploy the app'), 'act');
   assert.equal(inferIntent('Fix the GROVER app settings'), 'build');
+  assert.equal(inferIntent('Create a GROVER feature'), 'build');
   assert.equal(inferIntent('Build a new coding platform'), 'work');
   assert.equal(inferIntent('Remember that I prefer local apps'), 'remember');
 });

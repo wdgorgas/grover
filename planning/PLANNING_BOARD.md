@@ -11,8 +11,8 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P0 | Decision lock + master prompt | **APPROVED (Will, 2026-07-03)** — spec: `planning/grover_v2_master_prompt.md` |
 | P1 | Spine skeleton: Windows desktop shell, events+projections, desktop IPC, cost ledger, kill switch, object-model schema, DomainContract stubs | **MECHANICAL EXIT PASSED (2026-08-18)** — 32 deterministic tests, desktop no-reload smoke, packaged live Codex, Noop engine-swap/lane tests, restart and transition coverage; final orb deferred by Proposal 006 |
 | P2 | Razor Builder slice (one real request end-to-end) | **AUTOMATED EXIT GREEN / HUMAN FINAL PASS PENDING** — live isolated Codex Builder branch/edit/test/evidence/commit/receipt flow passes; continued under Proposal 006 |
-| P3 | Builder reliability set (5 diverse requests) | **ACTIVE** |
-| P4 | Minimal memory core (10 tests + no-migration test) | Blocked on P3 exit |
+| P3 | Builder reliability set (5 diverse requests) | **MECHANICAL EXIT PASSED (2026-08-18)** — live UI/backend/settings/persistence builds, pre-engine private-space refusal, accumulated regression suite, and restart recovery green |
+| P4 | Minimal memory core (10 tests + no-migration test) | **ACTIVE** |
 | P5 | Hardening drills → v2.0 | Blocked on P4 exit |
 
 ## Open side-tracks

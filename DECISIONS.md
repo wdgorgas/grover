@@ -95,3 +95,13 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** Will explicitly asked GROVER development to continue through all passes and rejected repeated report-only sign-offs. This preserves evidentiary rigor while removing idle handoff pauses and visual rework.
 
 **Prediction (check at final acceptance):** Continuous implementation will expose UX issues through a runnable app sooner, while the final confirmation checklist will still identify any mismatch before v2.0 is declared complete.
+
+## 2026-08-18 — Rendered UI verification runs outside the engine sandbox
+
+**Decision:** Builder prompts explicitly forbid launching Electron, browsers, Playwright, or `test:desktop` inside a model engine sandbox. The engine runs non-GUI tests; after it returns, GROVER detects UI-file changes and runs the project's `test:desktop` script itself, requiring a DOM assertion and screenshot before closure.
+
+**Why:** GUI subprocesses launched from the Codex workspace sandbox hung even though the identical smoke passed from GROVER's verification process. Verification authority already belongs to GROVER, not the model.
+
+**Prediction (check at P3 exit):** The UI reliability fixture will finish without an engine timeout, and its BuildRun will contain both `dom_assertion` and `screenshot` evidence produced after the engine exits.
+
+**P3 exit result:** Confirmed. The final live reliability run passed and the UI BuildRun contained both required evidence types.

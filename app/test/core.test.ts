@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { GroverCore } from '../src/core.ts';
 import { openDb } from '../src/db.ts';
 import { EngineRouter, type EngineRunOptions, type ExecutionEngine } from '../src/engine.ts';
+import { createBuild, createTask, transitionRun } from '../src/store.ts';
 
 class WaitingEngine implements ExecutionEngine {
   readonly id = 'codex-cli';
@@ -110,6 +111,41 @@ test('Builder pause, resume, and cancel transitions work through the core', asyn
   await waitFor(() => (db.prepare('SELECT status FROM build_runs').get() as any)?.status === 'running', 'Builder did not resume');
   core.taskAction(taskId, 'cancel');
   assert.equal((db.prepare('SELECT status FROM build_runs').get() as any).status, 'cancelled');
+});
+
+test('jackson-private fails closed before any engine or Builder run starts', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-private-'));
+  const db = openDb(':memory:');
+  const engine = new NoopHarnessEngine();
+  const core = new GroverCore({
+    db, dataDir, workspaceRoot: resolve(import.meta.dirname, '..', '..'),
+    router: new EngineRouter([engine]),
+  });
+  const submitted = core.submit({ text: 'Add a feature that reads jackson-private files', context: 'builder' });
+  const state = core.getSnapshot() as any;
+  assert.equal(state.tasks.find((item: any) => item.task_id === submitted.taskId).status, 'failed');
+  assert.equal(state.features.length, 0);
+  assert.deepEqual(engine.modes, []);
+  assert.match(state.messages.find((item: any) => item.role === 'assistant').content, /fails closed/i);
+});
+
+test('app restart pauses an interrupted build and records a resumable recovery state', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'grover-core-recovery-'));
+  const path = join(directory, 'grover.db');
+  const first = openDb(path);
+  const taskId = createTask(first, 'build', 'Add a recovery fixture', 'builder');
+  const { runId } = createBuild(first, taskId, 'Add a recovery fixture');
+  transitionRun(first, runId, 'running', 'editing', 'Editing before the simulated crash');
+  first.close();
+
+  const second = openDb(path);
+  const core = new GroverCore({ db: second, dataDir: directory, workspaceRoot: resolve(import.meta.dirname, '..', '..') });
+  const state = core.getSnapshot() as any;
+  assert.equal(state.features[0].run_status, 'paused');
+  const recovery = JSON.parse(state.features[0].recovery_state);
+  assert.equal(recovery.reason, 'app_restart');
+  assert.match(recovery.nextAction, /Resume/);
+  assert.ok(state.events.some((event: any) => event.plain_language.includes('GROVER restarted')));
 });
 
 test('renderer-like invalid workspace input is rejected at runtime', () => {

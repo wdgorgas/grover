@@ -14,6 +14,7 @@
     "test:portable": "node test/portable-smoke.mjs",
     "test:engine": "node test/live-engine-smoke.mjs",
     "test:builder": "node test/live-builder-smoke.mjs",
+    "test:builder-reliability": "node test/live-builder-reliability.mjs",
     "dist": "electron-builder --win portable",
     "pack": "electron-builder --dir"
   },

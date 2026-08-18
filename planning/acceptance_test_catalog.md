@@ -26,7 +26,7 @@ Run `npm run test:builder`. Required assertions: real engine, FeatureRequest and
 
 ## P3 — Builder reliability
 
-Required fixtures: UI-only, backend/API, setting/control, persistent project state, and refused/sign-off-required negative case. Every fixture must add a regression assertion. Crash recovery must be separately demonstrated.
+`npm run test:builder-reliability` passes live Codex UI-only, backend/API, setting/control, and persistent project-state changes plus a pre-engine `jackson-private` refusal. The same fixture reruns accumulated regressions after every commit. `core.test.ts` separately simulates restart during an active build and asserts paused recovery state.
 
 ## P4 — minimal memory
 
