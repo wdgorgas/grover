@@ -55,6 +55,10 @@ try {
   await first.page.locator('#home-request').press('Enter');
   await first.page.locator('[data-view="memory"]').click();
   await first.page.locator('#memory-list').getByText("Will's name is Will", { exact: false }).waitFor();
+  await first.page.locator('#memory-search').fill('Windows desktop');
+  await first.page.locator('#memory-list').getByText('the Windows desktop app is the primary delivery target', { exact: false }).waitFor();
+  await first.page.locator('#memory-result-count').getByText('matching memories', { exact: false }).waitFor();
+  await first.page.locator('#memory-search').fill('');
   const greetingDomain = await first.page.evaluate(async () => {
     const state = await window.grover.snapshot();
     const message = state.messages.find((item) => item.role === 'user' && item.content === 'hi, my name is Will');
@@ -76,6 +80,8 @@ try {
   await first.page.locator('#context-request').press('Enter');
   await first.page.locator('#context-title').getByText('Coding', { exact: true }).waitFor();
   await first.page.locator('#context-route-status').getByText('Branched without changing', { exact: false }).waitFor();
+  await first.page.locator('#coding-project-path').getByText('tictactoe', { exact: false }).waitFor();
+  assert.equal(await first.page.locator('#open-project-folder').isEnabled(), true);
   await first.page.locator('#chat-messages').getByText('I could not finish that request', { exact: false }).waitFor();
   const branchState = await first.page.evaluate(async () => window.grover.snapshot());
   const codingConversation = branchState.conversations.find((item) => item.context === 'coding' && /tictactoe/i.test(item.title));
@@ -99,6 +105,8 @@ try {
   await first.page.locator('#kill-switch').uncheck();
 
   await first.page.locator('[data-view="settings"]').click();
+  await first.page.locator('#model-routing-profiles').getByText('gpt-5.6-terra', { exact: false }).waitFor();
+  await first.page.locator('#model-routing-profiles').getByText('gpt-5.6-sol', { exact: false }).waitFor();
   assert.equal(await first.page.locator('#policy-rules .settings-card').count(), 5);
   await first.page.locator('#policy-rules').getByText('jackson private', { exact: true }).waitFor();
   await first.page.locator('#policy-rules').getByText('Always denied', { exact: true }).waitFor();

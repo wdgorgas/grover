@@ -75,6 +75,10 @@
             <button id="new-conversation" type="button">New conversation</button>
           </div>
         </div>
+        <div id="coding-project" class="settings-card" hidden>
+          <div><strong>Project folder</strong><p id="coding-project-path">Created automatically when Coding begins making files.</p></div>
+          <div class="context-actions"><button id="choose-project-folder" type="button">Choose folder</button><button id="open-project-folder" type="button" disabled>Open folder</button></div>
+        </div>
         <div class="conversation-shell">
           <aside id="workspace-conversations" class="workspace-conversations" aria-label="Conversations"></aside>
           <section class="chat-panel">
@@ -105,6 +109,11 @@
         </div>
         <p>Direct “remember this” requests are stored on this computer and can be removed here.</p>
         <p id="memory-backup-status" class="small-empty">No verified backup yet.</p>
+        <div class="settings-card">
+          <label for="memory-search"><strong>Search memory</strong></label>
+          <input id="memory-search" type="search" placeholder="Name, preference, project, decision…" autocomplete="off">
+          <span id="memory-result-count" class="small-empty"></span>
+        </div>
         <section class="section-block">
           <div class="section-heading"><h2>Sensitive memories needing review</h2></div>
           <div id="memory-proposals" class="memory-list empty-state">No proposed memories.</div>
@@ -128,6 +137,9 @@
             <option value="codex-cli">Codex</option>
             <option value="claude-cli">Claude</option>
           </select>
+        </div>
+        <div class="settings-card">
+          <div><strong>Workload routing</strong><p id="model-routing-profiles">Local answers stay in GROVER; external model profiles are loading.</p></div>
         </div>
         <section class="settings-section">
           <div class="section-heading"><div><h2>Agent connections</h2><p>Sign in here when an agent needs attention.</p></div><button id="refresh-engines" type="button">Refresh</button></div>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron/main';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron/main';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +51,8 @@ function createWindow() {
 
 function installIpc() {
   ipcMain.handle('grover:snapshot', () => core.getSnapshot());
+  ipcMain.handle('grover:conversation-messages', (_event, conversationId) => core.conversationMessages(conversationId));
+  ipcMain.handle('grover:search-memories', (_event, query) => core.searchMemories(String(query ?? '')));
   ipcMain.handle('grover:submit', (_event, input) => core.submit(input));
   ipcMain.handle('grover:task-action', (_event, { taskId, action }) => core.taskAction(taskId, action));
   ipcMain.handle('grover:kill-switch', (_event, enabled) => core.setKillSwitch(Boolean(enabled)));
@@ -58,6 +60,21 @@ function installIpc() {
   ipcMain.handle('grover:refresh-engines', () => core.refreshEngineStatus());
   ipcMain.handle('grover:sign-in-engine', (_event, engineId) => core.signInEngine(engineId));
   ipcMain.handle('grover:move-conversation', (_event, { conversationId, context }) => core.moveConversation(conversationId, context));
+  ipcMain.handle('grover:choose-project-folder', async (_event, conversationId) => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose this Coding project folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return core.linkProjectFolder(conversationId, result.filePaths[0]);
+  });
+  ipcMain.handle('grover:open-project-folder', async (_event, conversationId) => {
+    const root = core.projectFolder(conversationId);
+    if (!root) throw new Error('This conversation does not have a project folder yet.');
+    const error = await shell.openPath(root);
+    if (error) throw new Error(error);
+    return root;
+  });
   ipcMain.handle('grover:forget', (_event, memoryId) => core.forget(memoryId));
   ipcMain.handle('grover:correct-memory', (_event, { memoryId, content }) => core.correctMemory(memoryId, content));
   ipcMain.handle('grover:approve-memory', (_event, proposalId) => core.approveMemoryProposal(proposalId));
@@ -99,7 +116,10 @@ app.whenReady().then(() => {
   const db = openDb(join(dataDir, 'grover.db'));
   const developmentRoot = process.env.GROVER_TEST_WORKSPACE_ROOT ??
     findRepoRoot(join(here, '..', '..')) ?? findRepoRoot(process.cwd());
-  core = new GroverCore({ db, dataDir, workspaceRoot: developmentRoot });
+  const projectsRoot = process.env.GROVER_TEST_DATA_DIR
+    ? join(dataDir, 'projects')
+    : join(app.getPath('documents'), 'GROVER Projects');
+  core = new GroverCore({ db, dataDir, workspaceRoot: developmentRoot, projectsRoot });
   core.on('state', sendState);
   installIpc();
   createWindow();

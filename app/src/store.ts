@@ -14,6 +14,15 @@ export type ConversationResolution = {
   sourceConversationId: string | null;
   localNavigation: boolean;
 };
+export type CodingProject = {
+  id: string;
+  conversationId: string;
+  name: string;
+  rootPath: string;
+  createdAutomatically: boolean;
+};
+export type ModelTier = 'fast' | 'balanced' | 'frontier';
+export type EngineModelProfile = { tier: ModelTier; modelId: string | null; reasoningEffort: string | null };
 
 export const CONTEXTS: { id: Context; label: string; description: string }[] = [
   { id: 'coding', label: 'Coding', description: 'Software, tools, automation, and technical projects' },
@@ -301,6 +310,48 @@ export function recordConversationResolution(
   return id;
 }
 
+export function getCodingProject(db: DatabaseSync, conversationId: string): CodingProject | null {
+  const row = db.prepare(
+    `SELECT id, conversation_id, name, root_path, created_automatically
+     FROM projects WHERE conversation_id = ?`
+  ).get(conversationId) as {
+    id: string; conversation_id: string; name: string; root_path: string; created_automatically: number;
+  } | undefined;
+  return row ? {
+    id: row.id,
+    conversationId: row.conversation_id,
+    name: row.name,
+    rootPath: row.root_path,
+    createdAutomatically: Boolean(row.created_automatically),
+  } : null;
+}
+
+export function linkCodingProject(
+  db: DatabaseSync,
+  conversationId: string,
+  name: string,
+  rootPath: string,
+  createdAutomatically = false,
+): CodingProject {
+  const conversation = getConversation(db, conversationId);
+  if (!conversation || conversation.context !== 'coding') throw new Error('Only Coding conversations can own a project folder.');
+  const now = new Date().toISOString();
+  const current = getCodingProject(db, conversationId);
+  if (current) {
+    db.prepare(
+      `UPDATE projects SET name = ?, root_path = ?, created_automatically = ?, updated_at = ?
+       WHERE conversation_id = ?`
+    ).run(name, rootPath, createdAutomatically ? 1 : 0, now, conversationId);
+    return { ...current, name, rootPath, createdAutomatically };
+  }
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO projects(id, conversation_id, context, name, root_path, created_automatically, created_at, updated_at)
+     VALUES (?, ?, 'coding', ?, ?, ?, ?, ?)`
+  ).run(id, conversationId, name, rootPath, createdAutomatically ? 1 : 0, now, now);
+  return { id, conversationId, name, rootPath, createdAutomatically };
+}
+
 export function createTask(db: DatabaseSync, intent: Intent, text: string, context: Context = inferContext(text, intent)): string {
   const taskId = randomUUID();
   appendEvent(db, {
@@ -563,19 +614,52 @@ export function recordRoutingDecision(
   backupEngine: string | null,
   reason: string,
   userOverride: boolean,
+  profile?: EngineModelProfile,
 ): string {
   const id = randomUUID();
   db.prepare(
     `INSERT INTO routing_decisions
-      (id, task_id, intent, selected_engine, backup_engine, reason, user_override, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, taskId, intent, selectedEngine, backupEngine, reason, userOverride ? 1 : 0, new Date().toISOString());
+      (id, task_id, intent, selected_engine, backup_engine, reason, user_override,
+       model_tier, selected_model, reasoning_effort, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id, taskId, intent, selectedEngine, backupEngine, reason, userOverride ? 1 : 0,
+    profile?.tier ?? null, profile?.modelId ?? null, profile?.reasoningEffort ?? null, new Date().toISOString(),
+  );
   return id;
 }
 
-export function completeRoutingDecision(db: DatabaseSync, id: string, outcome: string): void {
-  db.prepare('UPDATE routing_decisions SET outcome = ?, completed_at = ? WHERE id = ?')
-    .run(outcome, new Date().toISOString(), id);
+export function getEngineModelProfile(db: DatabaseSync, engineId: string, tier: ModelTier): EngineModelProfile {
+  const row = db.prepare(
+    `SELECT model_id, reasoning_effort FROM engine_model_profiles
+     WHERE engine_id = ? AND model_tier = ? AND enabled = 1`
+  ).get(engineId, tier) as { model_id: string | null; reasoning_effort: string | null } | undefined;
+  return { tier, modelId: row?.model_id ?? null, reasoningEffort: row?.reasoning_effort ?? null };
+}
+
+export function selectModelTier(intent: Intent, context: Context, request: string, projectWritable = false): ModelTier {
+  if (intent === 'build' || projectWritable) return 'frontier';
+  if (intent === 'work' || context === 'research' || /\b(complex|deep|comprehensive|architecture|strategy|audit)\b/i.test(request)) {
+    return 'balanced';
+  }
+  return 'fast';
+}
+
+export function completeRoutingDecision(
+  db: DatabaseSync,
+  id: string,
+  outcome: string,
+  actualProfile?: EngineModelProfile,
+): void {
+  const completedAt = new Date().toISOString();
+  if (actualProfile) {
+    db.prepare(
+      `UPDATE routing_decisions SET outcome = ?, model_tier = ?, selected_model = ?,
+       reasoning_effort = ?, completed_at = ? WHERE id = ?`
+    ).run(outcome, actualProfile.tier, actualProfile.modelId, actualProfile.reasoningEffort, completedAt, id);
+    return;
+  }
+  db.prepare('UPDATE routing_decisions SET outcome = ?, completed_at = ? WHERE id = ?').run(outcome, completedAt, id);
 }
 
 export function rateTaskRouting(db: DatabaseSync, taskId: string, rating: 'positive' | 'negative', note = ''): void {
@@ -626,8 +710,11 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   const memories = db.prepare(
     `SELECT id, owner, namespace, category, confidence, sensitivity, importance, content, provenance,
             vault_path, created_at, updated_at
-     FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL ORDER BY updated_at DESC`
+     FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL ORDER BY updated_at DESC LIMIT 200`
   ).all();
+  const memoryTotal = (db.prepare(
+    'SELECT COUNT(*) AS count FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL'
+  ).get() as { count: number }).count;
   const memoryProposals = db.prepare(
     `SELECT id, namespace, proposed_operation, target_memory_id, status, provenance, sensitivity,
             rationale, proposed_content, created_at
@@ -642,13 +729,23 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   const budget = db.prepare("SELECT * FROM budgets WHERE id = 'development-phase'").get();
   const engines = db.prepare('SELECT * FROM engine_registry ORDER BY priority').all();
   const routing = db.prepare('SELECT * FROM routing_decisions ORDER BY created_at DESC LIMIT 50').all();
+  const modelProfiles = db.prepare(
+    'SELECT * FROM engine_model_profiles WHERE enabled = 1 ORDER BY engine_id, model_tier'
+  ).all();
   const conversations = db.prepare(
-    'SELECT * FROM conversations ORDER BY updated_at DESC LIMIT 200'
+    `SELECT c.*, (SELECT COUNT(*) FROM conversation_messages m WHERE m.conversation_id = c.id) AS message_count
+     FROM conversations c ORDER BY updated_at DESC LIMIT 200`
   ).all();
   const messages = db.prepare(
-    `SELECT m.* FROM conversation_messages m
-     JOIN conversations c ON c.id = m.conversation_id
-     ORDER BY m.rowid`
+    `WITH recent AS (
+       SELECT id FROM conversations ORDER BY updated_at DESC LIMIT 20
+     ), ranked AS (
+       SELECT m.*, m.rowid AS source_rowid,
+              ROW_NUMBER() OVER (PARTITION BY m.conversation_id ORDER BY m.rowid DESC) AS message_rank
+       FROM conversation_messages m JOIN recent r ON r.id = m.conversation_id
+     )
+     SELECT id, conversation_id, task_id, role, content, state, created_at
+     FROM ranked WHERE message_rank <= 100 ORDER BY source_rowid`
   ).all();
   const contextRouting = db.prepare(
     'SELECT * FROM context_routing_decisions ORDER BY created_at DESC LIMIT 200'
@@ -656,6 +753,7 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   const conversationRoutes = db.prepare(
     'SELECT * FROM conversation_route_log ORDER BY created_at DESC LIMIT 200'
   ).all();
+  const projects = db.prepare('SELECT * FROM projects ORDER BY updated_at DESC').all();
   const policyRules = db.prepare(
     'SELECT * FROM policy_registry WHERE active = 1 ORDER BY rule_id'
   ).all();
@@ -666,8 +764,8 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
     'SELECT * FROM recovery_cards ORDER BY created_at DESC LIMIT 100'
   ).all();
   return {
-    tasks, features, events, memories, memoryProposals, memoryNamespaces, costs, budget, engines, routing,
-    contextRouting, conversationRoutes, conversations, messages, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
+    tasks, features, events, memories, memoryTotal, memoryProposals, memoryNamespaces, costs, budget, engines, routing, modelProfiles,
+    contextRouting, conversationRoutes, conversations, messages, projects, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',
       workspaceRoot: getSetting(db, 'workspace_root'),

@@ -7,6 +7,7 @@ import { GroverCore } from '../src/core.ts';
 import { openDb } from '../src/db.ts';
 import { EngineRouter, type EngineRunOptions, type ExecutionEngine } from '../src/engine.ts';
 import { MemoryService } from '../src/memory.ts';
+import { createTask, snapshot } from '../src/store.ts';
 
 class ImmediateEngine implements ExecutionEngine {
   readonly id = 'codex-cli';
@@ -58,6 +59,34 @@ test('2 high-confidence profile facts save automatically while sensitive facts s
   state = core.getSnapshot() as any;
   assert.equal(state.memories.length, 1, 'ordinary conversation is not copied into the vault');
   assert.equal(state.memoryProposals.length, 1);
+});
+
+test('previous safe profile proposals auto-apply once under the new memory policy', () => {
+  const { db, memory } = memoryFixture();
+  const taskId = createTask(db, 'ask', 'my major is computer science', 'general');
+  memory.propose(taskId, "Will's major is computer science.");
+  assert.equal(memory.autoApplyEligibleProposals(), 1);
+  assert.equal(memory.autoApplyEligibleProposals(), 0, 'startup migration is idempotent');
+  const state = snapshot(db) as any;
+  assert.equal(state.memoryProposals.length, 0);
+  assert.match(state.memories[0].content, /computer science/i);
+});
+
+test('memory snapshots stay bounded while indexed search reaches older records', () => {
+  const { db, memory } = memoryFixture();
+  const insert = db.prepare(
+    `INSERT INTO memories(id, owner, namespace, category, confidence, sensitivity, importance, content, provenance, created_at, updated_at)
+     VALUES (?, 'will', 'will-private', 'profile:preference', 'high', 'private', 'normal', ?, 'scale-test', ?, ?)`
+  );
+  for (let index = 0; index < 260; index += 1) {
+    const time = new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString();
+    insert.run(`scale-${index}`, `Scale memory ${index}${index === 0 ? ' ancient-needle' : ''}.`, time, time);
+  }
+  memory.rebuildIndex();
+  const state = snapshot(db) as any;
+  assert.equal(state.memoryTotal, 260);
+  assert.equal(state.memories.length, 200);
+  assert.equal(memory.search('ancient needle')[0].id, 'scale-0');
 });
 
 test('3 correction supersedes the old fact without retrieving it as current', () => {

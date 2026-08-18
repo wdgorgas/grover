@@ -21,6 +21,8 @@
 7. Routing remains provider-neutral and uses abstract workload classes. Current provider/model mappings are configuration, not application-domain logic.
 8. A learned local coordinator is considered only after deterministic routing logs and corrections form a versioned evaluation set. It must beat the deterministic baseline on destination, project match, tool/model tier, privacy, latency, and abstention before replacing any rule.
 9. The Lifestyle scheduling sub-application, chat-history management controls, and visual memory graph are subsequent consumers of this foundation. Their visual treatment remains deferred to Will's new design direction.
+10. A Coding conversation that creates or changes files owns a local project folder. GROVER may create that folder under the configured local projects root or let Will link an existing folder. Coding workers may write only inside that project root and may never use that authority to edit the GROVER application repository.
+11. Non-local workloads are classified into abstract fast, balanced, or frontier tiers before provider selection. Model IDs and reasoning effort are configurable per engine; the router records both the abstract choice and concrete mapping.
 
 ## Acceptance scenarios
 
@@ -32,3 +34,5 @@
 - A generic follow-up inside a project conversation stays in that conversation.
 - `My name is Will` is stored automatically with provenance; sensitive incidental health/finance facts still await review.
 - The selected worker receives bounded history from only the target conversation plus relevant permitted memory.
+- `Let's code tic tac toe` creates or reuses a conversation-owned local project folder, runs the worker with project-scoped write access there, and never grants Coding write access to the GROVER repository.
+- Fast, balanced, and frontier examples record their selected tier/model/effort, while local navigation and memory answers record no provider call.

@@ -35,5 +35,10 @@ assert.equal(conversation.context, 'general');
 assert.match(assistant.content, new RegExp(expectedText, 'i'));
 const expectedOutcome = process.env.GROVER_EXPECT_FALLBACK === 'true' ? 'passed:codex-cli' : `passed:${engine}`;
 assert.match(result.state.routing[0].outcome, new RegExp(expectedOutcome));
+if (engine === 'codex-cli') {
+  assert.equal(result.state.routing[0].model_tier, 'fast');
+  assert.equal(result.state.routing[0].selected_model, 'gpt-5.6-terra');
+  assert.equal(result.state.routing[0].reasoning_effort, 'low');
+}
 db.close();
 console.log(`${engine} live smoke passed`);

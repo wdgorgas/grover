@@ -14,7 +14,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P3 | Builder reliability set (5 diverse requests) | **MECHANICAL EXIT PASSED (2026-08-18)** — live UI/backend/settings/persistence builds, pre-engine private-space refusal, accumulated regression suite, and restart recovery green |
 | P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
 | P5 | Hardening drills → v2.0 | **MECHANICAL EXIT PASSED (2026-08-18)** — 51 deterministic tests; policy, kill, budget, injection, verification-failure, crash, backup/restore, and recovery-card drills green |
-| P6 | Continuity coordinator → v2.1 | **IN PROGRESS (2026-08-18)** — local context branching, named-project reopen, local fast paths, bounded conversation history, and automatic non-sensitive profile memory green; writable per-project Coding workspaces next |
+| P6 | Continuity coordinator → v2.1 | **MECHANICAL CORE GREEN / PACKAGING IN PROGRESS (2026-08-18)** — local branching/reopen, fast paths, bounded history, searchable automatic memory, isolated writable Coding projects, and tiered Sol/Terra routing pass; scheduler/history-management/learned-router/visual graph remain follow-on slices |
 
 ## Open side-tracks
 

@@ -4,6 +4,9 @@ let state = null;
 let activeContext = null;
 let activeConversationId = null;
 let routeNotice = '';
+const messageCache = new Map();
+let memoryResults = [];
+let memorySearchTimer = null;
 
 function labelForContext(id) {
   if (id === 'general') return 'General';
@@ -41,7 +44,29 @@ function openContext(context, conversationId = null) {
   activateView('context');
   if (context === 'general') $('.utility-button[data-view="home"]').classList.add('active');
   renderConversationWorkspace();
+  if (activeConversationId) void hydrateConversation(activeConversationId).catch(() => {});
   $('#context-request').focus();
+}
+
+function mergeCachedMessages(messages) {
+  const grouped = new Map();
+  for (const message of messages ?? []) {
+    grouped.set(message.conversation_id, [...(grouped.get(message.conversation_id) ?? []), message]);
+  }
+  for (const [conversationId, incoming] of grouped) {
+    const merged = new Map((messageCache.get(conversationId) ?? []).map((message) => [message.id, message]));
+    incoming.forEach((message) => merged.set(message.id, message));
+    messageCache.set(conversationId, [...merged.values()].sort((a, b) => a.created_at.localeCompare(b.created_at)));
+  }
+}
+
+async function hydrateConversation(conversationId) {
+  const conversation = (state?.conversations ?? []).find((item) => item.id === conversationId);
+  const cached = messageCache.get(conversationId) ?? [];
+  if (cached.length >= Number(conversation?.message_count ?? 0)) return;
+  const messages = await window.grover.conversationMessages(conversationId);
+  messageCache.set(conversationId, messages);
+  if (activeConversationId === conversationId) renderConversationWorkspace();
 }
 
 function formatMoney(micro) {
@@ -181,6 +206,12 @@ function feedbackForTask(taskId) {
 
 function renderConversationWorkspace() {
   if (!state || !activeContext) return;
+  const projectArea = $('#coding-project');
+  const project = (state.projects ?? []).find((item) => item.conversation_id === activeConversationId);
+  projectArea.hidden = activeContext !== 'coding';
+  $('#coding-project-path').textContent = project?.root_path ?? 'Created automatically when Coding begins making files.';
+  $('#choose-project-folder').disabled = activeContext !== 'coding' || !activeConversationId;
+  $('#open-project-folder').disabled = !project;
   const mover = $('#move-conversation');
   mover.disabled = !activeConversationId;
   mover.value = activeContext;
@@ -199,7 +230,7 @@ function renderConversationWorkspace() {
   const panel = $('#chat-messages');
   panel.replaceChildren();
   const messages = activeConversationId
-    ? state.messages.filter((message) => message.conversation_id === activeConversationId)
+    ? (messageCache.get(activeConversationId) ?? state.messages.filter((message) => message.conversation_id === activeConversationId))
     : [];
   if (!messages.length) {
     panel.className = 'chat-messages empty-state';
@@ -283,6 +314,9 @@ function renderEvents(events) {
 function renderMemories(memories) {
   const container = $('#memory-list');
   container.replaceChildren();
+  $('#memory-result-count').textContent = $('#memory-search').value.trim()
+    ? `${memories.length} matching memories`
+    : `Showing ${memories.length} of ${state.memoryTotal ?? memories.length}`;
   if (!memories.length) {
     container.className = 'memory-list empty-state';
     container.textContent = 'No saved memories yet.';
@@ -307,11 +341,21 @@ function renderMemories(memories) {
       const content = window.prompt('Replace this memory with the corrected fact:', memory.content);
       if (!content?.trim() || content.trim() === memory.content) return;
       await window.grover.correctMemory(memory.id, content.trim());
+      if ($('#memory-search').value.trim()) {
+        memoryResults = await window.grover.searchMemories($('#memory-search').value);
+        renderMemories(memoryResults);
+      }
     });
     const forget = document.createElement('button');
     forget.type = 'button';
     forget.textContent = 'Forget';
-    forget.addEventListener('click', () => window.grover.forget(memory.id));
+    forget.addEventListener('click', async () => {
+      await window.grover.forget(memory.id);
+      if ($('#memory-search').value.trim()) {
+        memoryResults = await window.grover.searchMemories($('#memory-search').value);
+        renderMemories(memoryResults);
+      }
+    });
     actions.append(correct, forget);
     card.append(text, actions);
     container.append(card);
@@ -407,6 +451,14 @@ function renderEngines() {
     }
     container.append(card);
   }
+  const profiles = (state.modelProfiles ?? []).filter((profile) => profile.engine_id === 'codex-cli');
+  const labels = ['fast', 'balanced', 'frontier'].map((tier) => {
+    const profile = profiles.find((item) => item.model_tier === tier);
+    return profile?.model_id
+      ? `${tier}: ${profile.model_id}${profile.reasoning_effort ? ` (${profile.reasoning_effort})` : ''}`
+      : `${tier}: provider default`;
+  });
+  $('#model-routing-profiles').textContent = `Local navigation and memory bypass agents · ${labels.join(' · ')}`;
 }
 
 function renderPolicies() {
@@ -431,6 +483,8 @@ function renderPolicies() {
 
 function render(next) {
   state = next;
+  mergeCachedMessages(state.messages ?? []);
+  if (!$('#memory-search').value.trim()) memoryResults = state.memories ?? [];
   renderContexts();
   renderEngines();
   renderPolicies();
@@ -441,7 +495,7 @@ function render(next) {
   renderCurrentWork();
   renderRecentConversations();
   renderEvents(state.events ?? []);
-  renderMemories(state.memories ?? []);
+  renderMemories(memoryResults);
   renderMemoryProposals(state.memoryProposals ?? []);
   const backup = state.memoryBackup ?? {};
   $('#memory-backup-status').textContent = backup.reason ?? 'No verified backup yet.';
@@ -511,6 +565,20 @@ $('#move-conversation').addEventListener('change', async (event) => {
     event.target.disabled = false;
   }
 });
+$('#choose-project-folder').addEventListener('click', async (event) => {
+  if (!activeConversationId) return;
+  event.currentTarget.disabled = true;
+  try { await window.grover.chooseProjectFolder(activeConversationId); }
+  catch (error) { window.alert(error.message); }
+  finally { event.currentTarget.disabled = false; }
+});
+$('#open-project-folder').addEventListener('click', async (event) => {
+  if (!activeConversationId) return;
+  event.currentTarget.disabled = true;
+  try { await window.grover.openProjectFolder(activeConversationId); }
+  catch (error) { window.alert(error.message); }
+  finally { event.currentTarget.disabled = false; }
+});
 $('#engine-status').addEventListener('click', () => showUtility('settings'));
 $('#kill-switch').addEventListener('change', (event) => window.grover.setKillSwitch(event.target.checked));
 $('#choose-workspace').addEventListener('click', () => window.grover.chooseWorkspace());
@@ -547,6 +615,14 @@ $('#restore-memory').addEventListener('click', async (event) => {
   } catch (error) {
     window.alert(error.message);
   } finally { button.disabled = false; }
+});
+$('#memory-search').addEventListener('input', (event) => {
+  clearTimeout(memorySearchTimer);
+  const query = event.target.value;
+  memorySearchTimer = setTimeout(async () => {
+    memoryResults = await window.grover.searchMemories(query);
+    renderMemories(memoryResults);
+  }, 150);
 });
 
 document.addEventListener('keydown', (event) => {

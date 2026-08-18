@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync, existsSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
 import { EngineRouter, type EngineUpdate, type ExecutionEngine, type Route } from './engine.ts';
@@ -12,18 +12,42 @@ import { PolicyService, type PolicyOrigin } from './policy.ts';
 import {
   addAcceptanceCheck, addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
   completeRoutingDecision, createBuild, createTask, engineRanking,
-  getSetting, inferContextDecision, inferIntent, moveConversation, rateTaskRouting, recordCommit, recordCost,
+  getCodingProject, getEngineModelProfile, getSetting, inferContextDecision, inferIntent, linkCodingProject,
+  moveConversation, rateTaskRouting, recordCommit, recordCost,
   recordConversationResolution, recordRoutingDecision, resolveConversation, setSetting, snapshot, transaction,
-  transitionRun, type Context, type ConversationDisposition, type Intent,
+  selectModelTier, transitionRun, type CodingProject, type Context, type ConversationDisposition,
+  type EngineModelProfile, type Intent, type ModelTier,
 } from './store.ts';
 
 const execFileAsync = promisify(execFile);
 
 type SubmitInput = { text: string; context?: Context; conversationId?: string; engine?: string };
+type ManagedRoute = Route & { decisionId: string; tier: ModelTier; profile: EngineModelProfile };
 
 function truncate(value: string, max = 180): string {
   const oneLine = value.replace(/\s+/g, ' ').trim();
   return oneLine.length <= max ? oneLine : `${oneLine.slice(0, max - 1)}…`;
+}
+
+function pathContains(parent: string, child: string): boolean {
+  const path = relative(resolve(parent), resolve(child));
+  return path === '' || (!path.startsWith('..') && !isAbsolute(path));
+}
+
+function projectName(text: string): string {
+  const cleaned = text.replace(/^\s*(?:let'?s\s+)?(?:please\s+)?(?:code|build|create|develop|implement|make|start|update|fix)\s+(?:a|an|the|new)?\s*/i, '')
+    .replace(/\s+/g, ' ').trim();
+  return truncate(cleaned || 'Coding project', 64);
+}
+
+function projectSlug(name: string): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 56);
+  return slug || 'coding-project';
+}
+
+function requestsProjectMutation(text: string): boolean {
+  return /\b(code|build|create|develop|implement|update|fix|debug|add|remove|refactor|write|ship|make)\b/i.test(text) ||
+    /^\s*(?:do it|go ahead|make it so|apply that|implement that|yes[, ]+do that)\b/i.test(text);
 }
 
 export function findRepoRoot(start: string): string | null {
@@ -70,11 +94,18 @@ export class GroverCore extends EventEmitter {
   readonly policy: PolicyService;
   readonly dataDir: string;
   private workspaceRoot: string | null;
+  private projectsRoot: string;
   private stopReasons = new Map<string, 'paused' | 'cancelled' | 'killed'>();
   private taskIntents = new Map<string, Intent>();
   private routingByRun = new Map<string, string>();
 
-  constructor(options: { db: DatabaseSync; dataDir: string; workspaceRoot?: string | null; router?: EngineRouter }) {
+  constructor(options: {
+    db: DatabaseSync;
+    dataDir: string;
+    workspaceRoot?: string | null;
+    projectsRoot?: string;
+    router?: EngineRouter;
+  }) {
     super();
     this.db = options.db;
     this.dataDir = options.dataDir;
@@ -82,9 +113,13 @@ export class GroverCore extends EventEmitter {
     const stored = getSetting(this.db, 'workspace_root');
     this.workspaceRoot = options.workspaceRoot ?? stored;
     if (this.workspaceRoot) setSetting(this.db, 'workspace_root', this.workspaceRoot);
+    this.projectsRoot = resolve(options.projectsRoot ?? getSetting(this.db, 'projects_root') ?? join(this.dataDir, 'projects'));
+    mkdirSync(this.projectsRoot, { recursive: true });
+    setSetting(this.db, 'projects_root', this.projectsRoot);
     mkdirSync(join(this.dataDir, 'evidence'), { recursive: true });
     mkdirSync(join(this.dataDir, 'vault', 'will-private'), { recursive: true });
     this.memory = new MemoryService(this.db, this.dataDir);
+    this.memory.autoApplyEligibleProposals();
     this.policy = new PolicyService(this.db);
     this.recoverInterruptedBuilds();
   }
@@ -128,6 +163,7 @@ export class GroverCore extends EventEmitter {
         engineAvailability: this.router.availability(),
         engineStatus: this.router.status(),
         workspaceRoot: this.workspaceRoot,
+        projectsRoot: this.projectsRoot,
         localOnly: true,
       },
       memoryBackup: this.memory.backupStatus(),
@@ -227,6 +263,44 @@ export class GroverCore extends EventEmitter {
     this.changed();
   }
 
+  private checkedProjectRoot(root: string): string {
+    const resolved = resolve(root);
+    if (!existsSync(resolved)) throw new Error('That project folder no longer exists.');
+    const actual = realpathSync(resolved);
+    if (this.workspaceRoot && (pathContains(this.workspaceRoot, actual) || pathContains(actual, this.workspaceRoot))) {
+      throw new Error('A Coding project cannot be the GROVER application folder or contain it. Use the GROVER workspace for app changes.');
+    }
+    return actual;
+  }
+
+  private ensureCodingProject(conversationId: string, request: string): CodingProject {
+    const current = getCodingProject(this.db, conversationId);
+    if (current) return { ...current, rootPath: this.checkedProjectRoot(current.rootPath) };
+    const name = projectName(request);
+    const base = projectSlug(name);
+    let suffix = 1;
+    let root = join(this.projectsRoot, base);
+    const registered = this.db.prepare('SELECT 1 FROM projects WHERE root_path = ?');
+    while (existsSync(root) || registered.get(root)) {
+      suffix += 1;
+      root = join(this.projectsRoot, `${base}-${suffix}`);
+    }
+    mkdirSync(root, { recursive: false });
+    root = this.checkedProjectRoot(root);
+    return linkCodingProject(this.db, conversationId, name, root, true);
+  }
+
+  linkProjectFolder(conversationId: string, root: string): CodingProject {
+    const actual = this.checkedProjectRoot(root);
+    const project = linkCodingProject(this.db, conversationId, basename(actual), actual, false);
+    this.changed();
+    return project;
+  }
+
+  projectFolder(conversationId: string): string | null {
+    return getCodingProject(this.db, conversationId)?.rootPath ?? null;
+  }
+
   submit(input: SubmitInput): {
     taskId: string;
     intent: Intent;
@@ -249,6 +323,10 @@ export class GroverCore extends EventEmitter {
         /\b(change|build|add|fix|update|remove|implement|redesign|refactor|create)\b/i.test(text)) {
       intent = 'build';
     }
+    const existingProject = context === 'coding' ? getCodingProject(this.db, conversationId) : null;
+    if (context === 'coding' && existingProject && /^\s*(?:do it|go ahead|make it so|apply that|implement that|yes[, ]+do that)\b/i.test(text)) {
+      intent = 'work';
+    }
     const taskId = createTask(this.db, intent, text, context);
     recordConversationResolution(this.db, taskId, conversation, text);
     this.taskIntents.set(taskId, intent);
@@ -262,6 +340,17 @@ export class GroverCore extends EventEmitter {
       };
     }
     addConversationMessage(this.db, conversationId, taskId, 'user', text);
+    let codingProject = existingProject;
+    if (context === 'coding' && intent === 'work' && requestsProjectMutation(text)) {
+      try {
+        codingProject = this.ensureCodingProject(conversationId, text);
+      } catch (error) {
+        appendTaskProgress(this.db, taskId, 'failed', 'The Coding project folder is not available', String(error));
+        this.addAssistantMessage(taskId, `I could not safely open the project folder. ${String(error).replace(/^Error:\s*/, '')}`, 'failed');
+        this.changed();
+        return { taskId, intent, context, conversationId, conversationDisposition: conversation.disposition, routeReason: conversation.reason };
+      }
+    }
     if (conversation.disposition !== 'continued') {
       appendTaskProgress(this.db, taskId, 'planning', conversation.reason);
     }
@@ -315,7 +404,7 @@ export class GroverCore extends EventEmitter {
       this.changed();
     } else if (intent === 'build') {
       try {
-        const route = this.routeTask(taskId, intent, input.engine);
+        const route = this.routeTask(taskId, intent, input.engine, 'frontier');
         const { featureId, runId } = createBuild(this.db, taskId, text, route.selected.id);
         if (policyDecisions.length) {
           this.db.prepare("UPDATE feature_requests SET signoff_state = 'approved', signoff_reason = ? WHERE id = ?")
@@ -331,8 +420,10 @@ export class GroverCore extends EventEmitter {
       }
     } else {
       try {
-        const route = this.routeTask(taskId, intent, input.engine);
-        void this.runConversation(taskId, intent, text, route).catch((error) => {
+        const projectWritable = Boolean(codingProject && requestsProjectMutation(text));
+        const tier = selectModelTier(intent, context, text, projectWritable);
+        const route = this.routeTask(taskId, intent, input.engine, tier);
+        void this.runConversation(taskId, intent, text, route, codingProject, projectWritable).catch((error) => {
           if (this.stopReasons.has(taskId)) return;
           completeRoutingDecision(this.db, route.decisionId, `failed:${route.selected.id}`);
           appendTaskProgress(this.db, taskId, 'failed', 'The request stopped before completion', String(error));
@@ -348,7 +439,12 @@ export class GroverCore extends EventEmitter {
     return { taskId, intent, context, conversationId, conversationDisposition: conversation.disposition, routeReason: conversation.reason };
   }
 
-  private routeTask(taskId: string, intent: 'ask' | 'work' | 'build', engineOverride?: string): Route & { decisionId: string } {
+  private routeTask(
+    taskId: string,
+    intent: 'ask' | 'work' | 'build',
+    engineOverride?: string,
+    tier: ModelTier = 'balanced',
+  ): ManagedRoute {
     const storedPreference = getSetting(this.db, 'preferred_engine') ?? 'auto';
     const explicitPreference = engineOverride ?? (storedPreference !== 'auto' ? storedPreference : undefined);
     const ranking = engineRanking(this.db, intent);
@@ -358,11 +454,16 @@ export class GroverCore extends EventEmitter {
       route.userOverride = false;
       route.reason = `${route.selected.displayName} best matches this ${intent} request using capability, availability, user preference, and ${ranking[0]?.samples ?? 0} recorded outcomes.`;
     }
+    const profile = getEngineModelProfile(this.db, route.selected.id, tier);
+    const modelReason = profile.modelId
+      ? ` Using the configured ${tier} profile: ${profile.modelId}${profile.reasoningEffort ? ` at ${profile.reasoningEffort} reasoning` : ''}.`
+      : ` Using the provider's configured ${tier} profile.`;
+    route.reason += modelReason;
     const decisionId = recordRoutingDecision(
-      this.db, taskId, intent, route.selected.id, route.backup?.id ?? null, route.reason, route.userOverride,
+      this.db, taskId, intent, route.selected.id, route.backup?.id ?? null, route.reason, route.userOverride, profile,
     );
     appendTaskProgress(this.db, taskId, 'planning', `Routing to ${route.selected.displayName}`, route.reason);
-    return { ...route, decisionId };
+    return { ...route, decisionId, tier, profile };
   }
 
   private requireWorkspace(): string {
@@ -426,37 +527,60 @@ export class GroverCore extends EventEmitter {
     taskId: string,
     intent: 'ask' | 'work',
     text: string,
-    route: Route & { decisionId: string },
+    route: ManagedRoute,
+    project: CodingProject | null = null,
+    projectWritable = false,
   ): Promise<void> {
-    const root = this.requireWorkspace();
+    const root = project?.rootPath ?? this.projectsRoot;
     this.guardBudget(taskId, null, 250_000);
     recordCost(this.db, taskId, null, 'estimate', 250_000, `${intent} estimate`);
-    appendTaskProgress(this.db, taskId, 'planning', intent === 'ask' ? 'Thinking through your question' : 'Preparing the requested work');
+    appendTaskProgress(
+      this.db, taskId, 'planning',
+      project
+        ? (projectWritable ? `Working in ${project.name}` : `Reviewing ${project.name}`)
+        : (intent === 'ask' ? 'Thinking through your question' : 'Preparing the requested work'),
+      project ? project.rootPath : '',
+    );
     this.changed();
-    const prompt = intent === 'ask'
-      ? `Answer the user's request clearly and directly. You may read the GROVER project for context but may not modify anything.${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
-      : `Produce the requested analysis or written artifact. You may read the GROVER project for context but may not modify files or external state. Return a finished result.${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`;
+    const prompt = project && projectWritable
+      ? `Work directly in the local Coding project folder provided as your working directory. Inspect the existing project first, implement the user's request, and run the most relevant available checks. You may create and edit files inside this project folder. Do not access or modify the GROVER application repository unless it is inside this project folder (GROVER prevents that overlap). Do not perform external account actions or spend money. Return a concise summary of changed files and verification.${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
+      : project
+      ? `Answer or analyze the request using the local Coding project folder provided as your working directory. You may inspect its files but may not modify files or external state. Return a concrete project-grounded result.${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
+      : intent === 'ask'
+      ? `Answer the user's request clearly and directly. Do not inspect unrelated local files and do not modify files or external state.${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
+      : `Produce the requested analysis or written artifact. Do not inspect unrelated local files and do not modify files or external state. Return a finished result.${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`;
     let selected = route.selected;
+    let actualProfile = route.profile;
     let result;
     try {
       result = await this.router.run(selected, {
-        runKey: taskId, prompt, cwd: root, mode: intent, maxBudgetUsd: 1,
+        runKey: taskId, prompt, cwd: root, mode: projectWritable ? 'project' : intent, maxBudgetUsd: 1,
+        model: route.profile.modelId ?? undefined,
+        reasoningEffort: route.profile.reasoningEffort ?? undefined,
         onUpdate: (update) => this.handleEngineUpdate(taskId, null, update),
       });
     } catch (error) {
       if (!route.backup) throw error;
       appendTaskProgress(this.db, taskId, 'planning', `${selected.displayName} stopped; trying ${route.backup.displayName}`, String(error));
       selected = route.backup;
+      const backupProfile = getEngineModelProfile(this.db, selected.id, route.tier);
+      actualProfile = backupProfile;
       result = await this.router.run(selected, {
-        runKey: taskId, prompt, cwd: root, mode: intent, maxBudgetUsd: 1,
+        runKey: taskId, prompt, cwd: root, mode: projectWritable ? 'project' : intent, maxBudgetUsd: 1,
+        model: backupProfile.modelId ?? undefined,
+        reasoningEffort: backupProfile.reasoningEffort ?? undefined,
         onUpdate: (update) => this.handleEngineUpdate(taskId, null, update),
       });
     }
     const actual = Math.max(0, Math.round(result.costUsd * 1_000_000));
-    recordCost(this.db, taskId, null, 'actual', actual, `${intent} actual; usage ${JSON.stringify(result.usage ?? {})}`, selected.id);
+    recordCost(
+      this.db, taskId, null, 'actual', actual, `${intent} actual; usage ${JSON.stringify(result.usage ?? {})}`,
+      selected.id, actualProfile.modelId ?? 'provider-default',
+    );
     appendTaskProgress(this.db, taskId, 'done', 'Finished', result.answer, actual);
     this.addAssistantMessage(taskId, result.answer || 'Finished without a text response.');
-    completeRoutingDecision(this.db, route.decisionId, `passed:${selected.id}`);
+    if (project) this.db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), project.id);
+    completeRoutingDecision(this.db, route.decisionId, `passed:${selected.id}`, actualProfile);
     this.changed();
   }
 
@@ -478,7 +602,7 @@ export class GroverCore extends EventEmitter {
     return branch;
   }
 
-  private async runBuild(runId: string, request: string, resume = false, initialRoute?: Route & { decisionId?: string }): Promise<void> {
+  private async runBuild(runId: string, request: string, resume = false, initialRoute?: ManagedRoute): Promise<void> {
     const root = this.requireWorkspace();
     const run = this.db.prepare('SELECT task_id, engine_session_id, engine_id FROM build_runs WHERE id = ?').get(runId) as {
       task_id: string; engine_session_id: string | null; engine_id: string;
@@ -486,6 +610,7 @@ export class GroverCore extends EventEmitter {
     this.guardBudget(run.task_id, runId, 1_000_000);
     const selectedEngine = initialRoute?.selected ?? this.router.get(run.engine_id);
     if (!selectedEngine) throw new Error(`The selected engine '${run.engine_id}' is not available.`);
+    const buildProfile = initialRoute?.profile ?? getEngineModelProfile(this.db, selectedEngine.id, 'frontier');
     const branch = await this.prepareBuildBranch(runId, resume);
     recordCost(this.db, run.task_id, runId, 'estimate', 1_000_000, 'Builder run estimate');
     transitionRun(this.db, runId, 'running', 'planning', resume ? 'Resuming the GROVER change' : 'Started a safe build branch');
@@ -503,11 +628,16 @@ export class GroverCore extends EventEmitter {
     ].join('\n');
     const result = await this.router.run(selectedEngine, {
       runKey: runId, prompt, cwd: root, mode: 'build', maxBudgetUsd: 2,
+      model: buildProfile.modelId ?? undefined,
+      reasoningEffort: buildProfile.reasoningEffort ?? undefined,
       resumeSessionId: resume ? run.engine_session_id ?? undefined : undefined,
       onUpdate: (update) => this.handleEngineUpdate(run.task_id, runId, update),
     });
     const actual = Math.max(0, Math.round(result.costUsd * 1_000_000));
-    recordCost(this.db, run.task_id, runId, 'actual', actual, `Builder run actual; usage ${JSON.stringify(result.usage ?? {})}`, selectedEngine.id);
+    recordCost(
+      this.db, run.task_id, runId, 'actual', actual, `Builder run actual; usage ${JSON.stringify(result.usage ?? {})}`,
+      selectedEngine.id, buildProfile.modelId ?? 'provider-default',
+    );
     transitionRun(this.db, runId, 'verifying', 'verifying', 'Checking the change before saving it', {
       actor: 'system', detail: result.answer, costDelta: actual, sessionId: result.sessionId,
     });
@@ -563,9 +693,12 @@ export class GroverCore extends EventEmitter {
 
     try {
       const checkerRoute = this.router.route('ask', 'auto', selectedEngine.id);
+      const checkerProfile = getEngineModelProfile(this.db, checkerRoute.selected.id, 'balanced');
       transitionRun(this.db, runId, 'verifying', 'verifying', `${checkerRoute.selected.displayName} is independently reviewing the diff`);
       const checker = await this.router.run(checkerRoute.selected, {
         runKey: `${runId}:checker`, cwd: root, mode: 'ask', maxBudgetUsd: 0.75,
+        model: checkerProfile.modelId ?? undefined,
+        reasoningEffort: checkerProfile.reasoningEffort ?? undefined,
         prompt: [
           'Review the current uncommitted GROVER diff as an independent checker.',
           'Do not edit files. Look for functional regressions, scope drift, security issues, weak tests, or contradictions with AGENTS.md.',
@@ -600,7 +733,7 @@ export class GroverCore extends EventEmitter {
       actor: 'system', detail: `${result.answer}\n\nCommit: ${commitHash}`,
     });
     this.addAssistantMessage(run.task_id, `${result.answer}\n\nThe change passed its checks and was committed as ${commitHash.slice(0, 8)}.`);
-    if (initialRoute?.decisionId) completeRoutingDecision(this.db, initialRoute.decisionId, `passed:${selectedEngine.id}`);
+    if (initialRoute?.decisionId) completeRoutingDecision(this.db, initialRoute.decisionId, `passed:${selectedEngine.id}`, buildProfile);
     this.routingByRun.delete(runId);
     this.changed();
   }
@@ -732,6 +865,18 @@ export class GroverCore extends EventEmitter {
   rejectMemoryProposal(proposalId: string): void {
     this.memory.rejectProposal(proposalId);
     this.changed();
+  }
+
+  searchMemories(query: string): Record<string, any>[] {
+    return this.memory.search(query, 100);
+  }
+
+  conversationMessages(conversationId: string): Record<string, any>[] {
+    const conversation = this.db.prepare('SELECT id FROM conversations WHERE id = ?').get(conversationId);
+    if (!conversation) throw new Error('That conversation is no longer available.');
+    return this.db.prepare(
+      'SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY rowid'
+    ).all(conversationId) as Record<string, any>[];
   }
 
   syncMemoryVault(): number {

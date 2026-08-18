@@ -153,3 +153,19 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** The UI previously displayed persistent conversations without actually giving their earlier messages to the worker. A hard-bounded pack creates real continuity without dumping the vault or unrelated chats, and it remains fast at thousands of messages.
 
 **Prediction (check at this slice exit):** Follow-ups can reference an earlier message in the same conversation, unrelated conversation text is absent from the prompt, and the history pack never exceeds its configured cap.
+
+## 2026-08-18 — Coding conversations own isolated local project folders
+
+**Decision:** A file-producing Coding request creates a conversation-owned folder under the local `GROVER Projects` root unless Will links an existing folder. The engine receives a distinct `project` execution mode with write access inside that folder. GROVER rejects any linked folder that is the GROVER repository, contains it, or sits inside it. The Coding domain remains unable to edit GROVER itself.
+
+**Why:** Organizing a coding request into a Coding page is not functional if the worker remains read-only or points at GROVER's own source. A per-conversation root gives Codex the correct working directory, makes projects easy to find in Windows, and preserves the Builder security boundary without a new dependency.
+
+**Prediction (check at this slice exit):** `Build a new coding platform` will create one project record and directory, invoke the engine in project-write mode with that directory as `cwd`, expose the path in the desktop UI, and reject an attempt to link the GROVER repository as a Coding project.
+
+## 2026-08-18 — Abstract workload tiers map to configurable provider profiles
+
+**Decision:** GROVER classifies non-local work as `fast`, `balanced`, or `frontier`, then looks up the selected engine's model and reasoning effort from SQLite configuration. The initial verified Codex mapping is fast → GPT-5.6 Terra/low, balanced → GPT-5.6 Terra/medium, frontier → GPT-5.6 Sol/high. Local navigation and memory answers bypass providers. Provider model names do not appear in context or application-domain routing rules.
+
+**Why:** Will wants Sol/high for complex coding and a lighter model for routine work without making Codex the coordinator. Official OpenAI guidance describes Sol as the flagship complex-work tier and Terra as the balanced tier, and both exact profiles successfully answered through the signed-in bundled CLI on this computer. Storing mappings as data preserves the provider-neutral engine boundary.
+
+**Prediction (check at this slice exit):** A short external Ask records the fast profile, ordinary Work records balanced, Coding writes and GROVER builds record frontier, Settings exposes the mappings, and the live isolated game build records and successfully invokes `gpt-5.6-sol` with high reasoning.

@@ -13,3 +13,15 @@ P6 advances the accepted v2.1 continuity direction without beginning the deferre
 **What the next person should do:** Add a local project registry and safe Coding project-root selection/creation, then run a real game creation through Codex in that directory without granting Coding permission to edit GROVER.
 
 **Any risks or weirdness:** The deterministic subject matcher intentionally abstains when a project name is generic. Those misses should become labeled routing examples; lowering the threshold without evidence would create worse cross-project contamination.
+
+## 2026-08-18 — isolated Coding projects, tiered workers, and scalable history/memory
+
+**What changed:** File-producing Coding conversations now own a local project folder under Documents/GROVER Projects or a folder Will chooses. Coding receives project-scoped write access but cannot target, contain, or sit inside the GROVER repository. Project review uses the same folder read-only. The provider-neutral manager now selects fast, balanced, or frontier profiles from SQLite configuration; the verified Codex mapping is Terra/low, Terra/medium, and Sol/high. Memory search uses local FTS, safe old proposals auto-apply, only 200 recent memories ride on normal state updates, and older conversations load their messages on demand.
+
+**What I verified:** 61 deterministic checks and the rendered Electron smoke pass. Direct account probes passed for the exact Terra/low and Sol/high profiles. The live Coding acceptance created a browser tic-tac-toe project through GROVER using recorded Sol/high routing, kept the GROVER working tree unchanged, rendered nine playable cells, clicked a winning sequence, asserted `X wins`, and saved `app/test-results/live-coding-tictactoe.png`. A separate live Ask passed through GROVER's recorded Terra/low fast profile.
+
+**What is still open:** Package and run the RC.3 Windows executable against a backed-up copy of Will's current local data. The Lifestyle scheduler, delete/archive/reorder controls, learned-router evaluation, and visual memory graph remain later functional/visual slices.
+
+**What the next person should do:** Version and package RC.3, run packaged routing plus live Codex smokes, then launch it on Will's existing database so eligible old memory proposals migrate and the new conversation/project indexes populate.
+
+**Any risks or weirdness:** Codex CLI startup still carries nontrivial fixed overhead, so deterministic local answers are the main route to instant behavior. A learned local coordinator should not be downloaded or trained until real corrections form an eval set that can prove it improves ambiguous cases.

@@ -7,7 +7,7 @@ import { openDb } from '../src/db.ts';
 import {
   addEvidence, checkBudget, closureReady, completeReceipt, completeRoutingDecision,
   addConversationMessage, createBuild, createConversation, createTask, deleteMemory, engineRanking, inferContext, inferIntent, moveConversation, rateTaskRouting,
-  recordCost, recordRoutingDecision, resolveConversation, saveMemory, snapshot, transitionRun,
+  getEngineModelProfile, recordCost, recordRoutingDecision, resolveConversation, saveMemory, selectModelTier, snapshot, transitionRun,
 } from '../src/store.ts';
 
 test('intent routing distinguishes the five front-door commitments', () => {
@@ -168,6 +168,20 @@ test('manager ranking learns from outcomes and explicit usefulness feedback', ()
   }
   const ranking = engineRanking(db, 'ask');
   assert.equal(ranking[0].id, 'claude-cli', 'enough successful positive evidence can outrank the initial Codex prior');
+});
+
+test('abstract workload tiers map to configurable Codex profiles', () => {
+  const db = openDb(':memory:');
+  assert.equal(selectModelTier('ask', 'general', 'Explain this briefly'), 'fast');
+  assert.equal(selectModelTier('work', 'health', 'Prepare a gym routine'), 'balanced');
+  assert.equal(selectModelTier('work', 'coding', 'Implement the game', true), 'frontier');
+  assert.equal(selectModelTier('build', 'builder', 'Change GROVER'), 'frontier');
+  assert.deepEqual(getEngineModelProfile(db, 'codex-cli', 'fast'), {
+    tier: 'fast', modelId: 'gpt-5.6-terra', reasoningEffort: 'low',
+  });
+  assert.deepEqual(getEngineModelProfile(db, 'codex-cli', 'frontier'), {
+    tier: 'frontier', modelId: 'gpt-5.6-sol', reasoningEffort: 'high',
+  });
 });
 
 test('lane contracts refuse cross-lane authority and jackson-private access', () => {

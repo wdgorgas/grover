@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('grover', Object.freeze({
   snapshot: () => ipcRenderer.invoke('grover:snapshot'),
+  conversationMessages: (conversationId) => ipcRenderer.invoke('grover:conversation-messages', conversationId),
+  searchMemories: (query) => ipcRenderer.invoke('grover:search-memories', query),
   submit: (input) => ipcRenderer.invoke('grover:submit', input),
   taskAction: (taskId, action) => ipcRenderer.invoke('grover:task-action', { taskId, action }),
   setKillSwitch: (enabled) => ipcRenderer.invoke('grover:kill-switch', enabled),
@@ -9,6 +11,8 @@ contextBridge.exposeInMainWorld('grover', Object.freeze({
   refreshEngines: () => ipcRenderer.invoke('grover:refresh-engines'),
   signInEngine: (engineId) => ipcRenderer.invoke('grover:sign-in-engine', engineId),
   moveConversation: (conversationId, context) => ipcRenderer.invoke('grover:move-conversation', { conversationId, context }),
+  chooseProjectFolder: (conversationId) => ipcRenderer.invoke('grover:choose-project-folder', conversationId),
+  openProjectFolder: (conversationId) => ipcRenderer.invoke('grover:open-project-folder', conversationId),
   chooseWorkspace: () => ipcRenderer.invoke('grover:choose-workspace'),
   forget: (memoryId) => ipcRenderer.invoke('grover:forget', memoryId),
   correctMemory: (memoryId, content) => ipcRenderer.invoke('grover:correct-memory', { memoryId, content }),

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-export type EngineMode = 'ask' | 'work' | 'build';
+export type EngineMode = 'ask' | 'work' | 'project' | 'build';
 
 export type EngineUpdate = {
   kind: 'started' | 'progress' | 'result';
@@ -37,6 +37,8 @@ export type EngineRunOptions = {
   cwd: string;
   mode: EngineMode;
   maxBudgetUsd: number;
+  model?: string;
+  reasoningEffort?: string;
   resumeSessionId?: string;
   onUpdate: (update: EngineUpdate) => void;
 };
@@ -109,7 +111,7 @@ function progressFromRecord(record: Record<string, any>): EngineUpdate | null {
 export class ClaudeCliEngine {
   readonly id = 'claude-cli';
   readonly displayName = 'Claude';
-  readonly capabilities: EngineMode[] = ['ask', 'work', 'build'];
+  readonly capabilities: EngineMode[] = ['ask', 'work', 'project', 'build'];
   readonly executable: string | null;
   private children = new Map<string, ChildProcessWithoutNullStreams>();
 
@@ -139,10 +141,11 @@ export class ClaudeCliEngine {
     const args = [
       '--print', '--verbose', '--output-format', 'stream-json',
       '--max-budget-usd', String(options.maxBudgetUsd),
-      '--permission-mode', options.mode === 'build' ? 'acceptEdits' : 'dontAsk',
-      '--allowed-tools', options.mode === 'build' ? 'Read,Edit,Write,Glob,Grep,Bash' : 'Read,Glob,Grep',
+      '--permission-mode', ['build', 'project'].includes(options.mode) ? 'acceptEdits' : 'dontAsk',
+      '--allowed-tools', ['build', 'project'].includes(options.mode) ? 'Read,Edit,Write,Glob,Grep,Bash' : 'Read,Glob,Grep',
       '--no-session-persistence',
     ];
+    if (options.model) args.push('--model', options.model);
     if (options.resumeSessionId) args.push('--resume', options.resumeSessionId);
     args.push(options.prompt);
 
@@ -249,7 +252,7 @@ function codexProgress(record: Record<string, any>): EngineUpdate | null {
 export class CodexCliEngine implements ExecutionEngine {
   readonly id = 'codex-cli';
   readonly displayName = 'Codex';
-  readonly capabilities: EngineMode[] = ['ask', 'work', 'build'];
+  readonly capabilities: EngineMode[] = ['ask', 'work', 'project', 'build'];
   readonly executable: string | null;
   private children = new Map<string, ChildProcessWithoutNullStreams>();
 
@@ -279,10 +282,12 @@ export class CodexCliEngine implements ExecutionEngine {
     const args = [
       '-a', 'never',
       'exec', '--json', '--color', 'never',
-      '--sandbox', options.mode === 'build' ? 'workspace-write' : 'read-only',
+      '--sandbox', ['build', 'project'].includes(options.mode) ? 'workspace-write' : 'read-only',
       '--cd', options.cwd,
     ];
-    if (options.mode !== 'build') args.push('--ephemeral');
+    if (options.model) args.push('--model', options.model);
+    if (options.reasoningEffort) args.push('--config', `model_reasoning_effort="${options.reasoningEffort}"`);
+    if (!['build', 'project'].includes(options.mode)) args.push('--ephemeral');
     args.push(options.prompt);
 
     return await new Promise<EngineResult>((resolve, reject) => {

@@ -326,6 +326,60 @@ export class MemoryService {
     return memoryId;
   }
 
+  autoApplyEligibleProposals(): number {
+    const proposals = this.db.prepare(
+      `SELECT * FROM memory_update_proposals
+       WHERE status = 'proposed' AND sensitivity != 'sensitive'
+       ORDER BY created_at`
+    ).all() as Record<string, any>[];
+    let applied = 0;
+    for (const proposal of proposals) {
+      const content = String(proposal.proposed_content ?? '').trim();
+      if (!/^(?:Will's (?:name|major|goal|next steps)|Will (?:prefers|likes))\b/i.test(content)) continue;
+      const duplicate = this.db.prepare(
+        `SELECT id FROM memories WHERE namespace = ? AND lower(content) = lower(?)
+         AND deleted_at IS NULL AND superseded_by IS NULL LIMIT 1`
+      ).get(proposal.namespace, content) as { id: string } | undefined;
+      if (!duplicate) {
+        const category = /^Will's name\b/i.test(content) ? 'profile:name'
+          : /^Will's major\b/i.test(content) ? 'profile:major'
+          : /^Will's goal\b/i.test(content) ? 'profile:goal'
+          : /^Will's next steps\b/i.test(content) ? 'profile:next-steps'
+          : 'profile:preference';
+        this.remember({
+          content, namespace: proposal.namespace, source: `auto-policy:${proposal.provenance}`,
+          sensitivity: proposal.sensitivity, category,
+        });
+      }
+      this.db.prepare("UPDATE memory_update_proposals SET status = 'applied', applied_at = ? WHERE id = ?")
+        .run(new Date().toISOString(), proposal.id);
+      applied += 1;
+    }
+    return applied;
+  }
+
+  search(query: string, limit = 100): Record<string, any>[] {
+    const safeLimit = Math.max(1, Math.min(250, Math.trunc(limit)));
+    const queryTokens = tokens(query);
+    if (!queryTokens.length) {
+      return this.db.prepare(
+        `SELECT id, owner, namespace, category, confidence, sensitivity, importance, content, provenance,
+                vault_path, created_at, updated_at
+         FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL
+         ORDER BY updated_at DESC LIMIT ?`
+      ).all(safeLimit) as Record<string, any>[];
+    }
+    const match = queryTokens.map((token) => `${token.replace(/[^a-z0-9]/g, '')}*`).filter(Boolean).join(' OR ');
+    return this.db.prepare(
+      `SELECT m.id, m.owner, m.namespace, m.category, m.confidence, m.sensitivity, m.importance,
+              m.content, m.provenance, m.vault_path, m.created_at, m.updated_at
+       FROM memories_fts f JOIN memories m ON m.id = f.memory_id
+       WHERE memories_fts MATCH ? AND m.namespace != 'jackson-private'
+         AND m.deleted_at IS NULL AND m.superseded_by IS NULL
+       ORDER BY bm25(memories_fts), m.updated_at DESC LIMIT ?`
+    ).all(match, safeLimit) as Record<string, any>[];
+  }
+
   rejectProposal(id: string): void {
     this.db.prepare("UPDATE memory_update_proposals SET status = 'rejected' WHERE id = ? AND status = 'proposed'").run(id);
   }

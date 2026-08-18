@@ -322,8 +322,21 @@ CREATE TABLE IF NOT EXISTS routing_decisions (
   outcome         TEXT,
   rating          TEXT CHECK (rating IN ('positive','negative')),
   feedback_note   TEXT,
+  model_tier      TEXT,
+  selected_model  TEXT,
+  reasoning_effort TEXT,
   created_at      TEXT NOT NULL,
   completed_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS engine_model_profiles (
+  engine_id        TEXT NOT NULL REFERENCES engine_registry(id),
+  model_tier       TEXT NOT NULL CHECK (model_tier IN ('fast','balanced','frontier')),
+  model_id         TEXT,
+  reasoning_effort TEXT,
+  enabled          INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+  updated_at       TEXT NOT NULL,
+  PRIMARY KEY(engine_id, model_tier)
 );
 
 -- Local conversation index. Task execution remains recorded in the immutable
@@ -387,6 +400,20 @@ CREATE TABLE IF NOT EXISTS conversation_route_log (
 CREATE INDEX IF NOT EXISTS conversation_route_log_by_task
 ON conversation_route_log(task_id, created_at);
 
+CREATE TABLE IF NOT EXISTS projects (
+  id                    TEXT PRIMARY KEY,
+  conversation_id       TEXT NOT NULL UNIQUE REFERENCES conversations(id),
+  context               TEXT NOT NULL CHECK (context = 'coding'),
+  name                  TEXT NOT NULL,
+  root_path             TEXT NOT NULL UNIQUE,
+  created_automatically INTEGER NOT NULL DEFAULT 0 CHECK (created_automatically IN (0,1)),
+  created_at            TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS projects_by_updated
+ON projects(updated_at DESC);
+
 INSERT OR IGNORE INTO budgets(id, soft_micro_usd, hard_micro_usd, enabled)
 VALUES ('development-phase', 25000000, 50000000, 1);
 
@@ -398,8 +425,17 @@ VALUES ('preferred_engine', 'auto', CURRENT_TIMESTAMP);
 
 INSERT OR IGNORE INTO engine_registry(id, display_name, provider, capabilities, priority, enabled)
 VALUES
-  ('codex-cli', 'Codex', 'openai', '["ask","work","build","review","read","write"]', 10, 1),
-  ('claude-cli', 'Claude', 'anthropic', '["ask","work","build","review","read","write"]', 20, 1);
+  ('codex-cli', 'Codex', 'openai', '["ask","work","project","build","review","read","write"]', 10, 1),
+  ('claude-cli', 'Claude', 'anthropic', '["ask","work","project","build","review","read","write"]', 20, 1);
+
+INSERT OR IGNORE INTO engine_model_profiles(engine_id, model_tier, model_id, reasoning_effort, enabled, updated_at)
+VALUES
+  ('codex-cli', 'fast', 'gpt-5.6-terra', 'low', 1, CURRENT_TIMESTAMP),
+  ('codex-cli', 'balanced', 'gpt-5.6-terra', 'medium', 1, CURRENT_TIMESTAMP),
+  ('codex-cli', 'frontier', 'gpt-5.6-sol', 'high', 1, CURRENT_TIMESTAMP),
+  ('claude-cli', 'fast', NULL, NULL, 1, CURRENT_TIMESTAMP),
+  ('claude-cli', 'balanced', NULL, NULL, 1, CURRENT_TIMESTAMP),
+  ('claude-cli', 'frontier', NULL, NULL, 1, CURRENT_TIMESTAMP);
 
 INSERT OR IGNORE INTO memory_namespaces(id, owner, kind, fails_closed, created_at)
 VALUES
@@ -426,7 +462,7 @@ INSERT OR IGNORE INTO domain_contracts
   (domain, allowed_tools, readable_namespaces, writable_namespaces, default_model_tier, max_spend_micro_usd, can_edit_grover)
 VALUES
   ('builder', '["read","edit","write","test","git"]', '["will-private","shared-grover-dev"]', '["shared-grover-dev"]', 'frontier', 2000000, 1),
-  ('coding', '["read"]', '["will-private","shared-grover-dev"]', '[]', 'mid', 1000000, 0),
+  ('coding', '["read","edit","write","test"]', '["will-private","shared-grover-dev"]', '[]', 'mid', 1000000, 0),
   ('research', '["read"]', '["will-private","shared-grover-dev"]', '[]', 'mid', 1000000, 0),
   ('business', '[]', '["will-private"]', '[]', 'mid', 1000000, 0),
   ('quant', '[]', '["will-private"]', '[]', 'frontier', 1000000, 0),
@@ -442,6 +478,9 @@ export function openDb(path: string): DatabaseSync {
   const names = new Set(routingColumns.map((column) => column.name));
   if (!names.has('rating')) db.exec("ALTER TABLE routing_decisions ADD COLUMN rating TEXT CHECK (rating IN ('positive','negative'))");
   if (!names.has('feedback_note')) db.exec('ALTER TABLE routing_decisions ADD COLUMN feedback_note TEXT');
+  if (!names.has('model_tier')) db.exec('ALTER TABLE routing_decisions ADD COLUMN model_tier TEXT');
+  if (!names.has('selected_model')) db.exec('ALTER TABLE routing_decisions ADD COLUMN selected_model TEXT');
+  if (!names.has('reasoning_effort')) db.exec('ALTER TABLE routing_decisions ADD COLUMN reasoning_effort TEXT');
   const taskColumns = db.prepare("PRAGMA table_info('task_state')").all() as unknown as { name: string }[];
   if (!taskColumns.some((column) => column.name === 'domain')) db.exec('ALTER TABLE task_state ADD COLUMN domain TEXT');
   db.exec(`UPDATE task_state
@@ -458,6 +497,12 @@ export function openDb(path: string): DatabaseSync {
   ]) if (!memoryColumns.has(name)) db.exec(`ALTER TABLE memories ADD COLUMN ${name} ${definition}`);
   const proposalColumns = new Set((db.prepare("PRAGMA table_info('memory_update_proposals')").all() as unknown as { name: string }[]).map((column) => column.name));
   if (!proposalColumns.has('proposed_content')) db.exec('ALTER TABLE memory_update_proposals ADD COLUMN proposed_content TEXT');
+  db.exec(`UPDATE engine_registry
+    SET capabilities = '["ask","work","project","build","review","read","write"]'
+    WHERE id IN ('codex-cli','claude-cli')`);
+  db.exec(`UPDATE domain_contracts
+    SET allowed_tools = '["read","edit","write","test"]', can_edit_grover = 0
+    WHERE domain = 'coding'`);
   const missingSearch = db.prepare(
     `SELECT c.id, c.context, c.title FROM conversations c
      LEFT JOIN conversation_search s ON s.conversation_id = c.id

@@ -36,10 +36,12 @@ class NoopHarnessEngine implements ExecutionEngine {
   readonly available = true;
   modes: string[] = [];
   prompts: string[] = [];
+  cwds: string[] = [];
 
   async run(options: EngineRunOptions): Promise<{ answer: string; costUsd: number }> {
     this.modes.push(options.mode);
     this.prompts.push(options.prompt);
+    this.cwds.push(options.cwd);
     options.onUpdate({ kind: 'started', plainLanguage: 'Harness started' });
     options.onUpdate({ kind: 'progress', plainLanguage: 'Harness streamed progress' });
     return { answer: 'Harness finished cleanly', costUsd: 0 };
@@ -76,10 +78,11 @@ test('kill switch cancels active conversational work instead of leaving it runni
 
 test('Noop engine swap preserves streaming task, conversation, cost, and event state', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-noop-'));
+  const projectsRoot = join(dataDir, 'projects');
   const db = openDb(':memory:');
   const engine = new NoopHarnessEngine();
   const core = new GroverCore({
-    db, dataDir, workspaceRoot: resolve(import.meta.dirname, '..', '..'),
+    db, dataDir, projectsRoot, workspaceRoot: resolve(import.meta.dirname, '..', '..'),
     router: new EngineRouter([engine]),
   });
   const submitted = core.submit({ text: 'Build a new coding platform', engine: 'noop-harness' });
@@ -87,8 +90,12 @@ test('Noop engine swap preserves streaming task, conversation, cost, and event s
   const state = core.getSnapshot() as any;
   assert.equal(submitted.context, 'coding');
   assert.equal(submitted.intent, 'work');
-  assert.deepEqual(engine.modes, ['work'], 'Coding work routes through a non-builder read-only mode');
+  assert.deepEqual(engine.modes, ['project'], 'Coding creation receives a writable project-scoped mode');
   assert.equal(state.features.length, 0, 'Coding work did not become a GROVER Builder run');
+  assert.equal(state.projects.length, 1);
+  assert.equal(state.projects[0].conversation_id, submitted.conversationId);
+  assert.ok(engine.cwds[0].startsWith(projectsRoot));
+  assert.notEqual(engine.cwds[0], resolve(import.meta.dirname, '..', '..'), 'Coding cannot write in GROVER');
   assert.match(state.messages.find((item: any) => item.role === 'assistant').content, /finished cleanly/);
   assert.ok(state.events.some((item: any) => item.plain_language === 'Harness streamed progress'));
   assert.equal(state.costs.estimated, 250_000);
@@ -137,14 +144,29 @@ test('General branches before writing and local navigation reopens without pollu
   assert.equal(reopened.conversationId, coding.conversationId);
   assert.equal(reopened.conversationDisposition, 'navigated');
   assert.equal((db.prepare('SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ?').get(coding.conversationId) as any).count, beforeNavigation);
-  assert.deepEqual(engine.modes, ['work'], 'navigation itself makes no second engine call');
+  assert.deepEqual(engine.modes, ['project'], 'navigation itself makes no second engine call');
 
   const update = core.submit({ text: 'Update tic tac toe', engine: engine.id });
   await waitFor(() => (core.getSnapshot() as any).tasks.some((item: any) => item.task_id === update.taskId && item.status === 'done'), 'project update did not finish');
   assert.equal(update.conversationId, coding.conversationId);
   assert.equal(update.context, 'coding');
   assert.equal(update.conversationDisposition, 'reopened');
-  assert.deepEqual(engine.modes, ['work', 'work']);
+  assert.deepEqual(engine.modes, ['project', 'project']);
+
+  const audit = core.submit({ text: 'Audit tic tac toe progress', engine: engine.id });
+  await waitFor(() => (core.getSnapshot() as any).tasks.some((item: any) => item.task_id === audit.taskId && item.status === 'done'), 'project audit did not finish');
+  assert.equal(audit.conversationId, coding.conversationId);
+  assert.equal(engine.modes.at(-1), 'work', 'project audit remains read-only');
+  assert.equal(engine.cwds.at(-1), engine.cwds[0], 'project audit runs in the existing project folder');
+});
+
+test('Coding folder linking rejects the GROVER repository boundary', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-project-boundary-'));
+  const db = openDb(':memory:');
+  const workspaceRoot = resolve(import.meta.dirname, '..', '..');
+  const core = new GroverCore({ db, dataDir, workspaceRoot, projectsRoot: join(dataDir, 'projects') });
+  const conversationId = createConversation(db, 'coding', 'Boundary test');
+  assert.throws(() => core.linkProjectFolder(conversationId, workspaceRoot), /cannot be the GROVER application folder/i);
 });
 
 test('worker receives bounded target conversation history and excludes unrelated conversations', async () => {
@@ -165,6 +187,23 @@ test('worker receives bounded target conversation history and excludes unrelated
   assert.match(engine.prompts[0], /three by three board/);
   assert.match(engine.prompts[0], /Juniper/);
   assert.doesNotMatch(engine.prompts[0], /UNRELATED_SECRET_MARKER/);
+});
+
+test('old conversation messages load on demand instead of bloating every state update', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-core-lazy-history-'));
+  const db = openDb(':memory:');
+  const core = new GroverCore({ db, dataDir, workspaceRoot: resolve(import.meta.dirname, '..', '..') });
+  const old = createConversation(db, 'general', 'Old conversation');
+  addConversationMessage(db, old, null, 'user', 'OLD_HISTORY_MARKER');
+  db.prepare("UPDATE conversations SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(old);
+  for (let index = 0; index < 20; index += 1) {
+    const recent = createConversation(db, 'general', `Recent ${index}`);
+    addConversationMessage(db, recent, null, 'user', `Recent message ${index}`);
+  }
+  const state = core.getSnapshot() as any;
+  assert.equal(state.conversations.some((item: any) => item.id === old), true, 'old conversation remains reopenable');
+  assert.equal(state.messages.some((item: any) => item.content === 'OLD_HISTORY_MARKER'), false, 'old messages are not broadcast on every update');
+  assert.equal(core.conversationMessages(old)[0].content, 'OLD_HISTORY_MARKER');
 });
 
 test('Builder pause, resume, and cancel transitions work through the core', async () => {
