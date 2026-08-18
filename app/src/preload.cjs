@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('grover', Object.freeze({
   syncMemory: () => ipcRenderer.invoke('grover:sync-memory'),
   consolidateMemory: (namespace) => ipcRenderer.invoke('grover:consolidate-memory', namespace),
   exportMemory: () => ipcRenderer.invoke('grover:export-memory'),
+  restoreMemory: () => ipcRenderer.invoke('grover:restore-memory'),
   rateTask: (taskId, rating) => ipcRenderer.invoke('grover:rate-task', { taskId, rating }),
   onState: (callback) => {
     const listener = (_event, state) => callback(state);

@@ -145,6 +145,10 @@ test('app restart pauses an interrupted build and records a resumable recovery s
   const recovery = JSON.parse(state.features[0].recovery_state);
   assert.equal(recovery.reason, 'app_restart');
   assert.match(recovery.nextAction, /Resume/);
+  assert.deepEqual(recovery.changedFiles, []);
+  assert.equal(recovery.revertState, 'not_inspected');
+  assert.ok(Array.isArray(recovery.evidenceCollected));
+  assert.equal((second.prepare('SELECT COUNT(*) AS count FROM recovery_cards WHERE build_run_id = ?').get(runId) as any).count, 1);
   assert.ok(state.events.some((event: any) => event.plain_language.includes('GROVER restarted')));
 });
 

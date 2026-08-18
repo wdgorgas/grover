@@ -72,6 +72,14 @@ function installIpc() {
     if (result.canceled || !result.filePaths[0]) return null;
     return core.exportMemory(result.filePaths[0]);
   });
+  ipcMain.handle('grover:restore-memory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a GROVER memory backup folder to restore',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return core.restoreMemory(result.filePaths[0]);
+  });
   ipcMain.handle('grover:rate-task', (_event, { taskId, rating }) => core.rateTask(taskId, rating));
   ipcMain.handle('grover:choose-workspace', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

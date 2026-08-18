@@ -86,6 +86,31 @@ function taskCard(task) {
   return card;
 }
 
+function recoveryCardForTask(taskId) {
+  const feature = (state.features ?? []).find((item) => item.task_id === taskId && item.recovery_state);
+  if (!feature) return null;
+  const saved = (state.recoveryCards ?? []).find((item) => item.build_run_id === feature.build_run_id);
+  let recovery = {};
+  try { recovery = JSON.parse(feature.recovery_state || '{}'); }
+  catch { recovery = {}; }
+  const changed = saved ? JSON.parse(saved.changed_files || '[]') : recovery.changedFiles ?? [];
+  const evidence = saved ? JSON.parse(saved.evidence_collected || '[]') : recovery.evidenceCollected ?? [];
+  const card = document.createElement('article');
+  card.className = 'task-card failed recovery-card';
+  const title = document.createElement('h3');
+  title.textContent = 'Recovery details';
+  const summary = document.createElement('p');
+  summary.textContent = saved?.reason ?? recovery.reason ?? feature.failure_summary ?? 'The build stopped.';
+  const files = document.createElement('p');
+  files.textContent = `Changed files: ${changed.length ? changed.join(', ') : 'none recorded'} · ${saved?.revert_state ?? recovery.revertState ?? 'not inspected'}`;
+  const proof = document.createElement('p');
+  proof.textContent = `Evidence collected: ${evidence.length} · Cost: ${formatMoney(saved?.cost_spent ?? recovery.costSpent ?? 0)}`;
+  const next = document.createElement('p');
+  next.textContent = saved?.next_safe_action ?? recovery.nextAction ?? recovery.nextSafeAction ?? 'Review the failure before retrying.';
+  card.append(title, summary, files, proof, next);
+  return card;
+}
+
 function renderCurrentWork() {
   const container = $('#current-work');
   const active = (state.tasks ?? []).filter((task) => !['done', 'failed', 'cancelled'].includes(task.status));
@@ -189,6 +214,10 @@ function renderConversationWorkspace() {
       bubble.append(feedbackForTask(message.task_id));
     }
     panel.append(bubble);
+    if (message.role === 'assistant' && message.task_id && message.state === 'failed') {
+      const recovery = recoveryCardForTask(message.task_id);
+      if (recovery) panel.append(recovery);
+    }
   }
   const taskIds = new Set(messages.map((message) => message.task_id).filter(Boolean));
   const running = state.tasks.find((task) => taskIds.has(task.task_id) && !['done', 'failed', 'cancelled'].includes(task.status));
@@ -371,10 +400,31 @@ function renderEngines() {
   }
 }
 
+function renderPolicies() {
+  const container = $('#policy-rules');
+  container.replaceChildren();
+  for (const rule of state.policyRules ?? []) {
+    const card = document.createElement('div');
+    card.className = 'settings-card engine-card';
+    const info = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = rule.trigger_id.replaceAll('_', ' ');
+    const detail = document.createElement('p');
+    detail.textContent = rule.exact_scope;
+    info.append(name, detail);
+    const label = document.createElement('span');
+    label.className = 'status-pill';
+    label.textContent = rule.trigger_id === 'jackson_private' ? 'Always denied' : 'Narrow approval only';
+    card.append(info, label);
+    container.append(card);
+  }
+}
+
 function render(next) {
   state = next;
   renderContexts();
   renderEngines();
+  renderPolicies();
   $('#cost-status').textContent = `${formatMoney(state.costs?.actual)} used`;
   $('#kill-switch').checked = Boolean(state.settings?.killSwitch);
   $('#workspace-path').textContent = state.runtime?.workspaceRoot ?? 'Not selected';
@@ -384,6 +434,9 @@ function render(next) {
   renderEvents(state.events ?? []);
   renderMemories(state.memories ?? []);
   renderMemoryProposals(state.memoryProposals ?? []);
+  const backup = state.memoryBackup ?? {};
+  $('#memory-backup-status').textContent = backup.reason ?? 'No verified backup yet.';
+  $('#memory-backup-status').classList.toggle('good', Boolean(backup.green));
   renderConversationWorkspace();
 }
 
@@ -470,6 +523,16 @@ $('#export-memory').addEventListener('click', async (event) => {
   try {
     const result = await window.grover.exportMemory();
     if (result) window.alert(`Memory backup created in:\n${result.path}`);
+  } finally { button.disabled = false; }
+});
+$('#restore-memory').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const result = await window.grover.restoreMemory();
+    if (result) window.alert(`Restored ${result.restored} memory records. A pre-restore backup was kept at:\n${result.preRestoreBackup}`);
+  } catch (error) {
+    window.alert(error.message);
   } finally { button.disabled = false; }
 });
 

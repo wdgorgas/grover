@@ -428,7 +428,7 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
      ORDER BY t.updated_seq DESC LIMIT 100`
   ).all();
   const features = db.prepare(
-    `SELECT f.*, b.status AS run_status, b.current_phase, b.branch_name, b.failure_summary,
+    `SELECT f.*, b.task_id, b.status AS run_status, b.current_phase, b.branch_name, b.failure_summary,
             b.recovery_state, b.receipt_id, b.id AS build_run_id
      FROM feature_requests f LEFT JOIN build_runs b ON b.id = f.active_build_run_id
      ORDER BY f.updated_at DESC LIMIT 100`
@@ -464,9 +464,18 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   const contextRouting = db.prepare(
     'SELECT * FROM context_routing_decisions ORDER BY created_at DESC LIMIT 200'
   ).all();
+  const policyRules = db.prepare(
+    'SELECT * FROM policy_registry WHERE active = 1 ORDER BY rule_id'
+  ).all();
+  const policyDecisions = db.prepare(
+    'SELECT * FROM policy_decisions ORDER BY created_at DESC LIMIT 100'
+  ).all();
+  const recoveryCards = db.prepare(
+    'SELECT * FROM recovery_cards ORDER BY created_at DESC LIMIT 100'
+  ).all();
   return {
     tasks, features, events, memories, memoryProposals, memoryNamespaces, costs, budget, engines, routing,
-    contextRouting, conversations, messages, contexts: CONTEXTS,
+    contextRouting, conversations, messages, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',
       workspaceRoot: getSetting(db, 'workspace_root'),

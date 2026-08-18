@@ -34,4 +34,4 @@ Run `npm run test:builder`. Required assertions: real engine, FeatureRequest and
 
 ## P5 — hardening
 
-Drills: queued and in-progress kill switch, budget breach, all five sign-off triggers, prompt injection, verification failure, app crash/restart, vault backup and restore, and complete failed-build recovery card.
+`p5-hardening.test.ts` deliberately passes queued and in-progress kill-switch stops, pre-call hard-budget blocking, all and only five sign-off triggers, hostile external-memory injection exclusion, integrity-checked vault backup/restore, tamper warning, and a browser-verification failure. The failed build preserves its edit and stores a complete recovery card: changed files, revert state, evidence, cost, and next safe action. `core.test.ts` separately closes and reopens the database mid-build and asserts paused state plus a durable crash-recovery card. `npm run test:desktop` asserts all five read-only policy boundaries render without a document reload.

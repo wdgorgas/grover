@@ -246,6 +246,56 @@ CREATE TABLE IF NOT EXISTS memory_exports (
   restored_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS backup_health (
+  domain                  TEXT PRIMARY KEY,
+  last_success_at         TEXT,
+  last_restore_drill_at   TEXT,
+  location                TEXT,
+  latest_hash             TEXT,
+  pending_warning         TEXT,
+  updated_at              TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS policy_registry (
+  rule_id          TEXT PRIMARY KEY,
+  trigger_id       TEXT NOT NULL UNIQUE CHECK (trigger_id IN
+                    ('real_money','irreversible_or_destructive','jackson_private',
+                     'self_initiated_grover_change','security_boundary')),
+  exact_scope      TEXT NOT NULL,
+  owner            TEXT NOT NULL,
+  origin_approval  TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  last_used_at     TEXT,
+  review_at        TEXT NOT NULL,
+  expires_at       TEXT,
+  active           INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1))
+);
+
+CREATE TABLE IF NOT EXISTS policy_decisions (
+  id              TEXT PRIMARY KEY,
+  task_id         TEXT,
+  trigger_id      TEXT NOT NULL,
+  state           TEXT NOT NULL CHECK (state IN ('required','approved','denied')),
+  action_summary  TEXT NOT NULL,
+  reason          TEXT NOT NULL,
+  memo            TEXT NOT NULL,
+  origin          TEXT NOT NULL CHECK (origin IN ('will_direct','grover_self_initiated','imported')),
+  created_at      TEXT NOT NULL,
+  decided_at      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS recovery_cards (
+  id                  TEXT PRIMARY KEY,
+  build_run_id        TEXT NOT NULL UNIQUE REFERENCES build_runs(id),
+  reason              TEXT NOT NULL,
+  changed_files       TEXT NOT NULL,
+  revert_state        TEXT NOT NULL CHECK (revert_state IN ('not_reverted','reverted','not_inspected')),
+  evidence_collected  TEXT NOT NULL,
+  cost_spent          INTEGER NOT NULL,
+  next_safe_action    TEXT NOT NULL,
+  created_at          TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,
@@ -337,6 +387,15 @@ VALUES
   ('life-finance', 'will', 'future', 0, CURRENT_TIMESTAMP),
   ('life-home', 'will', 'future', 0, CURRENT_TIMESTAMP),
   ('life-travel', 'will', 'future', 0, CURRENT_TIMESTAMP);
+
+INSERT OR IGNORE INTO policy_registry
+  (rule_id, trigger_id, exact_scope, owner, origin_approval, created_at, review_at, active)
+VALUES
+  ('builtin-real-money', 'real_money', 'Purchases, subscriptions, trades, transfers, or budget increases', 'will', 'master-prompt-p0', CURRENT_TIMESTAMP, '2027-01-01', 1),
+  ('builtin-destructive', 'irreversible_or_destructive', 'Unbacked destructive actions, history rewrite, or destructive external writes', 'will', 'master-prompt-p0', CURRENT_TIMESTAMP, '2027-01-01', 1),
+  ('builtin-jackson-private', 'jackson_private', 'Any read, write, export, or inference involving jackson-private', 'jackson', 'master-prompt-p0', CURRENT_TIMESTAMP, '2027-01-01', 1),
+  ('builtin-self-change', 'self_initiated_grover_change', 'Any GROVER-generated request to modify GROVER behavior or policy', 'will', 'master-prompt-p0', CURRENT_TIMESTAMP, '2027-01-01', 1),
+  ('builtin-security', 'security_boundary', 'Authentication, secrets, permissions, network exposure, injection, kill-switch, audit, or registry changes', 'will', 'master-prompt-p0', CURRENT_TIMESTAMP, '2027-01-01', 1);
 
 INSERT OR IGNORE INTO domain_contracts
   (domain, allowed_tools, readable_namespaces, writable_namespaces, default_model_tier, max_spend_micro_usd, can_edit_grover)

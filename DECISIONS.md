@@ -113,3 +113,11 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** This satisfies relevance, privacy, provenance, and budget requirements with inspectable local behavior. It also produces corrections and retrieval eval cases before any learned router/retriever is justified.
 
 **Prediction (checked at P4 exit):** All 20 seeded include/exclude scenarios will pass, the future/Jackson namespaces will never leak into Builder packs, and a live restart recall will answer from the selected fact. **Result: confirmed.**
+
+## 2026-08-18 — Five-rule policy gate, verified restore, and preserved-failure recovery
+
+**Decision:** Implement exactly the five approved sign-off triggers as deterministic built-in PolicyRegistry rows. Every detected decision is stored atomically with an immutable event; direct instructions from Will approve only the exact detected action, `jackson-private` always denies, and imported or self-initiated actions pause. Retrieved content that resembles embedded instructions is excluded, and all remaining memory enters prompts as explicitly untrusted data. Memory exports carry a SHA-256 manifest; restore validates before mutation, creates a pre-restore backup, and marks any failed restore as a non-green warning. Failed builds preserve edits and emit a durable recovery card instead of attempting an automatic revert.
+
+**Why:** These choices make P5 safety behavior local, inspectable, reversible, and testable without teaching a model to make governance decisions. Preserving a failed branch is safer than guessing which edits belonged to the user, while the recovery card supplies a concrete next step.
+
+**Prediction (checked at P5 exit):** All five triggers will be independently provokable, hostile retrieved instructions will never reach an engine prompt, a tampered backup will leave live memory unchanged and health non-green, and a forced UI verification failure will retain the changed file with a complete recovery card. **Result: confirmed.**

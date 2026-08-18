@@ -2,9 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { appendEventInTransaction } from './events.ts';
+import { appendEvent, appendEventInTransaction } from './events.ts';
 import type { Context } from './store.ts';
 
 type MemoryInput = {
@@ -90,6 +90,10 @@ function parseNote(text: string): { metadata: Record<string, string>; content: s
     catch { metadata[key] = raw; }
   }
   return { metadata, content: normalized.slice(end + 5).trim() };
+}
+
+export function looksLikeUntrustedInstructions(content: string): boolean {
+  return /(?:\b(ignore|disregard|override|forget)\b.{0,50}\b(instruction|prompt|policy|rule)\b)|(?:\b(system prompt|developer message|act as)\b)|(?:\breveal\b.{0,30}\b(secret|credential|token|key)\b)/i.test(content);
 }
 
 export function readableNamespaces(context: Context): string[] {
@@ -303,7 +307,7 @@ export class MemoryService {
          AND m.deleted_at IS NULL AND m.superseded_by IS NULL
        LIMIT 100`
     ).all(match, ...namespaces) as Record<string, any>[];
-    const ranked = rows.map((row) => {
+    const ranked = rows.filter((row) => !looksLikeUntrustedInstructions(row.content)).map((row) => {
       const memoryTokens = new Set(tokens(row.content));
       const overlap = queryTokens.filter((token) => memoryTokens.has(token)).length;
       return { row, overlap, score: overlap * 100 - Number(row.fts_rank ?? 0) };
@@ -397,7 +401,7 @@ export class MemoryService {
 
   exportTo(destination: string): { id: string; path: string; hash: string; memoryCount: number } {
     mkdirSync(destination, { recursive: true });
-    const exportRoot = join(destination, `grover-memory-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+    const exportRoot = join(destination, `grover-memory-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`);
     mkdirSync(exportRoot, { recursive: false });
     const rows = this.db.prepare(
       "SELECT * FROM memories WHERE namespace != 'jackson-private' ORDER BY namespace, id"
@@ -414,10 +418,127 @@ export class MemoryService {
       if (existsSync(source)) cpSync(source, join(vaultDestination, namespace.id), { recursive: true });
     }
     const hash = createHash('sha256').update(payload).digest('hex');
+    writeFileSync(join(exportRoot, 'manifest.json'), JSON.stringify({ version: 1, sha256: hash }, null, 2), 'utf8');
     const id = randomUUID();
+    const now = new Date().toISOString();
     this.db.prepare(
       "INSERT INTO memory_exports(id, path, created_at, hash, status) VALUES (?, ?, ?, ?, 'complete')"
-    ).run(id, exportRoot, new Date().toISOString(), hash);
+    ).run(id, exportRoot, now, hash);
+    this.db.prepare(
+      `INSERT INTO backup_health(domain, last_success_at, location, latest_hash, pending_warning, updated_at)
+       VALUES ('memory', ?, ?, ?, NULL, ?)
+       ON CONFLICT(domain) DO UPDATE SET
+         last_success_at = excluded.last_success_at, location = excluded.location,
+         latest_hash = excluded.latest_hash, pending_warning = NULL, updated_at = excluded.updated_at`
+    ).run(now, exportRoot, hash, now);
+    appendEvent(this.db, {
+      scopeType: 'memory', scopeId: id, idempotencyKey: `${id}:exported`, actor: 'will', domain: 'memory',
+      phase: 'memory', plainLanguage: 'Created a local memory backup',
+      internalDetail: JSON.stringify({ exportId: id, path: exportRoot, hash, memoryCount: rows.length }),
+    });
     return { id, path: exportRoot, hash, memoryCount: rows.length };
+  }
+
+  restoreFrom(exportRoot: string): { restored: number; preRestoreBackup: string; hash: string } {
+    const resolvedRoot = resolve(exportRoot);
+    const payloadPath = join(resolvedRoot, 'memory-export.json');
+    const manifestPath = join(resolvedRoot, 'manifest.json');
+    if (!existsSync(payloadPath) || !existsSync(manifestPath)) return this.rejectRestore('Choose a GROVER memory backup folder containing memory-export.json and manifest.json.');
+    const payloadText = readFileSync(payloadPath, 'utf8');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { version?: number; sha256?: string };
+    const hash = createHash('sha256').update(payloadText).digest('hex');
+    if (manifest.version !== 1 || manifest.sha256 !== hash) return this.rejectRestore('That memory backup failed its integrity check and was not restored.');
+    const payload = JSON.parse(payloadText) as { version?: number; namespaces?: Record<string, any>[]; memories?: Record<string, any>[] };
+    if (payload.version !== 1 || !Array.isArray(payload.namespaces) || !Array.isArray(payload.memories)) {
+      return this.rejectRestore('That folder does not contain a supported GROVER memory backup.');
+    }
+    if (payload.namespaces.some((item) => item.id === 'jackson-private') || payload.memories.some((item) => item.namespace === 'jackson-private')) {
+      return this.rejectRestore('A backup containing jackson-private cannot be restored by GROVER v2.0.');
+    }
+    const known = new Set((this.db.prepare("SELECT id FROM memory_namespaces WHERE id != 'jackson-private'").all() as { id: string }[]).map((row) => row.id));
+    for (const memory of payload.memories) {
+      if (!memory.id || !memory.content || !known.has(memory.namespace)) return this.rejectRestore('The backup contains an invalid or unknown memory record.');
+    }
+
+    const backupRoot = join(dirname(this.vaultRoot), 'backups');
+    const preRestore = this.exportTo(backupRoot);
+    try {
+      transact(this.db, () => {
+        this.db.prepare("DELETE FROM memories WHERE namespace != 'jackson-private'").run();
+        const insert = this.db.prepare(
+          `INSERT INTO memories
+            (id, owner, namespace, category, confidence, sensitivity, importance, content, provenance,
+             vault_path, created_at, updated_at, superseded_by, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
+        );
+        for (const memory of payload.memories!) {
+          insert.run(
+            memory.id, memory.owner ?? 'will', memory.namespace, memory.category ?? 'project',
+            memory.confidence ?? 'high', memory.sensitivity ?? 'private', memory.importance ?? 'normal',
+            memory.content, memory.provenance ?? 'restored-backup', memory.created_at, memory.updated_at,
+            memory.superseded_by ?? null, memory.deleted_at ?? null,
+          );
+        }
+      });
+      for (const namespace of known) {
+        const directory = resolve(this.vaultRoot, namespace);
+        const relativePath = relative(resolve(this.vaultRoot), directory);
+        if (!relativePath || relativePath.startsWith('..') || isAbsolute(relativePath)) {
+          throw new Error('Refused an unsafe vault restore path.');
+        }
+        if (existsSync(directory)) rmSync(directory, { recursive: true, force: true });
+      }
+      this.rebuildIndex();
+      const active = this.db.prepare(
+        "SELECT id FROM memories WHERE namespace != 'jackson-private' AND deleted_at IS NULL"
+      ).all() as { id: string }[];
+      for (const memory of active) this.writeNote(memory.id);
+      const now = new Date().toISOString();
+      this.db.prepare(
+        `INSERT INTO backup_health(domain, last_success_at, last_restore_drill_at, location, latest_hash, pending_warning, updated_at)
+         VALUES ('memory', ?, ?, ?, ?, NULL, ?)
+         ON CONFLICT(domain) DO UPDATE SET last_restore_drill_at = excluded.last_restore_drill_at,
+           location = excluded.location, latest_hash = excluded.latest_hash, pending_warning = NULL, updated_at = excluded.updated_at`
+      ).run(now, now, resolvedRoot, hash, now);
+      this.db.prepare("UPDATE memory_exports SET status = 'restored', restored_at = ? WHERE path = ?").run(now, resolvedRoot);
+      appendEvent(this.db, {
+        scopeType: 'memory', scopeId: hash, idempotencyKey: `restore:${hash}:${now}`, actor: 'will', domain: 'memory',
+        phase: 'memory', plainLanguage: 'Restored and verified a local memory backup',
+        internalDetail: JSON.stringify({ path: resolvedRoot, hash, restored: payload.memories.length, preRestoreBackup: preRestore.path }),
+      });
+      return { restored: payload.memories.length, preRestoreBackup: preRestore.path, hash };
+    } catch (error) {
+      const now = new Date().toISOString();
+      this.db.prepare(
+        `INSERT INTO backup_health(domain, pending_warning, updated_at) VALUES ('memory', ?, ?)
+         ON CONFLICT(domain) DO UPDATE SET pending_warning = excluded.pending_warning, updated_at = excluded.updated_at`
+      ).run(String(error), now);
+      throw error;
+    }
+  }
+
+  backupStatus(): { green: boolean; reason: string; lastBackup: string | null; lastRestore: string | null; location: string | null } {
+    const row = this.db.prepare("SELECT * FROM backup_health WHERE domain = 'memory'").get() as Record<string, any> | undefined;
+    if (!row) return { green: false, reason: 'No backup has been created yet.', lastBackup: null, lastRestore: null, location: null };
+    const now = Date.now();
+    const freshBackup = row.last_success_at && now - Date.parse(row.last_success_at) <= 24 * 60 * 60 * 1_000;
+    const currentRestoreDrill = row.last_restore_drill_at && now - Date.parse(row.last_restore_drill_at) <= 30 * 24 * 60 * 60 * 1_000;
+    const reachable = row.location && existsSync(row.location);
+    const green = Boolean(freshBackup && currentRestoreDrill && reachable && !row.pending_warning);
+    const reason = green ? 'Backup is current and the restore drill passed.'
+      : row.pending_warning ? `Backup warning: ${row.pending_warning}`
+      : !freshBackup ? 'The latest backup is missing or older than 24 hours.'
+      : !currentRestoreDrill ? 'A restore drill has not passed in the current review window.'
+      : 'The backup location is not reachable.';
+    return { green, reason, lastBackup: row.last_success_at ?? null, lastRestore: row.last_restore_drill_at ?? null, location: row.location ?? null };
+  }
+
+  private rejectRestore(message: string): never {
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `INSERT INTO backup_health(domain, pending_warning, updated_at) VALUES ('memory', ?, ?)
+       ON CONFLICT(domain) DO UPDATE SET pending_warning = excluded.pending_warning, updated_at = excluded.updated_at`
+    ).run(message, now);
+    throw new Error(message);
   }
 }

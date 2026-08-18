@@ -1,6 +1,6 @@
 # Planning board → Build board
 
-**P0 APPROVED by Will, 2026-07-03. Current implementation phase: P5 hardening. P1–P4 mechanical exits passed 2026-08-18.**
+**P0 APPROVED by Will, 2026-07-03. P1–P5 mechanical exits passed 2026-08-18. Functional candidate packaging is active; final hands-on and visual acceptance remain.**
 
 Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`.
 
@@ -13,7 +13,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P2 | Razor Builder slice (one real request end-to-end) | **AUTOMATED EXIT GREEN / HUMAN FINAL PASS PENDING** — live isolated Codex Builder branch/edit/test/evidence/commit/receipt flow passes; continued under Proposal 006 |
 | P3 | Builder reliability set (5 diverse requests) | **MECHANICAL EXIT PASSED (2026-08-18)** — live UI/backend/settings/persistence builds, pre-engine private-space refusal, accumulated regression suite, and restart recovery green |
 | P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
-| P5 | Hardening drills → v2.0 | **ACTIVE** |
+| P5 | Hardening drills → v2.0 | **MECHANICAL EXIT PASSED (2026-08-18)** — 51 deterministic tests; policy, kill, budget, injection, verification-failure, crash, backup/restore, and recovery-card drills green |
 
 ## Open side-tracks
 

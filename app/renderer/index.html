@@ -101,9 +101,10 @@
       <section id="view-memory" class="view">
         <div class="context-header">
           <div><p class="eyebrow">Local and inspectable</p><h1>Memory</h1></div>
-          <div class="context-actions"><button id="sync-memory" type="button">Sync vault</button><button id="export-memory" type="button">Export backup</button></div>
+          <div class="context-actions"><button id="sync-memory" type="button">Sync vault</button><button id="export-memory" type="button">Export backup</button><button id="restore-memory" type="button">Restore backup</button></div>
         </div>
         <p>Direct “remember this” requests are stored on this computer and can be removed here.</p>
+        <p id="memory-backup-status" class="small-empty">No verified backup yet.</p>
         <section class="section-block">
           <div class="section-heading"><h2>Needs your review</h2></div>
           <div id="memory-proposals" class="memory-list empty-state">No proposed memories.</div>
@@ -131,6 +132,10 @@
         <section class="settings-section">
           <div class="section-heading"><div><h2>Agent connections</h2><p>Sign in here when an agent needs attention.</p></div><button id="refresh-engines" type="button">Refresh</button></div>
           <div id="engine-connections" class="engine-connections"></div>
+        </section>
+        <section class="settings-section">
+          <div class="section-heading"><div><h2>Approval boundaries</h2><p>The five narrow rules GROVER cannot generalize beyond.</p></div></div>
+          <div id="policy-rules" class="engine-connections"></div>
         </section>
         <div class="settings-card">
           <div><strong>Delivery mode</strong><p>Local Windows application. Server deployment and external actions remain disconnected.</p></div>

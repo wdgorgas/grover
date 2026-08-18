@@ -60,6 +60,11 @@ try {
   await first.page.locator('#memory-list').getByText("Will's name is Will", { exact: false }).waitFor();
   await first.page.locator('#kill-switch').uncheck();
 
+  await first.page.locator('[data-view="settings"]').click();
+  assert.equal(await first.page.locator('#policy-rules .settings-card').count(), 5);
+  await first.page.locator('#policy-rules').getByText('jackson private', { exact: true }).waitFor();
+  await first.page.locator('#policy-rules').getByText('Always denied', { exact: true }).waitFor();
+
   await first.page.locator('[data-view="home"]').click();
   await first.page.locator('#home-request').fill('Deploy the application publicly');
   await first.page.locator('#home-request').press('Enter');
