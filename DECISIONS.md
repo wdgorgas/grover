@@ -87,3 +87,11 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** Electron's portable self-extractor cannot reliably spawn an executable addressed through an old temporary `app.asar.unpacked` path. An explicit resource gives the packaged app a predictable executable path and prevents a missing file from being mislabeled as a login failure.
 
 **Prediction (check in packaged smoke):** The portable executable will find and start Codex after a clean launch even when no development `node_modules` path is available, and a missing executable will display as unavailable rather than sign-in-required.
+
+## 2026-08-18 — Continuous mechanical phase gates; human UX acceptance at the final pass
+
+**Decision:** Under accepted PlanningProposal 006, deterministic phase checks remain hard gates, but development continues without waiting for routine human confirmations between P1–P5. The final v2.0 claim still requires Will's hands-on Builder and memory confirmation. The verbatim orb/final visual integration is deferred until the functional phases are complete so it can follow Will's new design direction.
+
+**Why:** Will explicitly asked GROVER development to continue through all passes and rejected repeated report-only sign-offs. This preserves evidentiary rigor while removing idle handoff pauses and visual rework.
+
+**Prediction (check at final acceptance):** Continuous implementation will expose UX issues through a runnable app sooner, while the final confirmation checklist will still identify any mismatch before v2.0 is declared complete.

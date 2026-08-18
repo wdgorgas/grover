@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openDb } from '../src/db.ts';
 import {
   addEvidence, checkBudget, closureReady, completeReceipt, completeRoutingDecision,
@@ -12,6 +15,7 @@ test('intent routing distinguishes the five front-door commitments', () => {
   assert.equal(inferIntent('Write a concise project brief'), 'work');
   assert.equal(inferIntent('Deploy the app'), 'act');
   assert.equal(inferIntent('Fix the GROVER app settings'), 'build');
+  assert.equal(inferIntent('Build a new coding platform'), 'work');
   assert.equal(inferIntent('Remember that I prefer local apps'), 'remember');
 });
 
@@ -81,6 +85,19 @@ test('hard-cap check blocks a near-cap crossing before model work', () => {
   recordCost(db, 'task', null, 'actual', 49_500_000, 'seed');
   assert.doesNotThrow(() => checkBudget(db, 500_000));
   assert.throws(() => checkBudget(db, 500_001), /hard cap/);
+});
+
+test('cost ledger and budget settings survive a database restart', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'grover-cost-restart-'));
+  const path = join(directory, 'grover.db');
+  const first = openDb(path);
+  recordCost(first, 'restart-task', null, 'actual', 123_456, 'restart proof', 'test', 'noop');
+  first.close();
+  const second = openDb(path);
+  const state = snapshot(second) as any;
+  assert.equal(state.costs.actual, 123_456);
+  assert.equal(state.budget.hard_micro_usd, 50_000_000);
+  second.close();
 });
 
 test('direct memory persists, deletes from active retrieval, and routing stays explainable', () => {

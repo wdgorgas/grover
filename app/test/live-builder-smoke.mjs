@@ -38,7 +38,7 @@ const final = await new Promise((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error('live Builder smoke timed out')), 180_000);
   const submitted = core.submit({
     text: 'Add a new line containing exactly GROVER_BUILDER_READY to target.txt. Make no other source changes.',
-    intent: 'build',
+    context: 'builder',
     engine: 'codex-cli',
   });
   core.on('state', (state) => {

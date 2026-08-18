@@ -1,6 +1,6 @@
 # Planning board → Build board
 
-**P0 APPROVED by Will, 2026-07-03. The build is green-lit. Current phase: P1 — spine skeleton.**
+**P0 APPROVED by Will, 2026-07-03. Current implementation phase: P2/P3 Builder reliability. P1 mechanical exit passed 2026-08-18.**
 
 Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`.
 
@@ -9,9 +9,9 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Phase | What | Status |
 |---|---|---|
 | P0 | Decision lock + master prompt | **APPROVED (Will, 2026-07-03)** — spec: `planning/grover_v2_master_prompt.md` |
-| P1 | Spine skeleton: Windows desktop shell, events+projections, desktop IPC, cost ledger, kill switch, object-model schema, DomainContract stubs | **FUNCTIONAL BETA / FORMAL EXIT REVIEW OPEN** — portable app built; 26 deterministic tests + Electron smoke + live Codex Ask + isolated live Builder green; real-user UX and remaining formal hardening review next; budget $25 soft / $50 hard |
-| P2 | Razor Builder slice (one real request end-to-end) | Blocked on P1 exit |
-| P3 | Builder reliability set (5 diverse requests) | Blocked on P2 exit |
+| P1 | Spine skeleton: Windows desktop shell, events+projections, desktop IPC, cost ledger, kill switch, object-model schema, DomainContract stubs | **MECHANICAL EXIT PASSED (2026-08-18)** — 32 deterministic tests, desktop no-reload smoke, packaged live Codex, Noop engine-swap/lane tests, restart and transition coverage; final orb deferred by Proposal 006 |
+| P2 | Razor Builder slice (one real request end-to-end) | **AUTOMATED EXIT GREEN / HUMAN FINAL PASS PENDING** — live isolated Codex Builder branch/edit/test/evidence/commit/receipt flow passes; continued under Proposal 006 |
+| P3 | Builder reliability set (5 diverse requests) | **ACTIVE** |
 | P4 | Minimal memory core (10 tests + no-migration test) | Blocked on P3 exit |
 | P5 | Hardening drills → v2.0 | Blocked on P4 exit |
 
@@ -26,6 +26,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Local Windows delivery | **Codex** | PlanningProposal 003 accepted 2026-08-18; active implementation | `planning/proposals/proposal_003_local_windows_desktop.md` |
 | Provider-neutral agent manager | **Codex** | PlanningProposal 004 accepted 2026-08-18; Codex preferred, Claude fallback/checker | `planning/proposals/proposal_004_provider_neutral_agent_manager.md` |
 | Fluid context workspaces | **Codex** | PlanningProposal 005 accepted 2026-08-18; functional shell implemented and packaged | `planning/proposals/proposal_005_fluid_context_workspaces.md` |
+| Continuous functional delivery | **Codex** | PlanningProposal 006 accepted 2026-08-18; no routine phase pauses, final visual/human pass retained | `planning/proposals/proposal_006_continuous_functional_delivery.md` |
 
 ## Decisions locked by Will (do not reopen in any workstream)
 

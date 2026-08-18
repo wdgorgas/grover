@@ -83,3 +83,15 @@ ChatGPT reviewed the first slice (source + itemized dispositions: `planning/prop
 **What the next person should do:** Close the formal P1 checklist, then continue directly into P2/P3 Builder reliability without waiting for routine approval.
 
 **Risks or weirdness:** The single-file portable wrapper takes several seconds on a cold first launch because it extracts the bundled 299 MB Codex runtime. The unpacked application launches faster. Claude is installed but signed out; Settings now says that explicitly and provides a sign-in action. The build remains unsigned and uses the temporary Electron icon until Will's visual pass.
+
+### 2026-08-18 — formal P1 mechanical exit
+
+**What changed:** Added explicit Noop engine-swap/streaming coverage, Coding-away-from-Builder enforcement, file-backed cost-ledger restart coverage, and core-level Builder pause/resume/cancel coverage. Fixed automatic Builder promotion for change requests submitted inside the GROVER workspace. Added the runnable acceptance catalog and accepted Proposal 006 for continuous development without routine handoff pauses.
+
+**What I verified:** 32/32 deterministic tests pass. The live isolated Codex Builder flow passes after the intent-selector removal. All mechanical P1 exit conditions have direct evidence in `planning/acceptance_test_catalog.md`.
+
+**What is still open:** The final visual/orb integration and Will's hands-on confirmation are retained for the final v2.0 acceptance pass under Proposal 006. They no longer pause functional implementation.
+
+**What the next person should do:** Continue directly into the five-request P3 Builder reliability set.
+
+**Risks or weirdness:** No mechanical P1 blockers remain. P2's live flow is automated-green, but the final product claim still requires Will to confirm the visible Builder experience.

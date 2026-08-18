@@ -148,7 +148,7 @@ export class GroverCore extends EventEmitter {
     const text = input.text?.trim();
     if (!text) throw new Error('Type a request first.');
     if (text.length > 10_000) throw new Error('Keep a single request under 10,000 characters.');
-    const intent = inferIntent(text);
+    let intent = inferIntent(text);
     if (input.context && !['general', 'coding', 'research', 'finance', 'health', 'business', 'builder'].includes(input.context)) {
       throw new Error('Unknown conversation workspace.');
     }
@@ -160,6 +160,10 @@ export class GroverCore extends EventEmitter {
       context = existing.context;
     } else {
       conversationId = createConversation(this.db, context, text);
+    }
+    if (context === 'builder' && !['act', 'remember'].includes(intent) &&
+        /\b(change|build|add|fix|update|remove|implement|redesign|refactor)\b/i.test(text)) {
+      intent = 'build';
     }
     const taskId = createTask(this.db, intent, text, context);
     addConversationMessage(this.db, conversationId, taskId, 'user', text);

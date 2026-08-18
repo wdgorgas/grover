@@ -32,7 +32,7 @@ export function inferIntent(text: string): Intent {
   if (/\b(change|build|add|fix|update|remove|implement|redesign|refactor)\b/.test(normalized) &&
       /\bgrover\b/.test(normalized)) return 'build';
   if (/^(send|publish|buy|purchase|delete|deploy|email|message|schedule)\b/.test(normalized)) return 'act';
-  if (/^(let'?s\s+)?(write|draft|analyze|research|summarize|create|prepare|design|plan|compare)\b/.test(normalized)) return 'work';
+  if (/^(let'?s\s+)?(write|draft|analyze|research|summarize|create|prepare|design|plan|compare|build|implement)\b/.test(normalized)) return 'work';
   return 'ask';
 }
 
