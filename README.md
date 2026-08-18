@@ -4,12 +4,12 @@ GROVER (General of Resource Optimization and Varying Expertise Requests; named f
 
 ## Current status (updated 2026-08-18)
 
-**Phase: v2 BUILD — P0 approved by Will 2026-07-03; P1 (spine skeleton) is open.**
+**Phase: v2 functional candidate — P0 approved by Will 2026-07-03; P1–P5 mechanical exits passed 2026-08-18.**
 
 - **v1** — built 2026-07-01→03, retired. Real engineering, unusable product (no live feedback, dead controls, contradictory status, HUD-style visuals). Frozen under `archive/grover_v1/`.
 - **v2** — spec-first rebuild. The binding spec is **`planning/grover_v2_master_prompt.md`** (final, seven planning iterations). Build proceeds phase by phase (P1–P5) with evidence-gated exits and $25/$50 budgets per phase; status on `planning/PLANNING_BOARD.md`.
-- **Functional desktop build** — active on `phase-p1-windows-desktop`. GROVER now runs as a local Windows Electron application with a provider-neutral Codex/Claude manager, real live Codex Ask and Builder flows, local memory, object/evidence/cost state, kill switch, and a portable no-install executable at `app/release/GROVER-2.0.0-p1-portable.exe`. The functional core has 26 deterministic tests plus Electron, live-engine, and isolated live-Builder evidence. Visual redesign and real-user UX troubleshooting are next; formal later-phase hardening remains open.
-- **Team** — relay model: Will and Jackson are both build partners; whoever pulls next takes the next useful slice (`JACKSON_START_HERE.md`). Sessions follow `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`. Visual direction is Will's, via Claude Design. Spec changes go through §12 proposals only.
+- **Functional desktop candidate** — GROVER runs as a local Windows application with fluid context conversations, a provider-neutral Codex/Claude manager, live Ask and Builder flows, reviewable local memory, backup/restore, policy and cost gates, kill switch, verification evidence, and failed-build recovery. The no-install candidate is `app/release/GROVER-2.0.0-rc.1-portable.exe` (156,744,204 bytes; SHA-256 `A658BB86BD06594B4F9A3F87909DE2F22048DCF21682EB934C030294052CF997`). The functional core has 51 deterministic checks plus rendered desktop, live-engine, memory-restart, Builder-reliability, and packaged-runtime evidence. Will's hands-on UX confirmation and new visual direction are next.
+- **Team** — relay model: Will and Jackson are both build partners; whoever pulls next takes the next useful slice (`JACKSON_START_HERE.md`). Sessions follow `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`. Visual direction comes from Will; implementation and agent routing remain provider-neutral. Spec changes go through §12 proposals only.
 
 ## Layout — organized by version
 
@@ -34,5 +34,5 @@ New contributor: `JACKSON_START_HERE.md`.
 
 - **Never commit secrets.** `archive/grover_v1/data/` (contains a real API key) and `archive/grover_v1/vault/` (personal memory) are gitignored. If `git status` ever shows them staged, stop.
 - **`archive/` is read-only.** v1 is evidence, not a starting point.
-- **Build only inside the open phase and approved scope.** P0 is approved; P1 is open. Proposed scope changes remain proposals until Will resolves them.
+- **Build only inside the approved scope.** P0 and the accepted PlanningProposals govern the functional candidate. Proposed scope changes remain proposals until Will resolves them.
 - **Locked decisions don't get reopened** — list at the bottom of `planning/PLANNING_BOARD.md`.

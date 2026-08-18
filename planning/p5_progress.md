@@ -8,8 +8,14 @@ Mechanical P5 exit completed on 2026-08-18 under accepted PlanningProposal 006. 
 
 **What I verified:** 51/51 deterministic tests pass. P5 tests deliberately provoke all five sign-off triggers, stop queued and active work, block a budget breach before an engine call, exclude a hostile external-memory instruction, restore exact memory state and detect tampering, and force rendered-browser verification to fail. That deliberate failure preserves the edit and records changed files, revert state, collected evidence, cost, and the next safe action. The existing crash/restart drill now also asserts a durable recovery card. Electron smoke passes with five policy rules rendered and no document reload.
 
-**What is still open:** Build and smoke-test the fresh portable Windows candidate, run final live-provider checks, and let Will exercise the functional workflow. The visual/orb pass remains intentionally deferred for Will's new direction.
+**What is still open:** Let Will exercise the packaged functional workflow. The visual/orb pass remains intentionally deferred for Will's new direction.
 
 **What the next person should do:** Use the packaged app for ordinary questions, a Coding project, a GROVER Builder change, memory remember/correct/delete/backup, pause/cancel, and agent sign-in. Record UX friction as functional defects before beginning the visual redesign.
 
 **Risks or weirdness:** External account actions and server deployment remain disconnected by design. Policy classification is deterministic and intentionally narrow; uncertain or implied boundary actions must pause rather than generalize. A failed restore marks backup health non-green until a new valid backup and restore drill pass.
+
+## 2026-08-18 — packaged functional candidate
+
+**What changed:** Versioned the finished functional scope as `2.0.0-rc.1` and built the single-file portable Windows application with the native Codex runtime embedded.
+
+**What I verified:** The exact portable file answered a live request through bundled Codex. The RC source then passed 51 deterministic checks, rendered desktop smoke, live Ask, live restart-backed memory recall, and the full four-case live Builder reliability suite. Artifact details are recorded in `planning/functional_candidate_handoff.md`.

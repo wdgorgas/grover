@@ -1,6 +1,6 @@
 # Planning board → Build board
 
-**P0 APPROVED by Will, 2026-07-03. P1–P5 mechanical exits passed 2026-08-18. Functional candidate packaging is active; final hands-on and visual acceptance remain.**
+**P0 APPROVED by Will, 2026-07-03. P1–P5 mechanical exits passed 2026-08-18. GROVER 2.0.0-rc.1 is packaged and live-smoked; final hands-on and visual acceptance remain.**
 
 Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`.
 
@@ -23,7 +23,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Visual direction / UI design | **Will** | New direction pending; visual polish deferred until the local desktop application is functional | `design/` |
 | Build-technique intake (external lists → adopt/skip) | main thread | Standing rule + first pass done | `planning/build_techniques_assessment.md` |
 | Daily-driver product contract | **Will** | PlanningProposal 002 accepted 2026-08-18; implement front-door intent and progressive disclosure in the functional shell | `planning/proposals/proposal_002_daily_driver_contract.md` |
-| Local Windows delivery | **Codex** | PlanningProposal 003 accepted 2026-08-18; active implementation | `planning/proposals/proposal_003_local_windows_desktop.md` |
+| Local Windows delivery | **Codex** | Functional RC packaged and live-smoked 2026-08-18 | `planning/functional_candidate_handoff.md` |
 | Provider-neutral agent manager | **Codex** | PlanningProposal 004 accepted 2026-08-18; Codex preferred, Claude fallback/checker | `planning/proposals/proposal_004_provider_neutral_agent_manager.md` |
 | Fluid context workspaces | **Codex** | PlanningProposal 005 accepted 2026-08-18; functional shell implemented and packaged | `planning/proposals/proposal_005_fluid_context_workspaces.md` |
 | Continuous functional delivery | **Codex** | PlanningProposal 006 accepted 2026-08-18; no routine phase pauses, final visual/human pass retained | `planning/proposals/proposal_006_continuous_functional_delivery.md` |

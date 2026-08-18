@@ -8,7 +8,7 @@ import { chromium } from 'playwright-core';
 
 const appDir = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(appDir, '..');
-const executable = process.env.GROVER_PORTABLE_EXE ?? join(appDir, 'release', 'GROVER-2.0.0-p1-portable.exe');
+const executable = process.env.GROVER_PORTABLE_EXE ?? join(appDir, 'release', 'GROVER-2.0.0-rc.1-portable.exe');
 const dataDir = mkdtempSync(join(tmpdir(), 'grover-portable-smoke-'));
 const port = 19333;
 
