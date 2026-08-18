@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 
 const appDir = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(appDir, '..');
+const packagedExecutable = process.env.GROVER_PACKAGED_EXE;
 const dataDir = mkdtempSync(join(tmpdir(), 'grover-electron-'));
 const resultDir = join(appDir, 'test-results');
 mkdirSync(resultDir, { recursive: true });
@@ -13,7 +14,7 @@ const errors = [];
 
 async function launch() {
   const application = await electron.launch({
-    args: ['.'],
+    ...(packagedExecutable ? { executablePath: packagedExecutable, args: [] } : { args: ['.'] }),
     cwd: appDir,
     env: {
       ...process.env,
@@ -59,12 +60,26 @@ try {
   assert.equal(await first.page.locator('#kill-switch').isChecked(), true);
   await first.page.locator('#kill-switch').uncheck();
 
+  if (process.env.GROVER_LIVE_ENGINE === 'true') {
+    await first.page.locator('[data-view="command"]').click();
+    await first.page.locator('#request').fill('Reply with exactly: GROVER_PACKAGED_ENGINE_OK');
+    await first.page.locator('#intent').selectOption('ask');
+    await first.page.locator('#engine').selectOption('codex-cli');
+    await first.page.locator('#submit').click();
+    const packagedResult = first.page.locator('#all-tasks').getByText('GROVER_PACKAGED_ENGINE_OK', { exact: false });
+    await packagedResult.waitFor({ state: 'attached', timeout: 90_000 });
+    assert.match(await packagedResult.textContent(), /GROVER_PACKAGED_ENGINE_OK/);
+  }
+
   const navigationEnd = await first.page.evaluate(() => ({
     count: performance.getEntriesByType('navigation').length,
     origin: performance.timeOrigin,
   }));
   assert.deepEqual(navigationEnd, navigationStart, 'interactions caused no document navigation');
-  await first.page.screenshot({ path: join(resultDir, 'electron-smoke.png'), fullPage: true });
+  await first.page.screenshot({
+    path: join(resultDir, packagedExecutable ? 'packaged-electron-smoke.png' : 'electron-smoke.png'),
+    fullPage: true,
+  });
 } finally {
   await first.application.close();
 }
@@ -78,4 +93,4 @@ try {
 }
 
 assert.deepEqual(errors, [], `unexpected renderer errors: ${errors.join('; ')}`);
-console.log(`Electron smoke passed; screenshot: ${join(resultDir, 'electron-smoke.png')}`);
+console.log(`Electron smoke passed; screenshot: ${join(resultDir, packagedExecutable ? 'packaged-electron-smoke.png' : 'electron-smoke.png')}`);

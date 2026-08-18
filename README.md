@@ -2,13 +2,13 @@
 
 GROVER (General of Resource Optimization and Varying Expertise Requests; named for Grover's quantum search algorithm) is a private AI command center for Will and Jackson — an operating layer, not a chatbot.
 
-## Current status (updated 2026-07-10)
+## Current status (updated 2026-08-18)
 
 **Phase: v2 BUILD — P0 approved by Will 2026-07-03; P1 (spine skeleton) is open.**
 
 - **v1** — built 2026-07-01→03, retired. Real engineering, unusable product (no live feedback, dead controls, contradictory status, HUD-style visuals). Frozen under `archive/grover_v1/`.
 - **v2** — spec-first rebuild. The binding spec is **`planning/grover_v2_master_prompt.md`** (final, seven planning iterations). Build proceeds phase by phase (P1–P5) with evidence-gated exits and $25/$50 budgets per phase; status on `planning/PLANNING_BOARD.md`.
-- **P1 implementation** — active on `phase-p1-event-spine`; the event log/reducer/projection slice is implemented and hardened, including structural event immutability (14 tests). Object model, cost ledger, HTTP/SSE, engine adapter, kill switch, SPA/orb, and reload evidence remain open.
+- **Functional desktop build** — active on `phase-p1-windows-desktop`. GROVER now runs as a local Windows Electron application with a provider-neutral Codex/Claude manager, real live Codex Ask and Builder flows, local memory, object/evidence/cost state, kill switch, and a portable no-install executable at `app/release/GROVER-2.0.0-p1-portable.exe`. The functional core has 26 deterministic tests plus Electron, live-engine, and isolated live-Builder evidence. Visual redesign and real-user UX troubleshooting are next; formal later-phase hardening remains open.
 - **Team** — relay model: Will and Jackson are both build partners; whoever pulls next takes the next useful slice (`JACKSON_START_HERE.md`). Sessions follow `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`. Visual direction is Will's, via Claude Design. Spec changes go through §12 proposals only.
 
 ## Layout — organized by version

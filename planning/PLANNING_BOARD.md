@@ -9,7 +9,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Phase | What | Status |
 |---|---|---|
 | P0 | Decision lock + master prompt | **APPROVED (Will, 2026-07-03)** — spec: `planning/grover_v2_master_prompt.md` |
-| P1 | Spine skeleton: Windows desktop shell, events+projections, desktop IPC, cost ledger, kill switch, object-model schema, DomainContract stubs | **ACTIVE** — Windows desktop completion slice on `phase-p1-windows-desktop`; event spine baseline is green (14 tests); budget $25 soft / $50 hard |
+| P1 | Spine skeleton: Windows desktop shell, events+projections, desktop IPC, cost ledger, kill switch, object-model schema, DomainContract stubs | **FUNCTIONAL BETA / FORMAL EXIT REVIEW OPEN** — portable app built; 26 deterministic tests + Electron smoke + live Codex Ask + isolated live Builder green; real-user UX and remaining formal hardening review next; budget $25 soft / $50 hard |
 | P2 | Razor Builder slice (one real request end-to-end) | Blocked on P1 exit |
 | P3 | Builder reliability set (5 diverse requests) | Blocked on P2 exit |
 | P4 | Minimal memory core (10 tests + no-migration test) | Blocked on P3 exit |

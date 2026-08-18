@@ -170,7 +170,9 @@ export function findCodexExecutable(): string | null {
     const require = createRequire(import.meta.url);
     const packageJson = require.resolve('@openai/codex-win32-x64/package.json');
     const raw = join(dirname(packageJson), 'vendor', 'x86_64-pc-windows-msvc', 'bin', 'codex.exe');
-    candidates.push(raw, raw.replace('app.asar', 'app.asar.unpacked'));
+    // Electron can stat files inside app.asar, but Windows cannot spawn them.
+    // Prefer the asarUnpack mirror whenever packaging has created one.
+    candidates.push(raw.replace('app.asar', 'app.asar.unpacked'), raw);
   } catch {
     // Optional platform package is absent on non-Windows machines.
   }

@@ -59,3 +59,15 @@ ChatGPT reviewed the first slice (source + itemized dispositions: `planning/prop
 **What the next person should do:** Run `npm run dist`, launch the resulting portable `.exe`, rerun the desktop smoke after any packaging repair, and record the exact artifact path/hash.
 
 **Risks or weirdness:** Claude CLI is installed but its current OAuth session is expired; GROVER detected the run failure and safely fell back to Codex. The local executable will be unsigned, so Windows SmartScreen may warn on first launch. Server deployment remains deliberately disconnected.
+
+### 2026-08-18 — portable package verified
+
+**What changed:** Fixed packaged Codex resolution so Windows launches the `app.asar.unpacked` executable rather than the archive-visible path. Added packaged live-engine coverage and user-facing run instructions in `app/README.md`.
+
+**What I verified:** `release/GROVER-2.0.0-p1-portable.exe` built successfully (156,724,426 bytes; SHA-256 `A485778CC8A89AA8E403DE5457E3BDB8A65E44FC75413C43568A969B1A1584D2`). The packaged `win-unpacked/GROVER.exe` passes the Electron smoke, persists memory across restart, keeps Node unavailable in the renderer, causes zero document navigations, and completes a live Codex request through the embedded packaged engine.
+
+**What is still open:** Will's real-use UX pass, new visual direction, refreshed Claude authentication if Claude participation is desired, and a formal checklist review of remaining P1/P4/P5 acceptance details. External actions and server deployment are still intentionally disconnected.
+
+**What the next person should do:** Launch the portable executable, use Ask and Remember immediately, then try one small “Build GROVER” request from a clean project branch. Record friction before visual redesign.
+
+**Risks or weirdness:** Portable size is 149.46 MiB because it embeds Electron and the Codex runtime. The build is not publisher code-signed and uses the default Electron icon by design until the new visual direction is ready.
