@@ -435,8 +435,16 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   ).all();
   const events = db.prepare('SELECT * FROM events ORDER BY seq DESC LIMIT 200').all().reverse();
   const memories = db.prepare(
-    'SELECT id, namespace, content, provenance, created_at, updated_at FROM memories WHERE deleted_at IS NULL ORDER BY updated_at DESC'
+    `SELECT id, owner, namespace, category, confidence, sensitivity, importance, content, provenance,
+            vault_path, created_at, updated_at
+     FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL ORDER BY updated_at DESC`
   ).all();
+  const memoryProposals = db.prepare(
+    `SELECT id, namespace, proposed_operation, target_memory_id, status, provenance, sensitivity,
+            rationale, proposed_content, created_at
+     FROM memory_update_proposals WHERE status = 'proposed' ORDER BY created_at DESC`
+  ).all();
+  const memoryNamespaces = db.prepare('SELECT * FROM memory_namespaces ORDER BY id').all();
   const costs = db.prepare(
     `SELECT COALESCE(SUM(CASE WHEN kind = 'actual' THEN amount_micro_usd ELSE 0 END), 0) AS actual,
             COALESCE(SUM(CASE WHEN kind = 'estimate' THEN amount_micro_usd ELSE 0 END), 0) AS estimated
@@ -457,7 +465,8 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
     'SELECT * FROM context_routing_decisions ORDER BY created_at DESC LIMIT 200'
   ).all();
   return {
-    tasks, features, events, memories, costs, budget, engines, routing, contextRouting, conversations, messages, contexts: CONTEXTS,
+    tasks, features, events, memories, memoryProposals, memoryNamespaces, costs, budget, engines, routing,
+    contextRouting, conversations, messages, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',
       workspaceRoot: getSetting(db, 'workspace_root'),

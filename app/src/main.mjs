@@ -59,6 +59,19 @@ function installIpc() {
   ipcMain.handle('grover:sign-in-engine', (_event, engineId) => core.signInEngine(engineId));
   ipcMain.handle('grover:move-conversation', (_event, { conversationId, context }) => core.moveConversation(conversationId, context));
   ipcMain.handle('grover:forget', (_event, memoryId) => core.forget(memoryId));
+  ipcMain.handle('grover:correct-memory', (_event, { memoryId, content }) => core.correctMemory(memoryId, content));
+  ipcMain.handle('grover:approve-memory', (_event, proposalId) => core.approveMemoryProposal(proposalId));
+  ipcMain.handle('grover:reject-memory', (_event, proposalId) => core.rejectMemoryProposal(proposalId));
+  ipcMain.handle('grover:sync-memory', () => core.syncMemoryVault());
+  ipcMain.handle('grover:consolidate-memory', (_event, namespace) => core.consolidateMemory(namespace));
+  ipcMain.handle('grover:export-memory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a folder for the GROVER memory backup',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return core.exportMemory(result.filePaths[0]);
+  });
   ipcMain.handle('grover:rate-task', (_event, { taskId, rating }) => core.rateTask(taskId, rating));
   ipcMain.handle('grover:choose-workspace', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

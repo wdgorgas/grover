@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS memory_update_proposals (
   provenance        TEXT NOT NULL,
   sensitivity       TEXT NOT NULL,
   rationale         TEXT NOT NULL,
+  proposed_content  TEXT,
   created_at        TEXT NOT NULL,
   applied_at        TEXT
 );
@@ -195,13 +196,54 @@ CREATE TABLE IF NOT EXISTS domain_contracts (
 
 CREATE TABLE IF NOT EXISTS memories (
   id            TEXT PRIMARY KEY,
+  owner         TEXT NOT NULL DEFAULT 'will',
   namespace     TEXT NOT NULL,
+  category      TEXT NOT NULL DEFAULT 'project',
+  confidence    TEXT NOT NULL DEFAULT 'high',
+  sensitivity   TEXT NOT NULL DEFAULT 'private',
+  importance    TEXT NOT NULL DEFAULT 'normal',
   content       TEXT NOT NULL,
   provenance    TEXT NOT NULL,
+  vault_path    TEXT,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
   superseded_by TEXT,
   deleted_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS memory_namespaces (
+  id          TEXT PRIMARY KEY,
+  owner       TEXT NOT NULL,
+  kind        TEXT NOT NULL CHECK (kind IN ('private','shared','future')),
+  fails_closed INTEGER NOT NULL DEFAULT 0 CHECK (fails_closed IN (0,1)),
+  created_at  TEXT NOT NULL
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+  memory_id UNINDEXED,
+  content,
+  namespace UNINDEXED,
+  tokenize = 'porter unicode61'
+);
+
+CREATE TABLE IF NOT EXISTS memory_consolidation_proposals (
+  id                TEXT PRIMARY KEY,
+  namespace         TEXT NOT NULL,
+  kind              TEXT NOT NULL CHECK (kind IN ('merge','conflict','stale')),
+  memory_ids        TEXT NOT NULL,
+  suggested_content TEXT,
+  rationale         TEXT NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed','approved','rejected','applied')),
+  created_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_exports (
+  id          TEXT PRIMARY KEY,
+  path        TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  hash        TEXT NOT NULL,
+  status      TEXT NOT NULL CHECK (status IN ('complete','failed','restored')),
+  restored_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -284,6 +326,18 @@ VALUES
   ('codex-cli', 'Codex', 'openai', '["ask","work","build","review","read","write"]', 10, 1),
   ('claude-cli', 'Claude', 'anthropic', '["ask","work","build","review","read","write"]', 20, 1);
 
+INSERT OR IGNORE INTO memory_namespaces(id, owner, kind, fails_closed, created_at)
+VALUES
+  ('will-private', 'will', 'private', 0, CURRENT_TIMESTAMP),
+  ('jackson-private', 'jackson', 'private', 1, CURRENT_TIMESTAMP),
+  ('shared-grover-dev', 'shared', 'shared', 0, CURRENT_TIMESTAMP),
+  ('shared-home-tech', 'shared', 'shared', 0, CURRENT_TIMESTAMP),
+  ('shared-business', 'shared', 'shared', 0, CURRENT_TIMESTAMP),
+  ('life-health', 'will', 'future', 0, CURRENT_TIMESTAMP),
+  ('life-finance', 'will', 'future', 0, CURRENT_TIMESTAMP),
+  ('life-home', 'will', 'future', 0, CURRENT_TIMESTAMP),
+  ('life-travel', 'will', 'future', 0, CURRENT_TIMESTAMP);
+
 INSERT OR IGNORE INTO domain_contracts
   (domain, allowed_tools, readable_namespaces, writable_namespaces, default_model_tier, max_spend_micro_usd, can_edit_grover)
 VALUES
@@ -309,5 +363,16 @@ export function openDb(path: string): DatabaseSync {
   db.exec(`UPDATE task_state
     SET domain = (SELECT domain FROM events WHERE events.task_id = task_state.task_id AND domain IS NOT NULL ORDER BY seq DESC LIMIT 1)
     WHERE domain IS NULL`);
+  const memoryColumns = new Set((db.prepare("PRAGMA table_info('memories')").all() as unknown as { name: string }[]).map((column) => column.name));
+  for (const [name, definition] of [
+    ['owner', "TEXT NOT NULL DEFAULT 'will'"],
+    ['category', "TEXT NOT NULL DEFAULT 'project'"],
+    ['confidence', "TEXT NOT NULL DEFAULT 'high'"],
+    ['sensitivity', "TEXT NOT NULL DEFAULT 'private'"],
+    ['importance', "TEXT NOT NULL DEFAULT 'normal'"],
+    ['vault_path', 'TEXT'],
+  ]) if (!memoryColumns.has(name)) db.exec(`ALTER TABLE memories ADD COLUMN ${name} ${definition}`);
+  const proposalColumns = new Set((db.prepare("PRAGMA table_info('memory_update_proposals')").all() as unknown as { name: string }[]).map((column) => column.name));
+  if (!proposalColumns.has('proposed_content')) db.exec('ALTER TABLE memory_update_proposals ADD COLUMN proposed_content TEXT');
   return db;
 }

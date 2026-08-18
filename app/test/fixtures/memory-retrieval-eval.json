@@ -1,0 +1,22 @@
+[
+  {"id":"local-delivery","query":"local Windows desktop applications","context":"general","included":["m_local"],"excluded":["m_jackson","m_future"]},
+  {"id":"coding-agent","query":"preferred coding agent Codex","context":"coding","included":["m_codex"],"excluded":["m_claude"]},
+  {"id":"authoritative-state","query":"authoritative state SQLite","context":"builder","included":["m_sqlite"],"excluded":["m_revenue"]},
+  {"id":"newline","query":"Shift Enter newline","context":"general","included":["m_shift"],"excluded":[]},
+  {"id":"portable-browser","query":"portable build browser","context":"general","included":["m_portable"],"excluded":[]},
+  {"id":"fallback-checker","query":"Claude fallback checker","context":"builder","included":["m_claude"],"excluded":[]},
+  {"id":"budget-units","query":"budget integer microdollars","context":"builder","included":["m_budget"],"excluded":[]},
+  {"id":"reliability-phase","query":"P3 Builder reliability passed","context":"builder","included":["m_p3"],"excluded":[]},
+  {"id":"memory-delete","query":"memory deletion active retrieval","context":"builder","included":["m_delete"],"excluded":[]},
+  {"id":"server-deferred","query":"server deployment deferred","context":"general","included":["m_server"],"excluded":[]},
+  {"id":"finance-route","query":"Finance quantitative work","context":"finance","included":["m_finance"],"excluded":[]},
+  {"id":"irrelevant","query":"garden shed paint color","context":"general","included":[],"excluded":["m_local","m_sqlite","m_revenue"]},
+  {"id":"business-hidden-from-builder","query":"business revenue target","context":"builder","included":[],"excluded":["m_revenue"]},
+  {"id":"business-visible","query":"business revenue target","context":"business","included":["m_revenue"],"excluded":[]},
+  {"id":"home-hidden-from-coding","query":"home router model","context":"coding","included":[],"excluded":["m_home"]},
+  {"id":"home-visible-general","query":"home router model","context":"general","included":["m_home"],"excluded":[]},
+  {"id":"future-life-hidden","query":"future health goal marathon","context":"health","included":[],"excluded":["m_future"]},
+  {"id":"jackson-closed","query":"Jackson cloud tools","context":"general","included":[],"excluded":["m_jackson"]},
+  {"id":"visual-deferred","query":"visual polish deferred functionality","context":"general","included":["m_visual"],"excluded":[]},
+  {"id":"local-only","query":"application runs locally Windows","context":"health","included":["m_windows"],"excluded":["m_sqlite"]}
+]

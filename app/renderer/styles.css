@@ -112,6 +112,7 @@ select, button:not(.context-button):not(.utility-button):not(.conversation-butto
 .memory-list { display: grid; gap: 9px; margin-top: 20px; }
 .memory-card, .settings-card { display: flex; justify-content: space-between; align-items: center; gap: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 15px; }
 .memory-card p, .settings-card p { margin: 4px 0 0; font-size: 12px; }
+.memory-actions { display: flex; gap: 7px; flex-shrink: 0; }
 .settings-card + .settings-card { margin-top: 9px; }
 .settings-section { margin: 26px 0; }
 .settings-section .section-heading p { margin: 4px 0 0; font-size: 12px; }

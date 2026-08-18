@@ -260,11 +260,54 @@ function renderMemories(memories) {
     const meta = document.createElement('p');
     meta.textContent = `${memory.namespace} · ${new Date(memory.updated_at).toLocaleString()}`;
     text.append(strong, meta);
+    const actions = document.createElement('div');
+    actions.className = 'memory-actions';
+    const correct = document.createElement('button');
+    correct.type = 'button';
+    correct.textContent = 'Correct';
+    correct.addEventListener('click', async () => {
+      const content = window.prompt('Replace this memory with the corrected fact:', memory.content);
+      if (!content?.trim() || content.trim() === memory.content) return;
+      await window.grover.correctMemory(memory.id, content.trim());
+    });
     const forget = document.createElement('button');
     forget.type = 'button';
     forget.textContent = 'Forget';
     forget.addEventListener('click', () => window.grover.forget(memory.id));
-    card.append(text, forget);
+    actions.append(correct, forget);
+    card.append(text, actions);
+    container.append(card);
+  }
+}
+
+function renderMemoryProposals(proposals) {
+  const container = $('#memory-proposals');
+  container.replaceChildren();
+  if (!proposals.length) {
+    container.className = 'memory-list empty-state';
+    container.textContent = 'No proposed memories.';
+    return;
+  }
+  container.className = 'memory-list';
+  for (const proposal of proposals) {
+    const card = document.createElement('article');
+    card.className = 'memory-card';
+    const text = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = proposal.proposed_content;
+    const meta = document.createElement('p');
+    meta.textContent = `${proposal.sensitivity} · proposed from conversation · not saved yet`;
+    text.append(strong, meta);
+    const actions = document.createElement('div');
+    actions.className = 'memory-actions';
+    for (const [label, action] of [['Remember', 'approveMemory'], ['Ignore', 'rejectMemory']]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.addEventListener('click', () => window.grover[action](proposal.id));
+      actions.append(button);
+    }
+    card.append(text, actions);
     container.append(card);
   }
 }
@@ -340,6 +383,7 @@ function render(next) {
   renderRecentConversations();
   renderEvents(state.events ?? []);
   renderMemories(state.memories ?? []);
+  renderMemoryProposals(state.memoryProposals ?? []);
   renderConversationWorkspace();
 }
 
@@ -409,6 +453,24 @@ $('#refresh-engines').addEventListener('click', async (event) => {
   event.currentTarget.disabled = true;
   try { await window.grover.refreshEngines(); }
   finally { event.currentTarget.disabled = false; }
+});
+$('#sync-memory').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const changed = await window.grover.syncMemory();
+    button.textContent = changed ? `Synced ${changed}` : 'Vault is current';
+  } finally {
+    setTimeout(() => { button.textContent = 'Sync vault'; button.disabled = false; }, 1200);
+  }
+});
+$('#export-memory').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const result = await window.grover.exportMemory();
+    if (result) window.alert(`Memory backup created in:\n${result.path}`);
+  } finally { button.disabled = false; }
 });
 
 document.addEventListener('keydown', (event) => {

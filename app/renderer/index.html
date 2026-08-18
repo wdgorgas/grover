@@ -99,10 +99,18 @@
       </section>
 
       <section id="view-memory" class="view">
-        <p class="eyebrow">Local and inspectable</p>
-        <h1>Memory</h1>
+        <div class="context-header">
+          <div><p class="eyebrow">Local and inspectable</p><h1>Memory</h1></div>
+          <div class="context-actions"><button id="sync-memory" type="button">Sync vault</button><button id="export-memory" type="button">Export backup</button></div>
+        </div>
         <p>Direct “remember this” requests are stored on this computer and can be removed here.</p>
+        <section class="section-block">
+          <div class="section-heading"><h2>Needs your review</h2></div>
+          <div id="memory-proposals" class="memory-list empty-state">No proposed memories.</div>
+        </section>
+        <section class="section-block"><div class="section-heading"><h2>Current memories</h2></div>
         <div id="memory-list" class="memory-list empty-state">No saved memories yet.</div>
+        </section>
       </section>
 
       <section id="view-settings" class="view">

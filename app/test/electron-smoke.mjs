@@ -49,6 +49,17 @@ try {
   await first.page.locator('[data-view="memory"]').click();
   await first.page.locator('#memory-list').getByText('the Windows desktop app is the primary delivery target', { exact: false }).waitFor();
 
+  await first.page.locator('#kill-switch').check();
+  await first.page.locator('[data-view="home"]').click();
+  await first.page.locator('#home-request').fill('hi, my name is Will');
+  await first.page.locator('#home-request').press('Enter');
+  await first.page.locator('[data-view="memory"]').click();
+  const proposedName = first.page.locator('#memory-proposals').getByText("Will's name is Will", { exact: false });
+  await proposedName.waitFor();
+  await proposedName.locator('xpath=ancestor::article').getByRole('button', { name: 'Remember' }).click();
+  await first.page.locator('#memory-list').getByText("Will's name is Will", { exact: false }).waitFor();
+  await first.page.locator('#kill-switch').uncheck();
+
   await first.page.locator('[data-view="home"]').click();
   await first.page.locator('#home-request').fill('Deploy the application publicly');
   await first.page.locator('#home-request').press('Enter');

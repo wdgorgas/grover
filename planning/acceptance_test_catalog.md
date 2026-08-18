@@ -30,7 +30,7 @@ Run `npm run test:builder`. Required assertions: real engine, FeatureRequest and
 
 ## P4 — minimal memory
 
-The eleven required checks are enumerated in master prompt §8.5–§8.6 and must be implemented as mechanical tests before P4 closes.
+`memory.test.ts` passes the ten §8.5 groups plus the §8.6 no-migration check. `test/fixtures/memory-retrieval-eval.json` contains 20 deterministic include/exclude scenarios. `npm run test:memory-live` verifies relevant memory use after a real database restart through Codex.
 
 ## P5 — hardening
 

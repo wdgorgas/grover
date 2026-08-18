@@ -105,3 +105,11 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Prediction (check at P3 exit):** The UI reliability fixture will finish without an engine timeout, and its BuildRun will contain both `dom_assertion` and `screenshot` evidence produced after the engine exits.
 
 **P3 exit result:** Confirmed. The final live reliability run passed and the UI BuildRun contained both required evidence types.
+
+## 2026-08-18 — Deterministic FTS context packs before learned retrieval
+
+**Decision:** The v2.0 Context Manager retrieves only current, permitted memories using SQLite FTS5 plus deterministic token-overlap ranking, a hard character/item budget, and explicit namespace maps. Selected facts enter prompts with memory ID, provenance, date, and an instruction that memory is untrusted data rather than authority. Incidental profile statements become reviewable proposals rather than silent writes.
+
+**Why:** This satisfies relevance, privacy, provenance, and budget requirements with inspectable local behavior. It also produces corrections and retrieval eval cases before any learned router/retriever is justified.
+
+**Prediction (checked at P4 exit):** All 20 seeded include/exclude scenarios will pass, the future/Jackson namespaces will never leak into Builder packs, and a live restart recall will answer from the selected fact. **Result: confirmed.**

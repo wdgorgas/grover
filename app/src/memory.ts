@@ -1,0 +1,423 @@
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync,
+} from 'node:fs';
+import { basename, join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
+import { appendEventInTransaction } from './events.ts';
+import type { Context } from './store.ts';
+
+type MemoryInput = {
+  id?: string;
+  content: string;
+  namespace?: string;
+  owner?: string;
+  category?: string;
+  confidence?: string;
+  sensitivity?: string;
+  importance?: string;
+  source: string;
+};
+
+export type RetrievedMemory = {
+  id: string;
+  namespace: string;
+  content: string;
+  source: string;
+  createdAt: string;
+  score: number;
+  explanation: string;
+};
+
+const STOP_WORDS = new Set([
+  'about', 'after', 'again', 'also', 'and', 'are', 'because', 'been', 'before', 'being', 'can', 'could',
+  'does', 'for', 'from', 'have', 'how', 'into', 'its', 'just', 'like', 'more', 'need', 'our', 'should',
+  'that', 'the', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'those', 'what', 'when', 'where',
+  'which', 'who', 'why', 'will', 'with', 'would', 'you', 'your',
+]);
+
+function transact<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec('BEGIN IMMEDIATE;');
+  try {
+    const result = fn();
+    db.exec('COMMIT;');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK;');
+    throw error;
+  }
+}
+
+function tokens(value: string): string[] {
+  return [...new Set((value.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .filter((token) => token.length >= 3 && !STOP_WORDS.has(token))
+    .map((token) => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token))];
+}
+
+function yamlValue(value: string | null | undefined): string {
+  return JSON.stringify(value ?? '');
+}
+
+function renderNote(memory: Record<string, any>): string {
+  return [
+    '---',
+    `id: ${yamlValue(memory.id)}`,
+    `owner: ${yamlValue(memory.owner)}`,
+    `namespace: ${yamlValue(memory.namespace)}`,
+    `category: ${yamlValue(memory.category)}`,
+    `confidence: ${yamlValue(memory.confidence)}`,
+    `sensitivity: ${yamlValue(memory.sensitivity)}`,
+    `importance: ${yamlValue(memory.importance)}`,
+    `source: ${yamlValue(memory.provenance)}`,
+    `created: ${yamlValue(memory.created_at)}`,
+    `superseded_by: ${yamlValue(memory.superseded_by)}`,
+    '---', '', memory.content, '',
+  ].join('\n');
+}
+
+function parseNote(text: string): { metadata: Record<string, string>; content: string } | null {
+  const normalized = text.replace(/\r\n/g, '\n');
+  if (!normalized.startsWith('---\n')) return null;
+  const end = normalized.indexOf('\n---\n', 4);
+  if (end < 0) return null;
+  const metadata: Record<string, string> = {};
+  for (const line of normalized.slice(4, end).split('\n')) {
+    const split = line.indexOf(':');
+    if (split < 1) continue;
+    const key = line.slice(0, split).trim();
+    const raw = line.slice(split + 1).trim();
+    try { metadata[key] = JSON.parse(raw); }
+    catch { metadata[key] = raw; }
+  }
+  return { metadata, content: normalized.slice(end + 5).trim() };
+}
+
+export function readableNamespaces(context: Context): string[] {
+  const map: Record<Context, string[]> = {
+    general: ['will-private', 'shared-grover-dev', 'shared-home-tech', 'shared-business'],
+    coding: ['will-private', 'shared-grover-dev'],
+    research: ['will-private', 'shared-grover-dev'],
+    finance: ['will-private', 'shared-business'],
+    health: ['will-private'],
+    business: ['will-private', 'shared-business'],
+    builder: ['will-private', 'shared-grover-dev'],
+  };
+  return map[context];
+}
+
+export class MemoryService {
+  readonly db: DatabaseSync;
+  readonly vaultRoot: string;
+
+  constructor(db: DatabaseSync, dataDir: string) {
+    this.db = db;
+    this.vaultRoot = join(dataDir, 'vault');
+    mkdirSync(this.vaultRoot, { recursive: true });
+    this.rebuildIndex();
+  }
+
+  private assertNamespace(namespace: string, write = false): void {
+    const row = this.db.prepare('SELECT kind, fails_closed FROM memory_namespaces WHERE id = ?').get(namespace) as
+      { kind: string; fails_closed: number } | undefined;
+    if (!row) throw new Error(`Unknown memory namespace: ${namespace}`);
+    if (namespace === 'jackson-private' || row.fails_closed) throw new Error('jackson-private fails closed in GROVER v2.0.');
+    if (write && row.kind === 'future') {
+      // Future namespaces are schema-valid for forward compatibility, but no v2.0 hot path writes to them.
+      throw new Error('Future life-domain memory is reserved for v2.1 and cannot be written by GROVER v2.0.');
+    }
+  }
+
+  private indexMemory(id: string): void {
+    this.db.prepare('DELETE FROM memories_fts WHERE memory_id = ?').run(id);
+    const memory = this.db.prepare(
+      `SELECT id, content, namespace FROM memories
+       WHERE id = ? AND deleted_at IS NULL AND superseded_by IS NULL AND namespace != 'jackson-private'`
+    ).get(id) as { id: string; content: string; namespace: string } | undefined;
+    if (memory) this.db.prepare('INSERT INTO memories_fts(memory_id, content, namespace) VALUES (?, ?, ?)')
+      .run(memory.id, memory.content, memory.namespace);
+  }
+
+  rebuildIndex(): void {
+    this.db.exec('DELETE FROM memories_fts;');
+    const current = this.db.prepare(
+      `SELECT id, content, namespace FROM memories
+       WHERE deleted_at IS NULL AND superseded_by IS NULL AND namespace != 'jackson-private'`
+    ).all() as { id: string; content: string; namespace: string }[];
+    const insert = this.db.prepare('INSERT INTO memories_fts(memory_id, content, namespace) VALUES (?, ?, ?)');
+    for (const memory of current) insert.run(memory.id, memory.content, memory.namespace);
+  }
+
+  private writeNote(id: string): string {
+    const memory = this.db.prepare('SELECT * FROM memories WHERE id = ?').get(id) as Record<string, any> | undefined;
+    if (!memory) throw new Error(`Unknown memory: ${id}`);
+    this.assertNamespace(memory.namespace);
+    const directory = join(this.vaultRoot, memory.namespace);
+    mkdirSync(directory, { recursive: true });
+    const path = join(directory, `${id}.md`);
+    const temporary = `${path}.tmp`;
+    writeFileSync(temporary, renderNote(memory), 'utf8');
+    renameSync(temporary, path);
+    this.db.prepare('UPDATE memories SET vault_path = ? WHERE id = ?').run(path, id);
+    return path;
+  }
+
+  remember(input: MemoryInput, allowFuture = false): string {
+    const content = input.content.trim();
+    if (!content) throw new Error('Memory content cannot be empty.');
+    const namespace = input.namespace ?? 'will-private';
+    if (allowFuture) {
+      if (namespace === 'jackson-private') this.assertNamespace(namespace, true);
+      const exists = this.db.prepare('SELECT id FROM memory_namespaces WHERE id = ?').get(namespace);
+      if (!exists) throw new Error(`Unknown memory namespace: ${namespace}`);
+    } else this.assertNamespace(namespace, true);
+    const id = input.id ?? randomUUID();
+    const now = new Date().toISOString();
+    transact(this.db, () => {
+      this.db.prepare(
+        `INSERT INTO memories
+          (id, owner, namespace, category, confidence, sensitivity, importance, content, provenance, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id, input.owner ?? 'will', namespace, input.category ?? 'project', input.confidence ?? 'high',
+        input.sensitivity ?? 'private', input.importance ?? 'normal', content, input.source, now, now,
+      );
+      appendEventInTransaction(this.db, {
+        scopeType: 'memory', scopeId: id, idempotencyKey: `${id}:remembered`, actor: 'will', domain: namespace,
+        phase: 'memory', plainLanguage: 'Remembered a local fact',
+        internalDetail: JSON.stringify({ memoryId: id, namespace, source: input.source }),
+      });
+    });
+    this.indexMemory(id);
+    this.writeNote(id);
+    return id;
+  }
+
+  correct(id: string, content: string, source = 'will-correction'): string {
+    const previous = this.db.prepare('SELECT * FROM memories WHERE id = ? AND deleted_at IS NULL').get(id) as Record<string, any> | undefined;
+    if (!previous) throw new Error('That memory is no longer active.');
+    const replacement = this.remember({
+      content, namespace: previous.namespace, owner: previous.owner, category: previous.category,
+      confidence: 'high', sensitivity: previous.sensitivity, importance: previous.importance,
+      source: `${source}:${id}`,
+    });
+    const now = new Date().toISOString();
+    transact(this.db, () => {
+      this.db.prepare('UPDATE memories SET superseded_by = ?, updated_at = ? WHERE id = ?').run(replacement, now, id);
+      appendEventInTransaction(this.db, {
+        scopeType: 'memory', scopeId: id, idempotencyKey: `${id}:superseded:${replacement}`, actor: 'will',
+        domain: previous.namespace, phase: 'memory', plainLanguage: 'Corrected a remembered fact',
+        internalDetail: JSON.stringify({ previousMemoryId: id, replacementMemoryId: replacement }),
+      });
+    });
+    this.indexMemory(id);
+    this.writeNote(id);
+    return replacement;
+  }
+
+  forget(id: string): void {
+    const memory = this.db.prepare('SELECT * FROM memories WHERE id = ? AND deleted_at IS NULL').get(id) as Record<string, any> | undefined;
+    if (!memory) return;
+    this.assertNamespace(memory.namespace);
+    const now = new Date().toISOString();
+    transact(this.db, () => {
+      this.db.prepare("UPDATE memories SET content = '[deleted]', deleted_at = ?, updated_at = ?, vault_path = NULL WHERE id = ?")
+        .run(now, now, id);
+      appendEventInTransaction(this.db, {
+        scopeType: 'memory', scopeId: id, idempotencyKey: `${id}:deleted`, actor: 'will', domain: memory.namespace,
+        phase: 'memory', plainLanguage: 'Deleted a remembered fact', internalDetail: JSON.stringify({ memoryId: id }),
+      });
+    });
+    this.indexMemory(id);
+    if (memory.vault_path && existsSync(memory.vault_path)) rmSync(memory.vault_path);
+  }
+
+  propose(taskId: string, content: string, sensitivity = 'private', namespace = 'will-private'): string {
+    this.assertNamespace(namespace);
+    const source = this.db.prepare('SELECT event_id FROM events WHERE task_id = ? ORDER BY seq LIMIT 1').get(taskId) as
+      { event_id: string } | undefined;
+    if (!source) throw new Error('A memory proposal needs a source event.');
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    transact(this.db, () => {
+      this.db.prepare(
+        `INSERT INTO memory_update_proposals
+          (id, source_event_id, proposed_operation, namespace, status, provenance, sensitivity, rationale, proposed_content, created_at)
+         VALUES (?, ?, 'create', ?, 'proposed', ?, ?, ?, ?, ?)`
+      ).run(id, source.event_id, namespace, `conversation:${taskId}`, sensitivity, 'Possible profile fact from ordinary conversation', content, now);
+      appendEventInTransaction(this.db, {
+        scopeType: 'memory', scopeId: id, taskId, idempotencyKey: `${id}:proposed`, actor: 'grover', domain: namespace,
+        phase: 'memory', plainLanguage: 'Proposed a possible memory for review',
+        internalDetail: JSON.stringify({ proposalId: id, sensitivity }),
+      });
+    });
+    return id;
+  }
+
+  considerIncidental(taskId: string, text: string): string | null {
+    const value = text.trim();
+    let content: string | null = null;
+    const name = value.match(/\bmy name is\s+([^.!?]+)/i);
+    const prefer = value.match(/\bi prefer\s+([^.!?]+)/i);
+    const like = value.match(/\bi like\s+([^.!?]+)/i);
+    const am = value.match(/\bi(?:'m| am)\s+([^.!?]+)/i);
+    const have = value.match(/\bi have\s+([^.!?]+)/i);
+    if (name) content = `Will's name is ${name[1].trim()}.`;
+    else if (prefer) content = `Will prefers ${prefer[1].trim()}.`;
+    else if (like) content = `Will likes ${like[1].trim()}.`;
+    else if (am) content = `Will is ${am[1].trim()}.`;
+    else if (have) content = `Will has ${have[1].trim()}.`;
+    if (!content) return null;
+    const sensitivity = /\b(health|medical|diagnos|medication|finance|income|salary|debt|account)\b/i.test(value)
+      ? 'sensitive' : 'private';
+    return this.propose(taskId, content, sensitivity);
+  }
+
+  approveProposal(id: string): string {
+    const proposal = this.db.prepare(
+      "SELECT * FROM memory_update_proposals WHERE id = ? AND status = 'proposed'"
+    ).get(id) as Record<string, any> | undefined;
+    if (!proposal?.proposed_content) throw new Error('That memory proposal is no longer pending.');
+    const memoryId = this.remember({
+      content: proposal.proposed_content, namespace: proposal.namespace, source: `approved:${proposal.provenance}`,
+      sensitivity: proposal.sensitivity, category: 'profile',
+    });
+    this.db.prepare("UPDATE memory_update_proposals SET status = 'applied', applied_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), id);
+    return memoryId;
+  }
+
+  rejectProposal(id: string): void {
+    this.db.prepare("UPDATE memory_update_proposals SET status = 'rejected' WHERE id = ? AND status = 'proposed'").run(id);
+  }
+
+  retrieve(query: string, context: Context, maxChars = 4_000, maxItems = 8): RetrievedMemory[] {
+    const queryTokens = tokens(query);
+    if (!queryTokens.length || maxChars <= 0 || maxItems <= 0) return [];
+    const namespaces = readableNamespaces(context).filter((namespace) => namespace !== 'jackson-private');
+    const match = queryTokens.map((token) => `${token.replace(/[^a-z0-9]/g, '')}*`).filter(Boolean).join(' OR ');
+    const placeholders = namespaces.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT m.*, bm25(memories_fts) AS fts_rank
+       FROM memories_fts JOIN memories m ON m.id = memories_fts.memory_id
+       WHERE memories_fts MATCH ? AND m.namespace IN (${placeholders})
+         AND m.deleted_at IS NULL AND m.superseded_by IS NULL
+       LIMIT 100`
+    ).all(match, ...namespaces) as Record<string, any>[];
+    const ranked = rows.map((row) => {
+      const memoryTokens = new Set(tokens(row.content));
+      const overlap = queryTokens.filter((token) => memoryTokens.has(token)).length;
+      return { row, overlap, score: overlap * 100 - Number(row.fts_rank ?? 0) };
+    }).filter((item) => item.overlap > 0).sort((a, b) => b.score - a.score || a.row.id.localeCompare(b.row.id));
+    const selected: RetrievedMemory[] = [];
+    let used = 0;
+    for (const item of ranked) {
+      const cost = item.row.content.length + 160;
+      if (selected.length >= maxItems || used + cost > maxChars) continue;
+      used += cost;
+      selected.push({
+        id: item.row.id,
+        namespace: item.row.namespace,
+        content: item.row.content,
+        source: item.row.provenance,
+        createdAt: item.row.created_at,
+        score: item.score,
+        explanation: `Remembered from ${item.row.provenance} on ${item.row.created_at}`,
+      });
+    }
+    return selected;
+  }
+
+  syncVault(namespace: string): number {
+    this.assertNamespace(namespace);
+    const directory = join(this.vaultRoot, namespace);
+    if (!existsSync(directory)) return 0;
+    let changed = 0;
+    for (const name of readdirSync(directory).filter((file) => file.endsWith('.md'))) {
+      const path = join(directory, name);
+      const parsed = parseNote(readFileSync(path, 'utf8'));
+      const id = parsed?.metadata.id || basename(name, '.md');
+      if (!parsed || !id) continue;
+      const current = this.db.prepare('SELECT content FROM memories WHERE id = ? AND deleted_at IS NULL').get(id) as
+        { content: string } | undefined;
+      if (!current || current.content === parsed.content) continue;
+      const now = new Date().toISOString();
+      transact(this.db, () => {
+        this.db.prepare('UPDATE memories SET content = ?, updated_at = ?, vault_path = ? WHERE id = ?')
+          .run(parsed.content, now, path, id);
+        appendEventInTransaction(this.db, {
+          scopeType: 'memory', scopeId: id, idempotencyKey: `${id}:external-edit:${createHash('sha256').update(parsed.content).digest('hex')}`,
+          actor: 'will', domain: namespace, phase: 'memory', plainLanguage: 'Synchronized a human-edited vault note',
+          internalDetail: JSON.stringify({ memoryId: id, path }),
+        });
+      });
+      this.indexMemory(id);
+      changed += 1;
+    }
+    return changed;
+  }
+
+  consolidate(namespace: string): Record<string, any>[] {
+    this.assertNamespace(namespace);
+    const memories = this.db.prepare(
+      'SELECT id, category, content FROM memories WHERE namespace = ? AND deleted_at IS NULL AND superseded_by IS NULL ORDER BY id'
+    ).all(namespace) as { id: string; category: string; content: string }[];
+    const proposals: { kind: 'merge' | 'conflict'; memoryIds: string[]; suggested: string | null; rationale: string }[] = [];
+    const byContent = new Map<string, typeof memories>();
+    for (const memory of memories) {
+      const key = memory.content.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      byContent.set(key, [...(byContent.get(key) ?? []), memory]);
+    }
+    const duplicateIds = new Set<string>();
+    for (const group of byContent.values()) {
+      if (group.length < 2) continue;
+      group.forEach((memory) => duplicateIds.add(memory.id));
+      proposals.push({ kind: 'merge', memoryIds: group.map((memory) => memory.id), suggested: group[0].content, rationale: 'Exact normalized duplicate facts' });
+    }
+    const keyed = new Map<string, typeof memories>();
+    for (const memory of memories.filter((item) => item.category.startsWith('fact:') && !duplicateIds.has(item.id))) {
+      keyed.set(memory.category, [...(keyed.get(memory.category) ?? []), memory]);
+    }
+    for (const group of keyed.values()) {
+      if (group.length < 2 || new Set(group.map((item) => item.content)).size < 2) continue;
+      proposals.push({ kind: 'conflict', memoryIds: group.map((memory) => memory.id), suggested: null, rationale: 'Conflicting values for the same fact key require human resolution' });
+    }
+    this.db.prepare("DELETE FROM memory_consolidation_proposals WHERE namespace = ? AND status = 'proposed'").run(namespace);
+    const now = new Date().toISOString();
+    for (const proposal of proposals) {
+      this.db.prepare(
+        `INSERT INTO memory_consolidation_proposals
+          (id, namespace, kind, memory_ids, suggested_content, rationale, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?)`
+      ).run(randomUUID(), namespace, proposal.kind, JSON.stringify(proposal.memoryIds), proposal.suggested, proposal.rationale, now);
+    }
+    return this.db.prepare(
+      "SELECT * FROM memory_consolidation_proposals WHERE namespace = ? AND status = 'proposed' ORDER BY kind, id"
+    ).all(namespace) as Record<string, any>[];
+  }
+
+  exportTo(destination: string): { id: string; path: string; hash: string; memoryCount: number } {
+    mkdirSync(destination, { recursive: true });
+    const exportRoot = join(destination, `grover-memory-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+    mkdirSync(exportRoot, { recursive: false });
+    const rows = this.db.prepare(
+      "SELECT * FROM memories WHERE namespace != 'jackson-private' ORDER BY namespace, id"
+    ).all() as Record<string, any>[];
+    const namespaces = this.db.prepare(
+      "SELECT * FROM memory_namespaces WHERE id != 'jackson-private' ORDER BY id"
+    ).all();
+    const payload = JSON.stringify({ version: 1, createdAt: new Date().toISOString(), namespaces, memories: rows }, null, 2);
+    writeFileSync(join(exportRoot, 'memory-export.json'), payload, 'utf8');
+    const vaultDestination = join(exportRoot, 'vault');
+    mkdirSync(vaultDestination);
+    for (const namespace of namespaces as { id: string }[]) {
+      const source = join(this.vaultRoot, namespace.id);
+      if (existsSync(source)) cpSync(source, join(vaultDestination, namespace.id), { recursive: true });
+    }
+    const hash = createHash('sha256').update(payload).digest('hex');
+    const id = randomUUID();
+    this.db.prepare(
+      "INSERT INTO memory_exports(id, path, created_at, hash, status) VALUES (?, ?, ?, ?, 'complete')"
+    ).run(id, exportRoot, new Date().toISOString(), hash);
+    return { id, path: exportRoot, hash, memoryCount: rows.length };
+  }
+}

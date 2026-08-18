@@ -1,6 +1,6 @@
 # Planning board → Build board
 
-**P0 APPROVED by Will, 2026-07-03. Current implementation phase: P2/P3 Builder reliability. P1 mechanical exit passed 2026-08-18.**
+**P0 APPROVED by Will, 2026-07-03. Current implementation phase: P5 hardening. P1–P4 mechanical exits passed 2026-08-18.**
 
 Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`.
 
@@ -12,8 +12,8 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P1 | Spine skeleton: Windows desktop shell, events+projections, desktop IPC, cost ledger, kill switch, object-model schema, DomainContract stubs | **MECHANICAL EXIT PASSED (2026-08-18)** — 32 deterministic tests, desktop no-reload smoke, packaged live Codex, Noop engine-swap/lane tests, restart and transition coverage; final orb deferred by Proposal 006 |
 | P2 | Razor Builder slice (one real request end-to-end) | **AUTOMATED EXIT GREEN / HUMAN FINAL PASS PENDING** — live isolated Codex Builder branch/edit/test/evidence/commit/receipt flow passes; continued under Proposal 006 |
 | P3 | Builder reliability set (5 diverse requests) | **MECHANICAL EXIT PASSED (2026-08-18)** — live UI/backend/settings/persistence builds, pre-engine private-space refusal, accumulated regression suite, and restart recovery green |
-| P4 | Minimal memory core (10 tests + no-migration test) | **ACTIVE** |
-| P5 | Hardening drills → v2.0 | Blocked on P4 exit |
+| P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
+| P5 | Hardening drills → v2.0 | **ACTIVE** |
 
 ## Open side-tracks
 

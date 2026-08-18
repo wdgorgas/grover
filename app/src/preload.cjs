@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('grover', Object.freeze({
   moveConversation: (conversationId, context) => ipcRenderer.invoke('grover:move-conversation', { conversationId, context }),
   chooseWorkspace: () => ipcRenderer.invoke('grover:choose-workspace'),
   forget: (memoryId) => ipcRenderer.invoke('grover:forget', memoryId),
+  correctMemory: (memoryId, content) => ipcRenderer.invoke('grover:correct-memory', { memoryId, content }),
+  approveMemory: (proposalId) => ipcRenderer.invoke('grover:approve-memory', proposalId),
+  rejectMemory: (proposalId) => ipcRenderer.invoke('grover:reject-memory', proposalId),
+  syncMemory: () => ipcRenderer.invoke('grover:sync-memory'),
+  consolidateMemory: (namespace) => ipcRenderer.invoke('grover:consolidate-memory', namespace),
+  exportMemory: () => ipcRenderer.invoke('grover:export-memory'),
   rateTask: (taskId, rating) => ipcRenderer.invoke('grover:rate-task', { taskId, rating }),
   onState: (callback) => {
     const listener = (_event, state) => callback(state);
