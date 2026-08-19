@@ -169,3 +169,35 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** Will wants Sol/high for complex coding and a lighter model for routine work without making Codex the coordinator. Official OpenAI guidance describes Sol as the flagship complex-work tier and Terra as the balanced tier, and both exact profiles successfully answered through the signed-in bundled CLI on this computer. Storing mappings as data preserves the provider-neutral engine boundary.
 
 **Prediction (check at this slice exit):** A short external Ask records the fast profile, ordinary Work records balanced, Coding writes and GROVER builds record frontier, Settings exposes the mappings, and the live isolated game build records and successfully invokes `gpt-5.6-sol` with high reasoning.
+
+## 2026-08-18 — Learned manager trains behavior, not personal state
+
+**Decision:** Under accepted PlanningProposal 008, the student receives bounded synthetic or runtime state and emits one short schema-constrained decision at a time. Personal memory, schedules, project contents, conversation history, permissions, and tool availability remain outside model weights in authoritative local storage.
+
+**Why:** Training volatile or private state into weights would create staleness, deletion, privacy, and retraining problems. A small manager should learn how to retrieve and orchestrate state, while SQLite and the filesystem keep facts editable and disposable.
+
+**Prediction (checked at this slice exit):** Dataset validation will find no real vault/database content, every gold reference will resolve within its synthetic state, and changing a memory or project record will require no retraining. **Result: confirmed across 23,715 synthetic records.**
+
+## 2026-08-18 — Resource-bounded QLoRA training harness
+
+**Decision:** Use the Apache-2.0 `Qwen/Qwen3-1.7B` student with pinned PyTorch, Hugging Face Transformers, PEFT, Accelerate, bitsandbytes, and JSON Schema dependencies for 4-bit QLoRA in an isolated Python 3.12 environment. The default 4 GB profile uses completion-only loss, sequence length 768, micro-batch one, gradient checkpointing, and at most two retained checkpoints. Model, workspace, and hyperparameters remain configurable.
+
+**Why:** The current Windows device exposes an RTX 3050 Laptop GPU with 4 GB VRAM and about 37.5 GB free. Built-in Node/Python primitives cannot implement CUDA quantized adapter training, model tokenization, or resumable optimizer checkpoints. QLoRA keeps the trainable adapter and checkpoint footprint small enough for this machine while preserving a portable dataset for stronger hardware.
+
+**Prediction (checked at this slice exit):** Preflight will identify the 4 GB profile, a tiny dry run will complete without GPU out-of-memory, interruption will resume from the latest checkpoint, and cleanup will preserve the base model, best/final adapter, datasets, reports, and no more than two checkpoints. **Result: confirmed; measured peak allocation was 3,654.5 MB and the resume smoke continued from checkpoint 2 to step 3 only.**
+
+## 2026-08-18 — Family-isolated synthetic curriculum before live promotion
+
+**Decision:** Generate task-specific stateful examples from reviewed semantic scenario families, assign family-level train/validation/test/review splits before paraphrase expansion, and measure each manager capability separately. Ambiguous, preference-sensitive, and consequential cases remain outside training until human-reviewed. The learned model stays offline/shadow-only until it beats the deterministic baseline and passes every boundary test.
+
+**Why:** Random row splitting leaks near-duplicate synthetic paraphrases and produces misleading accuracy. Capability-specific schemas shorten training sequences, improve observability, and reveal whether routing, retrieval, memory, clarification, delegation, or recovery actually regressed.
+
+**Prediction (checked at this slice exit):** The validator will report zero scenario-family overlap across splits, broad task/label coverage, a bounded review queue, exact-schema metrics per capability, and zero accepted unsafe side effects. **Result: confirmed; the final curriculum has 5,889 isolated families, zero exact or semantic cross-split leaks, 315 quarantined review cases, and strict per-capability promotion metrics.**
+
+## 2026-08-18 — Everyday latency is a learned-manager promotion gate
+
+**Decision:** Held-out evaluation measures generation latency separately for interactive manager modes and requires p95 at or below three seconds, in addition to accuracy and zero authority-boundary violations. A slow but accurate adapter stays offline; later work must optimize inference or train a smaller student rather than weakening the daily-use target.
+
+**Why:** The manager exists partly to remove provider latency from routing, continuity, memory, clarification, and simple responses. Promoting a local model that takes many seconds per orchestration decision would make GROVER less practical even if its labels were correct.
+
+**Prediction (check after the long run):** The final report will expose fast-path p95 explicitly; if the 4-bit Transformers runtime misses three seconds, status will be `complete_not_promoted` and no live routing integration will occur.

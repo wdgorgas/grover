@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grover.local/schemas/manager-example-v1.json",
+  "title": "GROVER manager training example v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "family_id", "split", "task", "input", "output", "metadata"],
+  "properties": {
+    "id": {"type": "string", "minLength": 8},
+    "family_id": {"type": "string", "minLength": 3},
+    "split": {"enum": ["train", "validation", "test", "review"]},
+    "task": {"enum": ["route", "continuity", "retrieval", "memory", "execution", "clarify", "brief", "supervise", "respond"]},
+    "input": {"type": "object"},
+    "output": {"$ref": "#/$defs/output"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generator_version", "risk", "review_reason"],
+      "properties": {
+        "generator_version": {"const": "2.0"},
+        "risk": {"enum": ["low", "medium", "high"]},
+        "review_reason": {"type": ["string", "null"]},
+        "surface_variant": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "confidence": {"enum": ["high", "medium", "low"]},
+    "rationale_codes": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9_:-]+$"}, "minItems": 1, "uniqueItems": true},
+    "nullable_id": {"type": ["string", "null"]},
+    "string_array": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "output": {
+      "oneOf": [
+        {"$ref": "#/$defs/route_output"},
+        {"$ref": "#/$defs/continuity_output"},
+        {"$ref": "#/$defs/retrieval_output"},
+        {"$ref": "#/$defs/memory_output"},
+        {"$ref": "#/$defs/execution_output"},
+        {"$ref": "#/$defs/clarify_output"},
+        {"$ref": "#/$defs/brief_output"},
+        {"$ref": "#/$defs/supervise_output"},
+        {"$ref": "#/$defs/respond_output"}
+      ]
+    },
+    "route_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "route"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["destination", "work_kind", "confidence", "rationale_codes"],
+          "properties": {
+            "destination": {"enum": ["general", "coding", "research", "finance", "health", "business", "lifestyle", "builder"]},
+            "work_kind": {"enum": ["ask", "work", "act", "build"]},
+            "confidence": {"$ref": "#/$defs/confidence"}, "rationale_codes": {"$ref": "#/$defs/rationale_codes"}
+          }
+        }
+      }
+    },
+    "continuity_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "continuity"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["action", "target_conversation_id", "target_project_id", "search_needed", "confidence", "rationale_codes"],
+          "properties": {
+            "action": {"enum": ["continue", "reopen", "create", "branch", "clarify"]},
+            "target_conversation_id": {"$ref": "#/$defs/nullable_id"}, "target_project_id": {"$ref": "#/$defs/nullable_id"},
+            "search_needed": {"type": "boolean"}, "confidence": {"$ref": "#/$defs/confidence"}, "rationale_codes": {"$ref": "#/$defs/rationale_codes"}
+          }
+        }
+      }
+    },
+    "retrieval_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "retrieval"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["conversation_ids", "project_ids", "memory_ids", "search_queries", "untrusted_ids", "confidence", "rationale_codes"],
+          "properties": {
+            "conversation_ids": {"$ref": "#/$defs/string_array"}, "project_ids": {"$ref": "#/$defs/string_array"},
+            "memory_ids": {"$ref": "#/$defs/string_array"}, "search_queries": {"$ref": "#/$defs/string_array"},
+            "untrusted_ids": {"$ref": "#/$defs/string_array"}, "confidence": {"$ref": "#/$defs/confidence"}, "rationale_codes": {"$ref": "#/$defs/rationale_codes"}
+          }
+        }
+      }
+    },
+    "memory_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "memory"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["operation", "target_memory_id", "scope", "canonical_fact", "sensitivity", "expires", "confidence", "rationale_codes"],
+          "properties": {
+            "operation": {"enum": ["none", "create", "update", "delete"]}, "target_memory_id": {"$ref": "#/$defs/nullable_id"},
+            "scope": {"type": ["string", "null"]},
+            "canonical_fact": {"type": ["string", "null"]}, "sensitivity": {"enum": ["standard", "private", "sensitive", null]},
+            "expires": {"type": "boolean"}, "confidence": {"$ref": "#/$defs/confidence"}, "rationale_codes": {"$ref": "#/$defs/rationale_codes"}
+          }
+        }
+      }
+    },
+    "execution_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "execution"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["response_mode", "tool_ids", "worker_id", "tier", "workspace_id", "permission_triggers", "confidence", "rationale_codes"],
+          "properties": {
+            "response_mode": {"enum": ["local", "delegate", "blocked"]}, "tool_ids": {"$ref": "#/$defs/string_array"},
+            "worker_id": {"$ref": "#/$defs/nullable_id"}, "tier": {"enum": ["local", "fast", "balanced", "frontier"]},
+            "workspace_id": {"$ref": "#/$defs/nullable_id"},
+            "permission_triggers": {"type": "array", "items": {"enum": ["real_money", "irreversible", "jackson_private", "self_change", "security"]}, "uniqueItems": true},
+            "confidence": {"$ref": "#/$defs/confidence"}, "rationale_codes": {"$ref": "#/$defs/rationale_codes"}
+          }
+        }
+      }
+    },
+    "clarify_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "clarify"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["needed", "can_begin", "question", "missing_fields", "confidence", "rationale_codes"],
+          "properties": {
+            "needed": {"type": "boolean"}, "can_begin": {"type": "boolean"}, "question": {"type": ["string", "null"]},
+            "missing_fields": {"$ref": "#/$defs/string_array"}, "confidence": {"$ref": "#/$defs/confidence"}, "rationale_codes": {"$ref": "#/$defs/rationale_codes"}
+          }
+        }
+      }
+    },
+    "brief_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "brief"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["objective", "context_refs", "constraints", "deliverables", "verification", "stop_conditions"],
+          "properties": {
+            "objective": {"type": "string", "minLength": 3}, "context_refs": {"$ref": "#/$defs/string_array"},
+            "constraints": {"$ref": "#/$defs/string_array"}, "deliverables": {"$ref": "#/$defs/string_array"},
+            "verification": {"$ref": "#/$defs/string_array"}, "stop_conditions": {"$ref": "#/$defs/string_array"}
+          }
+        }
+      }
+    },
+    "supervise_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "supervise"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["action", "next_worker_id", "missing_evidence", "question", "confidence", "rationale_codes"],
+          "properties": {
+            "action": {"enum": ["accept", "verify", "retry", "fallback", "clarify", "stop"]},
+            "next_worker_id": {"$ref": "#/$defs/nullable_id"}, "missing_evidence": {"$ref": "#/$defs/string_array"},
+            "question": {"type": ["string", "null"]}, "confidence": {"$ref": "#/$defs/confidence"}, "rationale_codes": {"$ref": "#/$defs/rationale_codes"}
+          }
+        }
+      }
+    },
+    "respond_output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task", "decision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "task": {"const": "respond"},
+        "decision": {
+          "type": "object", "additionalProperties": false,
+          "required": ["action", "tool_ids", "response", "confidence", "rationale_codes"],
+          "properties": {
+            "action": {"enum": ["answer_local", "query_local", "delegate"]}, "tool_ids": {"$ref": "#/$defs/string_array"},
+            "response": {"type": ["string", "null"]}, "confidence": {"$ref": "#/$defs/confidence"}, "rationale_codes": {"$ref": "#/$defs/rationale_codes"}
+          }
+        }
+      }
+    }
+  }
+}

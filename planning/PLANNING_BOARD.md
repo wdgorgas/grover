@@ -1,6 +1,6 @@
 # Planning board → Build board
 
-**P0 APPROVED by Will, 2026-07-03. P1–P5 plus the P6 continuity core are mechanically green. GROVER 2.0.0-rc.3 is packaged and live-smoked; hands-on UX, follow-on domain functions, and visual acceptance remain.**
+**P0 APPROVED by Will, 2026-07-03. P1–P5 plus the P6 continuity core are mechanically green. P7 local-manager training setup is green and the unattended run is ready under accepted Proposal 008. GROVER 2.0.0-rc.3 remains the packaged daily-driver candidate.**
 
 Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`.
 
@@ -15,6 +15,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
 | P5 | Hardening drills → v2.0 | **MECHANICAL EXIT PASSED (2026-08-18)** — 51 deterministic tests; policy, kill, budget, injection, verification-failure, crash, backup/restore, and recovery-card drills green |
 | P6 | Continuity coordinator → v2.1 | **MECHANICAL CORE GREEN / PACKAGING IN PROGRESS (2026-08-18)** — local branching/reopen, fast paths, bounded history, searchable automatic memory, isolated writable Coding projects, and tiered Sol/Terra routing pass; scheduler/history-management/learned-router/visual graph remain follow-on slices |
+| P7 | Learned local manager | **SETUP GREEN / LONG RUN READY (2026-08-18)** — 23,715-example stateful curriculum passes strict isolation/reference checks; review UI, pinned portable QLoRA stack, real 4 GB training, checkpoint resume, detached launcher, cleanup, and fail-closed offline promotion gates verified; long run intentionally not started |
 
 ## Open side-tracks
 
@@ -29,6 +30,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Fluid context workspaces | **Codex** | PlanningProposal 005 accepted 2026-08-18; functional shell implemented and packaged | `planning/proposals/proposal_005_fluid_context_workspaces.md` |
 | Continuous functional delivery | **Codex** | PlanningProposal 006 accepted 2026-08-18; no routine phase pauses, final visual/human pass retained | `planning/proposals/proposal_006_continuous_functional_delivery.md` |
 | Continuity coordinator | **Codex** | PlanningProposal 007 accepted 2026-08-18; initial routing/memory/history slice mechanically green | `planning/proposals/proposal_007_continuity_coordinator.md` |
+| Local learned manager | **Codex** | PlanningProposal 008 accepted 2026-08-18; training setup active, live promotion evaluation-gated | `planning/proposals/proposal_008_local_manager_training.md` |
 
 ## Decisions locked by Will (do not reopen in any workstream)
 
