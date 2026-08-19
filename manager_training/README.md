@@ -37,6 +37,9 @@ The launcher refuses to train when available disk or GPU memory is below its con
 - `REVIEW_MANAGER_CASES.cmd` opens a plain-language sample of 90 ambiguous policy cases. These cases are quarantined and are not part of the current training split; review is useful but does not block this first run.
 - `START_MANAGER_TRAINING.cmd` launches the long run as a hidden background process. Codex and the terminal can be closed afterward.
 - `CHECK_MANAGER_TRAINING.cmd` prints the latest stage, progress, result, or error without changing the run.
+- `STOP_AND_RESET_MANAGER_TRAINING.cmd` stops the recorded training process tree, removes only that partial run, and returns the setup to a step-zero green preflight. It preserves the environment, base model, validated dataset, reports, and prior logs.
+
+When these files are opened by double-clicking, their console remains visible until a key is pressed. Starting training only launches the hidden worker; closing the launcher window afterward does not stop the run. The first numbered progress update appears after the initial ten optimizer steps, which is roughly four to five minutes on the verified laptop.
 
 The final evaluator never promotes a merely completed adapter. It writes `complete_not_promoted` unless every configured accuracy, authority-boundary, and fast-path latency gate passes. Until a later integration slice explicitly enables shadow use, the adapter cannot control the live GROVER app. If the learned behavior is accurate but the default Transformers runtime misses the three-second p95 fast-path gate, the next step is optimized inference or a smaller student—not lowering the everyday-use standard.
 

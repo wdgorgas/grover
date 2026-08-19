@@ -186,7 +186,11 @@ def main() -> None:
         "dataset_manifest": json.loads((data_dir / "manifest.json").read_text(encoding="utf-8")),
     }
     atomic_write_json(output_dir / "run_manifest.json", run_manifest)
-    update_status("training", "running", run_name=args.run_name, step=0, resumed_from=str(checkpoint) if checkpoint else None)
+    update_status(
+        "training", "initializing_training", run_name=args.run_name,
+        message="The first numbered progress update appears after the initial logging interval.",
+        resumed_from=str(checkpoint) if checkpoint else None,
+    )
     try:
         torch.cuda.reset_peak_memory_stats()
         result = trainer.train(resume_from_checkpoint=str(checkpoint) if checkpoint else None)

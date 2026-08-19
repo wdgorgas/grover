@@ -10,3 +10,4 @@ Start-Process -FilePath $venvPython -ArgumentList @(
     '-m', 'grover_manager_training.review_cases',
     '--config', ('"' + (Join-Path $trainingRoot 'config\default.json') + '"')
 )
+Write-Host 'The GROVER Manager review window has opened.' -ForegroundColor Green

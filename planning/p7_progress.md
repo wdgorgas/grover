@@ -37,3 +37,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Will runs `START_MANAGER_TRAINING.cmd`, may close Codex, and checks progress with `CHECK_MANAGER_TRAINING.cmd`. After completion, inspect the test report before proposing any shadow integration.
 
 **Any risks or weirdness:** The 4 GB laptop has only about 440 MB between measured peak allocation and physical VRAM, so other GPU-heavy applications should be closed. The repository and deterministic corpus generator are portable to an 8 GB or larger Windows NVIDIA machine, which is the preferred faster path but not required.
+
+## 2026-08-19 — double-click launcher feedback
+
+**What changed:** All four Windows command launchers now remain visible until a key is pressed and distinguish success from failure in plain language. Training initialization explains that numbered progress begins at the first logging interval; the review launcher confirms that its separate window opened.
+
+**What I verified:** Will's first `manager-v1` launch did start successfully despite the console closing: the detached Python worker remained active and the RTX 3050 reported about 91% utilization. At Will's request, the complete process tree was then stopped, the orphaned CUDA worker was detected and terminated, the partial run directory was removed, GPU memory returned, and preflight passed. The reusable stop-and-reset command also passed idempotently with no active run.
+
+**What is still open:** No long run is active. A clean step-zero run must finish and pass held-out accuracy, authority, and latency gates before any shadow integration.
+
+**What the next person should do:** Start `manager-v1` once with `START_MANAGER_TRAINING.cmd`; the window now stays open. Use `CHECK_MANAGER_TRAINING.cmd` for progress or `STOP_AND_RESET_MANAGER_TRAINING.cmd` for a clean interruption.
+
+**Any risks or weirdness:** Status remains at initialization until step 10 because logging every micro-step would add unnecessary I/O during the long run.

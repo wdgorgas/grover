@@ -201,3 +201,11 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** The manager exists partly to remove provider latency from routing, continuity, memory, clarification, and simple responses. Promoting a local model that takes many seconds per orchestration decision would make GROVER less practical even if its labels were correct.
 
 **Prediction (check after the long run):** The final report will expose fast-path p95 explicitly; if the 4-bit Transformers runtime misses three seconds, status will be `complete_not_promoted` and no live routing integration will occur.
+
+## 2026-08-19 — Double-click launchers retain visible feedback
+
+**Decision:** Windows command wrappers pause after preparation, start, status, review, and reset actions so a double-clicked console cannot disappear before Will reads the result. The detached trainer remains independent of that launcher window. A dedicated stop-and-reset command terminates the complete recorded manager process tree and removes only its partial run before re-running preflight.
+
+**Why:** The first real long-run start succeeded, but immediate console closure looked exactly like a crash. A visible outcome is required for a nontechnical desktop workflow even when the underlying process is intentionally hidden.
+
+**Prediction (checked immediately):** A launcher smoke will display its result and wait for a key, while the already-running `manager-v1` process continues without interruption. **Result: confirmed.**
