@@ -8,15 +8,16 @@ import type { DatabaseSync } from 'node:sqlite';
 import { EngineRouter, type EngineUpdate, type ExecutionEngine, type Route } from './engine.ts';
 import { appendEvent, appendEventInTransaction } from './events.ts';
 import { MemoryService, type IncidentalMemoryResult } from './memory.ts';
-import type { ManagerPlanner, RouteDecision } from './manager.ts';
+import type { ContinuityDecision, ManagerPlanner, RouteDecision } from './manager.ts';
 import { PolicyService, type PolicyOrigin } from './policy.ts';
 import {
   addAcceptanceCheck, addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
   completeRoutingDecision, createBuild, createTask, engineRanking,
-  getCodingProject, getEngineModelProfile, getSetting, inferContextDecision, inferIntent, linkCodingProject,
+  findConversationCandidates, getCodingProject, getEngineModelProfile, getSetting, inferContextDecision, inferIntent, linkCodingProject,
   moveConversation, rateTaskRouting, recordCommit, recordCost,
   recordConversationResolution, recordManagerShadow, recordRoutingDecision, resolveConversation, setSetting, snapshot, transaction,
-  selectModelTier, transitionRun, type CodingProject, type Context, type ConversationDisposition,
+  selectModelTier, transitionRun, type CodingProject, type Context, type ConversationCandidate, type ConversationDisposition,
+  type ConversationResolution,
   type EngineModelProfile, type Intent, type ModelTier,
 } from './store.ts';
 
@@ -205,8 +206,8 @@ export class GroverCore extends EventEmitter {
     return 'I could not finish that request. Check agent status in Settings, then retry it from this conversation.';
   }
 
-  private shadowRoute(taskId: string, text: string, intent: Intent, deterministicContext: Context, sourceConversationId?: string): void {
-    if (!this.manager || intent === 'remember') return;
+  private shadowRoute(taskId: string, text: string, intent: Intent, deterministicContext: Context, sourceConversationId?: string): Promise<void> {
+    if (!this.manager || intent === 'remember') return Promise.resolve();
     const current = sourceConversationId ? this.db.prepare(
       'SELECT id, context, title FROM conversations WHERE id = ?'
     ).get(sourceConversationId) as { id: string; context: Context; title: string } | undefined : undefined;
@@ -229,7 +230,7 @@ export class GroverCore extends EventEmitter {
         rationale_codes: ['deterministic_continuity_v2'],
       },
     };
-    void this.manager.inferRoute(input).then(({ output, latencyMs }) => {
+    return this.manager.inferRoute(input).then(({ output, latencyMs }) => {
       const matches = output.decision.destination === deterministic.decision.destination &&
         output.decision.work_kind === deterministic.decision.work_kind;
       recordManagerShadow(this.db, {
@@ -247,6 +248,80 @@ export class GroverCore extends EventEmitter {
     }).catch((error) => {
       recordManagerShadow(this.db, {
         taskId, managerTask: 'route', status: 'failed', input: auditInput, deterministic,
+        modelHash: this.manager?.status().modelHash, error: truncate(String(error), 500),
+      });
+      this.changed();
+    });
+  }
+
+  private shadowContinuity(
+    taskId: string,
+    text: string,
+    resolution: ConversationResolution,
+    sourceConversationId: string | undefined,
+    sourceProjectId: string | null,
+    candidates: ConversationCandidate[],
+  ): Promise<void> {
+    if (!this.manager?.inferContinuity || (!sourceConversationId && !candidates.length && resolution.disposition === 'created')) {
+      return Promise.resolve();
+    }
+    const current = sourceConversationId ? this.db.prepare(
+      'SELECT id, context, title FROM conversations WHERE id = ?'
+    ).get(sourceConversationId) as { id: string; context: Context; title: string } | undefined : undefined;
+    const searchedCandidates = candidates.map((candidate) => ({
+      id: candidate.id, title: candidate.title, context: candidate.context,
+      project_id: candidate.projectId, status: 'active',
+    }));
+    const candidateConversations = [
+      ...(current && !searchedCandidates.some((candidate) => candidate.id === current.id)
+        ? [{ id: current.id, title: current.title, context: current.context, project_id: sourceProjectId, status: 'active' }]
+        : []),
+      ...searchedCandidates,
+    ].slice(0, 8);
+    const input = {
+      request: text,
+      resolved_destination: resolution.context,
+      current_conversation: current ?? null,
+      candidate_conversations: candidateConversations,
+    };
+    const action = resolution.disposition === 'continued' ? 'continue'
+      : ['reopened', 'navigated'].includes(resolution.disposition) ? 'reopen'
+        : resolution.disposition === 'branched' ? 'branch' : 'create';
+    const targetConversationId = ['continue', 'reopen'].includes(action) ? resolution.conversationId : null;
+    const targetProjectId = targetConversationId
+      ? (candidateConversations.find((candidate) => candidate.id === targetConversationId)?.project_id ?? null)
+      : null;
+    const deterministic: ContinuityDecision = {
+      schema_version: '1.0', task: 'continuity',
+      decision: {
+        action, target_conversation_id: targetConversationId, target_project_id: targetProjectId,
+        search_needed: false, confidence: 'high', rationale_codes: ['deterministic_continuity_v2'],
+      },
+    };
+    const auditInput = {
+      request_sha256: createHash('sha256').update(text, 'utf8').digest('hex'),
+      source_conversation_id: sourceConversationId ?? null,
+      candidate_conversation_ids: candidateConversations.map((candidate) => candidate.id),
+    };
+    return this.manager.inferContinuity(input).then(({ output, latencyMs }) => {
+      const matches = output.decision.action === deterministic.decision.action &&
+        output.decision.target_conversation_id === deterministic.decision.target_conversation_id &&
+        output.decision.target_project_id === deterministic.decision.target_project_id;
+      recordManagerShadow(this.db, {
+        taskId, managerTask: 'continuity', status: matches ? 'matched' : 'differed', input: auditInput,
+        deterministic, proposed: output, latencyMs, modelHash: this.manager?.status().modelHash,
+      });
+      appendEvent(this.db, {
+        scopeType: 'task', scopeId: taskId, taskId, idempotencyKey: `${taskId}:manager-shadow-continuity`,
+        actor: 'system', domain: resolution.context, phase: 'planning',
+        plainLanguage: matches ? 'Local manager agreed with conversation continuity' : 'Local manager proposed different conversation continuity',
+        internalDetail: JSON.stringify({ mode: 'shadow', deterministic, proposed: output, latencyMs }),
+        modelRunId: `manager-shadow:${taskId}:continuity`,
+      });
+      this.changed();
+    }).catch((error) => {
+      recordManagerShadow(this.db, {
+        taskId, managerTask: 'continuity', status: 'failed', input: auditInput, deterministic,
         modelHash: this.manager?.status().modelHash, error: truncate(String(error), 500),
       });
       this.changed();
@@ -373,6 +448,9 @@ export class GroverCore extends EventEmitter {
       throw new Error('Unknown conversation workspace.');
     }
     const inference = inferContextDecision(text, intent);
+    const preferredCandidateContext = inference.explicit && inference.context !== 'general' ? inference.context : undefined;
+    const continuityCandidates = findConversationCandidates(this.db, text, preferredCandidateContext, input.conversationId);
+    const sourceProjectId = input.conversationId ? getCodingProject(this.db, input.conversationId)?.id ?? null : null;
     const conversation = resolveConversation(this.db, text, inference, input.conversationId, input.context);
     const { context, conversationId } = conversation;
     if (context === 'builder' && !['act', 'remember'].includes(intent) &&
@@ -384,7 +462,8 @@ export class GroverCore extends EventEmitter {
       intent = 'work';
     }
     const taskId = createTask(this.db, intent, text, context);
-    this.shadowRoute(taskId, text, intent, context, input.conversationId);
+    void this.shadowRoute(taskId, text, intent, context, input.conversationId)
+      .then(() => this.shadowContinuity(taskId, text, conversation, input.conversationId, sourceProjectId, continuityCandidates));
     recordConversationResolution(this.db, taskId, conversation, text);
     this.taskIntents.set(taskId, intent);
     if (conversation.localNavigation) {

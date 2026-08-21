@@ -73,3 +73,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Finish and record the 2,700-case gate, then add continuity shadow input using bounded FTS candidates. Do not let learned output affect routing until disagreement review and the promotion criteria are green.
 
 **Any risks or weirdness:** PowerShell wrote the inference manifest with a UTF-8 BOM, so the native reader explicitly accepts that one leading marker before parsing. Hash verification adds startup work but happens asynchronously while the desktop window remains usable. The runtime is discovered under `%LOCALAPPDATA%`; packaging the prepared model/runtime for another laptop remains a later delivery slice.
+
+## 2026-08-21 — bounded continuity shadow
+
+**What changed:** Added the trained continuity task behind the same authenticated process. GROVER's existing FTS index supplies no more than eight active candidate conversations with stable IDs, titles, contexts, and project IDs. The current conversation/project is explicitly retained for generic follow-ups such as “go ahead.” The validator rejects any conversation or project ID outside that shortlist. Route completes before continuity, but both remain asynchronous audit proposals.
+
+**What I verified:** The suite now has 70 passing deterministic checks, including invented-ID refusal, exact conversation-to-project pairing, an eight-candidate hard cap, named-project reopen, generic current-project continuation, bounded candidate shape, and proof that learned disagreement cannot change the deterministic result. In the real Electron app, `hello` rendered in 78 ms, “Let's code tictactoe” branched to Coding in 68 ms, and authenticated route plus continuity shadow work completed in 1.837 seconds. The rendered evidence was refreshed at `app/test-results/manager-shadow-live.png`.
+
+**What is still open:** Continuity is still shadow-only and needs accumulated real disagreement review before authority. The exhaustive 2,700-case gate remains resumable from 2,173 completed rows. Retrieval, memory, execution, clarification, briefing, supervision, and fast-response shadow slices remain unconnected.
+
+**What the next person should do:** Resume the full gate from 2,173, record its protected metrics, then implement bounded retrieval shadow candidates without sending full vault or conversation content.
+
+**Any risks or weirdness:** A same-family official Qwen3-0.6B Q8 speculative draft was tested after a throttled route exceeded three seconds. It worsened latency to roughly six seconds because the additional 0.8 GB model increased pressure on the 4 GB GPU, so it and its incomplete benchmark were deleted. No speculative dependency was adopted. The successful two-stage smoke subsequently completed under three seconds with the single exact manager.

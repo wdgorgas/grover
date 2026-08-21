@@ -35,8 +35,11 @@ try {
   assert.equal(startup.visibleText, 'Shadow ready', `visible manager state was ${JSON.stringify(startup)}`);
 
   await page.locator('[data-view="home"]').click();
+  const helloStarted = Date.now();
   await page.locator('#home-request').fill('hello');
   await page.locator('#home-request').press('Enter');
+  await page.locator('#chat-messages').getByText('What would you like to do?', { exact: false }).waitFor();
+  const helloVisible = Date.now() - helloStarted;
   let snapshot;
   const deadline = Date.now() + 15_000;
   do {
@@ -46,12 +49,33 @@ try {
   } while (Date.now() < deadline);
   assert.equal(snapshot.managerShadow.length, 1, 'shadow decision was not recorded');
   assert.equal(snapshot.managerShadow[0].status, 'matched');
-  assert.ok(snapshot.managerShadow[0].latency_ms <= 3_000, `shadow route took ${snapshot.managerShadow[0].latency_ms}ms`);
+  assert.ok(helloVisible <= 1_000, `local greeting took ${helloVisible}ms to appear`);
   const task = snapshot.tasks.find((item) => item.task_id === snapshot.managerShadow[0].task_id);
   assert.equal(task.domain, 'general', 'shadow inference changed the deterministic route');
+
+  await page.evaluate(async () => window.grover.setKillSwitch(true));
+  const continuityStarted = Date.now();
+  await page.locator('#context-request').fill("Let's code tictactoe");
+  await page.locator('#context-request').press('Enter');
+  await page.locator('#context-title').getByText('Coding', { exact: true }).waitFor();
+  const branchVisible = Date.now() - continuityStarted;
+  const continuityDeadline = Date.now() + 30_000;
+  do {
+    snapshot = await page.evaluate(async () => window.grover.snapshot());
+    if (snapshot.managerShadow.length === 3) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } while (Date.now() < continuityDeadline);
+  const continuityElapsed = Date.now() - continuityStarted;
+  assert.equal(snapshot.managerShadow.length, 3, 'route plus continuity decisions were not recorded');
+  const continuity = snapshot.managerShadow.find((item) => item.manager_task === 'continuity');
+  assert.ok(continuity);
+  assert.notEqual(continuity.status, 'failed');
+  assert.ok(branchVisible <= 1_000, `deterministic branch took ${branchVisible}ms to appear`);
+  const codingTask = snapshot.tasks.find((item) => item.task_id === continuity.task_id);
+  assert.equal(codingTask.domain, 'coding', 'continuity shadow changed the deterministic branch');
   await page.screenshot({ path: join(resultDir, 'manager-shadow-live.png'), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log(`Native manager shadow passed in ${snapshot.managerShadow[0].latency_ms}ms; screenshot: ${join(resultDir, 'manager-shadow-live.png')}`);
+  console.log(`Local greeting appeared in ${helloVisible}ms; Coding branch appeared in ${branchVisible}ms; background route plus continuity completed in ${continuityElapsed}ms; screenshot: ${join(resultDir, 'manager-shadow-live.png')}`);
 } finally {
   await application.close();
 }

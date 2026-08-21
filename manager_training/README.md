@@ -43,7 +43,7 @@ The launcher refuses to train when available disk or GPU memory is below its con
 
 When these files are opened by double-clicking, their console remains visible until a key is pressed. Starting training only launches the hidden worker; closing the launcher window afterward does not stop the run. The first numbered progress update appears after the initial ten optimizer steps, which is roughly four to five minutes on the verified laptop.
 
-The final evaluator never promotes a merely completed adapter. It writes `complete_not_promoted` unless every configured accuracy, authority-boundary, and fast-path latency gate passes. The Windows app now launches the prepared model through an authenticated, loopback-only hidden process and records route proposals in shadow mode. Those proposals cannot control navigation, tools, memory, workers, or permissions. If learned behavior misses a gate, the manager stays shadow-only rather than lowering the everyday-use standard.
+The final evaluator never promotes a merely completed adapter. It writes `complete_not_promoted` unless every configured accuracy, authority-boundary, and fast-path latency gate passes. The Windows app now launches the prepared model through an authenticated, loopback-only hidden process and records route and continuity proposals in shadow mode. Those proposals cannot control navigation, tools, memory, workers, or permissions. Candidate conversations are selected locally and capped at eight; the model receives IDs, titles, contexts, project IDs, and status—not complete histories. If learned behavior misses a gate, the manager stays shadow-only rather than lowering the everyday-use standard.
 
 ## Measured laptop profile
 

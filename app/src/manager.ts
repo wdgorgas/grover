@@ -26,9 +26,23 @@ export type RouteDecision = {
   };
 };
 
+export type ContinuityDecision = {
+  schema_version: '1.0';
+  task: 'continuity';
+  decision: {
+    action: 'continue' | 'reopen' | 'create' | 'branch' | 'clarify';
+    target_conversation_id: string | null;
+    target_project_id: string | null;
+    search_needed: boolean;
+    confidence: 'high' | 'medium' | 'low';
+    rationale_codes: string[];
+  };
+};
+
 export interface ManagerPlanner {
   status(): ManagerStatus;
   inferRoute(input: Record<string, unknown>): Promise<{ output: RouteDecision; latencyMs: number }>;
+  inferContinuity?(input: Record<string, unknown>): Promise<{ output: ContinuityDecision; latencyMs: number }>;
   onStatus?(listener: () => void): void;
 }
 
@@ -46,6 +60,7 @@ type InferenceManifest = {
 const SYSTEM_PROMPT = 'You are GROVER Manager, a narrow local orchestration planner. You do not perform specialist work and you do not invent application state. Read TASK and INPUT. Return exactly one compact JSON object matching the requested task schema, with no Markdown or extra prose. Reference only IDs present in INPUT. Prefer local deterministic tools when they can answer accurately. Choose clarification only when missing information materially changes the outcome, risk, destination, or authorization. Never bypass unavailable tools, permissions, privacy boundaries, real-money approval, destructive-action approval, security approval, or jackson-private isolation. Personal facts and project contents remain in external storage; request only the minimum relevant records. Provider models are configurable workers, not managers.';
 
 const ROUTE_RULE = "Choose destination and work_kind. Route by the work being performed, not a noun's eventual domain. Software creation goes to coding; changes to GROVER itself go to builder; calendar actions go to lifestyle.";
+const CONTINUITY_RULE = 'Choose whether to continue the current conversation, reopen exactly one matching candidate, create a new one, branch away from the current conversation, or clarify. Never invent an ID.';
 
 function sortedJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(sortedJson).join(',')}]`;
@@ -57,7 +72,7 @@ function sortedJson(value: unknown): string {
 }
 
 export function rawManagerPrompt(task: ManagerTask, input: Record<string, unknown>): string {
-  const rules: Partial<Record<ManagerTask, string>> = { route: ROUTE_RULE };
+  const rules: Partial<Record<ManagerTask, string>> = { route: ROUTE_RULE, continuity: CONTINUITY_RULE };
   const rule = rules[task];
   if (!rule) throw new Error(`Manager task ${task} is not connected in this build.`);
   const user = `TASK: ${task}\nTASK_RULE: ${rule}\nINPUT: ${sortedJson(input)}\nReturn the task's v1 JSON output.`;
@@ -90,6 +105,40 @@ export function validateRouteDecision(value: unknown): RouteDecision {
     throw new Error('Manager route rationale is invalid.');
   }
   return value as RouteDecision;
+}
+
+export function validateContinuityDecision(value: unknown, allowedTargets: Map<string, string | null>): ContinuityDecision {
+  if (!value || typeof value !== 'object') throw new Error('Manager output is not an object.');
+  const envelope = value as Record<string, unknown>;
+  if (!hasExactKeys(envelope, ['schema_version', 'task', 'decision']) || envelope.schema_version !== '1.0' || envelope.task !== 'continuity') {
+    throw new Error('Manager continuity envelope does not match schema v1.');
+  }
+  if (!envelope.decision || typeof envelope.decision !== 'object') throw new Error('Manager continuity decision is missing.');
+  const decision = envelope.decision as Record<string, unknown>;
+  if (!hasExactKeys(decision, [
+    'action', 'target_conversation_id', 'target_project_id', 'search_needed', 'confidence', 'rationale_codes',
+  ])) throw new Error('Manager continuity decision has missing or unexpected fields.');
+  if (!new Set(['continue', 'reopen', 'create', 'branch', 'clarify']).has(String(decision.action)) ||
+      typeof decision.search_needed !== 'boolean' || !new Set(['high', 'medium', 'low']).has(String(decision.confidence))) {
+    throw new Error('Manager continuity decision contains an unknown enum value.');
+  }
+  if (!Array.isArray(decision.rationale_codes) || !decision.rationale_codes.length ||
+      decision.rationale_codes.some((code) => typeof code !== 'string' || !/^[a-z0-9_:-]+$/.test(code))) {
+    throw new Error('Manager continuity rationale is invalid.');
+  }
+  const conversationId = decision.target_conversation_id;
+  const projectId = decision.target_project_id;
+  if (['continue', 'reopen'].includes(String(decision.action))) {
+    if (typeof conversationId !== 'string' || !allowedTargets.has(conversationId)) {
+      throw new Error('Manager continuity referenced an unavailable conversation.');
+    }
+    if (projectId !== allowedTargets.get(conversationId)) {
+      throw new Error('Manager continuity paired a conversation with the wrong project.');
+    }
+  } else if (conversationId !== null || projectId !== null) {
+    throw new Error('Manager continuity supplied a target for a targetless action.');
+  }
+  return value as ContinuityDecision;
 }
 
 function pathWithin(parent: string, child: string): boolean {
@@ -150,12 +199,34 @@ export class ManagerHttpClient {
   }
 
   async inferRoute(input: Record<string, unknown>): Promise<{ output: RouteDecision; latencyMs: number }> {
+    const result = await this.complete('route', input, 64);
+    return { output: validateRouteDecision(result.parsed), latencyMs: result.latencyMs };
+  }
+
+  async inferContinuity(input: Record<string, unknown>): Promise<{ output: ContinuityDecision; latencyMs: number }> {
+    const result = await this.complete('continuity', input, 96);
+    const current = input.current_conversation as { id?: unknown } | null;
+    const candidates = Array.isArray(input.candidate_conversations) ? input.candidate_conversations as Record<string, unknown>[] : [];
+    const allowedTargets = new Map<string, string | null>();
+    if (current && typeof current.id === 'string') allowedTargets.set(current.id, null);
+    for (const candidate of candidates) {
+      if (typeof candidate.id === 'string') {
+        allowedTargets.set(candidate.id, typeof candidate.project_id === 'string' ? candidate.project_id : null);
+      }
+    }
+    return {
+      output: validateContinuityDecision(result.parsed, allowedTargets),
+      latencyMs: result.latencyMs,
+    };
+  }
+
+  private async complete(task: 'route' | 'continuity', input: Record<string, unknown>, nPredict: number): Promise<{ parsed: unknown; latencyMs: number }> {
     const started = performance.now();
     const response = await fetch(`${this.endpoint}/completion`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt: rawManagerPrompt('route', input), temperature: 0, seed: 20260818, n_predict: 64,
+        prompt: rawManagerPrompt(task, input), temperature: 0, seed: 20260818, n_predict: nPredict,
         repeat_penalty: 1.0, stop: ['<|im_end|>'], cache_prompt: true,
       }),
       signal: AbortSignal.timeout(this.timeoutMs),
@@ -169,7 +240,7 @@ export class ManagerHttpClient {
     } catch {
       throw new Error('Local manager returned invalid JSON.');
     }
-    return { output: validateRouteDecision(parsed), latencyMs: Math.round(performance.now() - started) };
+    return { parsed, latencyMs: Math.round(performance.now() - started) };
   }
 }
 
@@ -260,7 +331,9 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
       while (Date.now() < deadline && child.exitCode === null) {
         if (await client.health()) {
           this.client = client;
-          this.setStatus({ state: 'ready', detail: 'Local manager is ready in shadow mode.', modelHash, lastLatencyMs: null });
+          this.setStatus({
+            state: 'ready', detail: 'Local manager is ready in shadow mode.', modelHash, lastLatencyMs: null,
+          });
           return;
         }
         await new Promise((resolveWait) => setTimeout(resolveWait, 250));
@@ -277,6 +350,14 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferRoute(input);
+    this.setStatus({ ...this.current, lastLatencyMs: result.latencyMs });
+    return result;
+  }
+
+  async inferContinuity(input: Record<string, unknown>): Promise<{ output: ContinuityDecision; latencyMs: number }> {
+    await this.start();
+    if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
+    const result = await this.client.inferContinuity(input);
     this.setStatus({ ...this.current, lastLatencyMs: result.latencyMs });
     return result;
   }
