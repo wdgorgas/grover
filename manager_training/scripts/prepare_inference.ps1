@@ -89,6 +89,39 @@ if (-not $KeepIntermediate) {
     if (Test-Path -LiteralPath $mergedRoot) { Remove-Item -LiteralPath $mergedRoot -Recurse -Force }
     if (Test-Path -LiteralPath $sourceRoot) { Remove-Item -LiteralPath $sourceRoot -Recurse -Force }
     if (Test-Path -LiteralPath $downloads) { Remove-Item -LiteralPath $downloads -Recurse -Force }
+    $q4Experiment = Join-Path $inferenceRoot 'q4-experiment'
+    if (Test-Path -LiteralPath $q4Experiment) {
+        $resolvedInferenceRoot = (Resolve-Path -LiteralPath $inferenceRoot).Path
+        $resolvedQ4Experiment = (Resolve-Path -LiteralPath $q4Experiment).Path
+        if (-not $resolvedQ4Experiment.StartsWith($resolvedInferenceRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Refusing Q4 experiment cleanup outside the inference runtime.'
+        }
+        Remove-Item -LiteralPath $resolvedQ4Experiment -Recurse -Force
+    }
+    $rejectedBenchmarks = @(
+        'q8-checkpoint-600-raw-sample90',
+        'q8-checkpoint-750-raw-sample90',
+        'q8-checkpoint-750-sample90',
+        'nf4-merged-q4-checkpoint-750-sample90',
+        'nf4-merged-q8-checkpoint-750-full2700-shard0',
+        'nf4-merged-q8-checkpoint-750-full2700-shard1',
+        'nf4-merged-q8-checkpoint-750-full2700-shard2',
+        'nf4-merged-q8-checkpoint-750-full2700-shard3'
+    )
+    $benchmarkRoot = Join-Path $inferenceRoot 'benchmarks'
+    if (Test-Path -LiteralPath $benchmarkRoot) {
+        $resolvedBenchmarkRoot = (Resolve-Path -LiteralPath $benchmarkRoot).Path
+        foreach ($name in $rejectedBenchmarks) {
+            $candidate = Join-Path $resolvedBenchmarkRoot $name
+            if (Test-Path -LiteralPath $candidate) {
+                $resolvedCandidate = (Resolve-Path -LiteralPath $candidate).Path
+                if (-not $resolvedCandidate.StartsWith($resolvedBenchmarkRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    throw 'Refusing cleanup outside the inference benchmark root.'
+                }
+                Remove-Item -LiteralPath $resolvedCandidate -Recurse -Force
+            }
+        }
+    }
     $obsoleteModels = @(
         'manager-v1-checkpoint-600-lora-f16.gguf',
         'manager-v1-checkpoint-750-lora-f16.gguf',

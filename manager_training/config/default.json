@@ -74,6 +74,7 @@
     "quantization": "Q8_0",
     "context_length": 2048,
     "parallel_slots": 1,
+    "host_prompt_cache_mb": 0,
     "prompt_mode": "raw_qwen3",
     "thinking": false,
     "temperature": 0,
