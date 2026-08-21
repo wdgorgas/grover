@@ -5,11 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import { openDb } from './db.ts';
 import { findRepoRoot, GroverCore } from './core.ts';
+import { LocalManagerRuntime } from './manager.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(here, '..', 'renderer');
 let core;
 let mainWindow;
+let manager;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.setName('GROVER');
@@ -119,11 +121,15 @@ app.whenReady().then(() => {
   const projectsRoot = process.env.GROVER_TEST_DATA_DIR
     ? join(dataDir, 'projects')
     : join(app.getPath('documents'), 'GROVER Projects');
-  core = new GroverCore({ db, dataDir, workspaceRoot: developmentRoot, projectsRoot });
+  const managerEnabled = process.env.GROVER_DISABLE_MANAGER !== 'true' &&
+    (!process.env.GROVER_TEST_DATA_DIR || process.env.GROVER_TEST_MANAGER === 'true');
+  manager = managerEnabled ? new LocalManagerRuntime() : null;
+  core = new GroverCore({ db, dataDir, workspaceRoot: developmentRoot, projectsRoot, manager });
   core.on('state', sendState);
   installIpc();
   createWindow();
   void core.refreshEngineStatus();
+  void manager?.start();
 });
 
 app.on('second-instance', () => {
@@ -133,3 +139,4 @@ app.on('second-instance', () => {
 });
 
 app.on('window-all-closed', () => app.quit());
+app.on('before-quit', () => manager?.stop());

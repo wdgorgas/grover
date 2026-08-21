@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync, existsSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -8,13 +8,14 @@ import type { DatabaseSync } from 'node:sqlite';
 import { EngineRouter, type EngineUpdate, type ExecutionEngine, type Route } from './engine.ts';
 import { appendEvent, appendEventInTransaction } from './events.ts';
 import { MemoryService, type IncidentalMemoryResult } from './memory.ts';
+import type { ManagerPlanner, RouteDecision } from './manager.ts';
 import { PolicyService, type PolicyOrigin } from './policy.ts';
 import {
   addAcceptanceCheck, addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
   completeRoutingDecision, createBuild, createTask, engineRanking,
   getCodingProject, getEngineModelProfile, getSetting, inferContextDecision, inferIntent, linkCodingProject,
   moveConversation, rateTaskRouting, recordCommit, recordCost,
-  recordConversationResolution, recordRoutingDecision, resolveConversation, setSetting, snapshot, transaction,
+  recordConversationResolution, recordManagerShadow, recordRoutingDecision, resolveConversation, setSetting, snapshot, transaction,
   selectModelTier, transitionRun, type CodingProject, type Context, type ConversationDisposition,
   type EngineModelProfile, type Intent, type ModelTier,
 } from './store.ts';
@@ -92,6 +93,7 @@ export class GroverCore extends EventEmitter {
   readonly router: EngineRouter;
   readonly memory: MemoryService;
   readonly policy: PolicyService;
+  readonly manager: ManagerPlanner | null;
   readonly dataDir: string;
   private workspaceRoot: string | null;
   private projectsRoot: string;
@@ -105,11 +107,14 @@ export class GroverCore extends EventEmitter {
     workspaceRoot?: string | null;
     projectsRoot?: string;
     router?: EngineRouter;
+    manager?: ManagerPlanner | null;
   }) {
     super();
     this.db = options.db;
     this.dataDir = options.dataDir;
     this.router = options.router ?? new EngineRouter();
+    this.manager = options.manager ?? null;
+    this.manager?.onStatus?.(() => this.changed());
     const stored = getSetting(this.db, 'workspace_root');
     this.workspaceRoot = options.workspaceRoot ?? stored;
     if (this.workspaceRoot) setSetting(this.db, 'workspace_root', this.workspaceRoot);
@@ -162,6 +167,9 @@ export class GroverCore extends EventEmitter {
       runtime: {
         engineAvailability: this.router.availability(),
         engineStatus: this.router.status(),
+        managerStatus: this.manager?.status() ?? {
+          state: 'unavailable', detail: 'Local manager is not configured.', modelHash: null, lastLatencyMs: null,
+        },
         workspaceRoot: this.workspaceRoot,
         projectsRoot: this.projectsRoot,
         localOnly: true,
@@ -195,6 +203,54 @@ export class GroverCore extends EventEmitter {
       return 'I could not find a working local agent. Open Settings to check the installed agents and repair or sign in.';
     }
     return 'I could not finish that request. Check agent status in Settings, then retry it from this conversation.';
+  }
+
+  private shadowRoute(taskId: string, text: string, intent: Intent, deterministicContext: Context, sourceConversationId?: string): void {
+    if (!this.manager || intent === 'remember') return;
+    const current = sourceConversationId ? this.db.prepare(
+      'SELECT id, context, title FROM conversations WHERE id = ?'
+    ).get(sourceConversationId) as { id: string; context: Context; title: string } | undefined : undefined;
+    const input = {
+      request: text,
+      current_context: current?.context ?? deterministicContext,
+      current_conversation_summary: current?.title ?? 'No active conversation summary.',
+    };
+    const auditInput = {
+      request_sha256: createHash('sha256').update(text, 'utf8').digest('hex'),
+      current_context: input.current_context,
+      source_conversation_id: sourceConversationId ?? null,
+    };
+    const deterministic: RouteDecision = {
+      schema_version: '1.0', task: 'route',
+      decision: {
+        destination: deterministicContext,
+        work_kind: intent,
+        confidence: 'high',
+        rationale_codes: ['deterministic_continuity_v2'],
+      },
+    };
+    void this.manager.inferRoute(input).then(({ output, latencyMs }) => {
+      const matches = output.decision.destination === deterministic.decision.destination &&
+        output.decision.work_kind === deterministic.decision.work_kind;
+      recordManagerShadow(this.db, {
+        taskId, managerTask: 'route', status: matches ? 'matched' : 'differed', input: auditInput, deterministic,
+        proposed: output, latencyMs, modelHash: this.manager?.status().modelHash,
+      });
+      appendEvent(this.db, {
+        scopeType: 'task', scopeId: taskId, taskId, idempotencyKey: `${taskId}:manager-shadow-route`,
+        actor: 'system', domain: deterministicContext, phase: 'planning',
+        plainLanguage: matches ? 'Local manager agreed with the current route' : 'Local manager proposed a different shadow route',
+        internalDetail: JSON.stringify({ mode: 'shadow', deterministic, proposed: output, latencyMs }),
+        modelRunId: `manager-shadow:${taskId}`,
+      });
+      this.changed();
+    }).catch((error) => {
+      recordManagerShadow(this.db, {
+        taskId, managerTask: 'route', status: 'failed', input: auditInput, deterministic,
+        modelHash: this.manager?.status().modelHash, error: truncate(String(error), 500),
+      });
+      this.changed();
+    });
   }
 
   private localResponse(text: string, memoryResult: IncidentalMemoryResult | null): string | null {
@@ -328,6 +384,7 @@ export class GroverCore extends EventEmitter {
       intent = 'work';
     }
     const taskId = createTask(this.db, intent, text, context);
+    this.shadowRoute(taskId, text, intent, context, input.conversationId);
     recordConversationResolution(this.db, taskId, conversation, text);
     this.taskIntents.set(taskId, intent);
     if (conversation.localNavigation) {

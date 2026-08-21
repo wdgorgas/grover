@@ -329,6 +329,25 @@ CREATE TABLE IF NOT EXISTS routing_decisions (
   completed_at    TEXT
 );
 
+-- Learned-manager proposals are shadow evidence only. Nothing reads this
+-- table to choose a context, worker, tool, permission, or memory mutation.
+CREATE TABLE IF NOT EXISTS manager_shadow_decisions (
+  id                 TEXT PRIMARY KEY,
+  task_id            TEXT NOT NULL,
+  manager_task       TEXT NOT NULL,
+  status             TEXT NOT NULL CHECK (status IN ('matched','differed','invalid','failed')),
+  input_json         TEXT NOT NULL,
+  deterministic_json TEXT NOT NULL,
+  proposed_json      TEXT,
+  latency_ms         INTEGER,
+  model_hash         TEXT,
+  error_detail       TEXT,
+  created_at         TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS manager_shadow_by_task
+ON manager_shadow_decisions(task_id, created_at);
+
 CREATE TABLE IF NOT EXISTS engine_model_profiles (
   engine_id        TEXT NOT NULL REFERENCES engine_registry(id),
   model_tier       TEXT NOT NULL CHECK (model_tier IN ('fast','balanced','frontier')),

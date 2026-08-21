@@ -43,7 +43,7 @@ The launcher refuses to train when available disk or GPU memory is below its con
 
 When these files are opened by double-clicking, their console remains visible until a key is pressed. Starting training only launches the hidden worker; closing the launcher window afterward does not stop the run. The first numbered progress update appears after the initial ten optimizer steps, which is roughly four to five minutes on the verified laptop.
 
-The final evaluator never promotes a merely completed adapter. It writes `complete_not_promoted` unless every configured accuracy, authority-boundary, and fast-path latency gate passes. Until a later integration slice explicitly enables shadow use, the adapter cannot control the live GROVER app. If the learned behavior is accurate but the default Transformers runtime misses the three-second p95 fast-path gate, the next step is optimized inference or a smaller student—not lowering the everyday-use standard.
+The final evaluator never promotes a merely completed adapter. It writes `complete_not_promoted` unless every configured accuracy, authority-boundary, and fast-path latency gate passes. The Windows app now launches the prepared model through an authenticated, loopback-only hidden process and records route proposals in shadow mode. Those proposals cannot control navigation, tools, memory, workers, or permissions. If learned behavior misses a gate, the manager stays shadow-only rather than lowering the everyday-use standard.
 
 ## Measured laptop profile
 
