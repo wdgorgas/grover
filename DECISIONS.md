@@ -209,3 +209,19 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 **Why:** The first real long-run start succeeded, but immediate console closure looked exactly like a crash. A visible outcome is required for a nontechnical desktop workflow even when the underlying process is intentionally hidden.
 
 **Prediction (checked immediately):** A launcher smoke will display its result and wait for a key, while the already-running `manager-v1` process continues without interruption. **Result: confirmed.**
+
+## 2026-08-21 — Persistent GGUF runtime for learned-manager inference
+
+**Decision:** Evaluate checkpoint 750 through a pinned CUDA build of `llama.cpp`. Export the exact bitsandbytes NF4 base representation used in training, dequantize it to FP16, safely merge the LoRA, convert that merged model to GGUF, and then quantize it to Q8. The runtime stays warm, fully offloads the model to the NVIDIA GPU when supported, disables thinking, reuses the common prompt prefix, constrains structured output, and remains offline/shadow-only until accuracy, authority, and warm three-second gates pass. Downloaded binaries, models, and conversion sources live under the disposable local manager runtime rather than Git.
+
+**Why:** The training-oriented Python/Transformers stack measured 16.24-second p95 inference on the laptop after checkpoint 750 achieved 90/90 exact held-out sample decisions. Built-in Node and Python primitives cannot execute a quantized Qwen model with CUDA, load a PEFT LoRA adapter, or provide persistent KV-cached inference. `llama.cpp` supplies those missing local primitives without adding a browser, hosted service, or provider dependency.
+
+**Prediction (check at this slice exit):** The converted checkpoint will retain every sampled accuracy and authority result, materially reduce warm latency on the RTX 3050 laptop, and remain unintegrated if p95 exceeds three seconds or any decision changes. **Sample result:** confirmed on 90 held-out cases at 90/90 exact, zero authority violations, and 1.257-second p95. A standard Q8 base plus separate LoRA failed accuracy and was rejected.
+
+## 2026-08-21 — Resume uses the checkpoint's recorded training profile
+
+**Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.
+
+**Why:** Checkpoint 750 was trained as rank 8 under the 4 GB profile. Automatically selecting rank 16 on an 8 GB desktop changes adapter tensor shapes and cannot represent an exact continuation, even though the stronger GPU has more capacity.
+
+**Prediction (check immediately):** Moving checkpoint 750 to the 2060 Super will build the original rank-8 model and restore its optimizer state, while a fresh run on that computer will still select the 8 GB profile. **Mechanical result:** profile-selection coverage confirms a moved checkpoint pins rank 8 while a fresh 8 GB run selects rank 16; an actual 2060 Super resume remains optional.

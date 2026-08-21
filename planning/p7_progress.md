@@ -49,3 +49,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Start `manager-v1` once with `START_MANAGER_TRAINING.cmd`; the window now stays open. Use `CHECK_MANAGER_TRAINING.cmd` for progress or `STOP_AND_RESET_MANAGER_TRAINING.cmd` for a clean interruption.
 
 **Any risks or weirdness:** Status remains at initialization until step 10 because logging every micro-step would add unnecessary I/O during the long run.
+
+## 2026-08-21 — checkpoint 750 and fast laptop inference
+
+**What changed:** Audited the sustained run at step 770 after 43.6 hours, stopped only the exact manager process tree, and preserved complete checkpoints 600/750. Added checkpoint-profile pinning for cross-device resume, an exact NF4 dequantize-and-merge exporter, a pinned CUDA `llama.cpp`/Q8 preparation path, raw Qwen no-think prompt parity, resumable server evaluation, visible preparation/status launchers, hash verification, and guarded cleanup of conversion intermediates.
+
+**What I verified:** The original checkpoint-750 Transformers sample scored 90/90 exact but 16.24-second p95. A standard Q8 base plus separate LoRA reached 1.82-second p95 but failed continuity/execution and was rejected; checkpoint 600 was worse and introduced authority violations. Exporting the effective NF4 weights, safely merging the checkpoint-750 LoRA, and quantizing that merged model to Q8 restored 90/90 exact decisions, zero authority violations, and 1.257-second warm p95 on the 4 GB RTX 3050. Ten focused tests, PowerShell parsing, idempotent preparation, visible status, model hashing, and the existing RC.3 desktop golden path pass. Only the successful 1.83 GB candidate remains; free disk returned to about 25 GB.
+
+**What is still open:** The complete 2,700-case held-out evaluation is running resumably in shadow mode. The manager is not connected to live GROVER routing. Persistent live service authentication/CORS is a security-boundary change and requires the explicit approved security sign-off before integration.
+
+**What the next person should do:** Let the full evaluation finish, record the final report and sustained p95, and keep the candidate offline if any accuracy, schema, authority, or three-second gate fails. If it passes, request the narrow local-service security approval, then integrate shadow comparison before allowing learned decisions to affect navigation or execution.
+
+**Any risks or weirdness:** The adapter was brittle to changing its quantized base representation even when the replacement Q8 base was nominally higher precision. Only the exact-NF4 merged export preserved behavior. The model reached 4,148.9 MB allocated briefly during one-time dequantization by using Windows-managed spillover, but runtime inference uses about 2.1 GB VRAM.

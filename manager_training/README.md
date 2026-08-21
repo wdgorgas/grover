@@ -38,6 +38,8 @@ The launcher refuses to train when available disk or GPU memory is below its con
 - `START_MANAGER_TRAINING.cmd` launches the long run as a hidden background process. Codex and the terminal can be closed afterward.
 - `CHECK_MANAGER_TRAINING.cmd` prints the latest stage, progress, result, or error without changing the run.
 - `STOP_AND_RESET_MANAGER_TRAINING.cmd` stops the recorded training process tree, removes only that partial run, and returns the setup to a step-zero green preflight. It preserves the environment, base model, validated dataset, reports, and prior logs.
+- `PREPARE_MANAGER_INFERENCE.cmd` reproducibly exports the effective checkpoint-750 NF4 model, merges the adapter, converts it to a pinned Q8 GGUF, installs the pinned CUDA runtime, verifies hashes, and deletes large conversion intermediates.
+- `CHECK_MANAGER_INFERENCE.cmd` reports the prepared runtime plus sampled and full held-out promotion results without starting or changing the model.
 
 When these files are opened by double-clicking, their console remains visible until a key is pressed. Starting training only launches the hidden worker; closing the launcher window afterward does not stop the run. The first numbered progress update appears after the initial ten optimizer steps, which is roughly four to five minutes on the verified laptop.
 
@@ -45,11 +47,15 @@ The final evaluator never promotes a merely completed adapter. It writes `comple
 
 ## Measured laptop profile
 
-The verified local device is an RTX 3050 Laptop GPU with 4 GB VRAM, not the previously expected 3060 Ti. A four-step benchmark processed 0.61 examples/second and peaked at 3,654.5 MB allocated. The 18,000-example training epoch therefore projects to about 8.2 hours on this laptop. Periodic loss checks plus the capped 450-case held-out generation evaluation make roughly 9–12 hours a realistic unattended window. This machine is sufficient, but other GPU-heavy applications should be closed; an 8 GB or larger NVIDIA GPU should be materially faster and gives more memory margin.
+The verified local device is an RTX 3050 Laptop GPU with 4 GB VRAM, not the previously expected 3060 Ti. The short training smoke processed 0.61 examples/second and peaked at 3,654.5 MB allocated, but it did not predict sustained laptop behavior. The real run reached step 770 of 1,125 in 43.6 hours before it was deliberately stopped; later steps slowed sharply under sustained power and memory pressure. Checkpoint 750 was preserved with its optimizer, scheduler, random, and trainer state. Its original Transformers evaluation scored 90/90 exact decisions but measured 16.24-second p95 latency.
+
+The exact-NF4 merged Q8 GGUF candidate preserves the effective quantized weights used during training. On the same laptop, its first balanced 90-case held-out run scored 90/90 exact decisions, zero authority violations, and 1.257-second warm p95 latency. A standard Q8 base plus a separate adapter was faster but failed continuity and execution gates, so it was rejected and deleted. The optimized candidate remains shadow-only until the complete 2,700-case held-out evaluation passes.
 
 ## Moving to another Windows NVIDIA computer
 
-The repository is the portable source bundle: copy the `Grover v2` folder to the other computer, then run `PREPARE_MANAGER_TRAINING.cmd` and `START_MANAGER_TRAINING.cmd` there. Preparation deterministically recreates the same hashed curriculum and downloads machine-appropriate runtime files outside the copied repository. Hardware profiles change sequence length, LoRA rank, and evaluation sample count—not the labels or held-out split.
+The repository is the portable source bundle. For fresh training, copy the `Grover v2` folder to the other computer, run `PREPARE_MANAGER_TRAINING.cmd`, and start a new run. Preparation deterministically recreates the same hashed curriculum and downloads machine-appropriate runtime files outside the copied repository.
+
+Resuming checkpoint 750 on another GPU must retain its original `gpu_4gb` rank-8, 768-token training profile even if the target has more VRAM. Do not let automatic hardware selection rebuild it with rank 16 or 24; that is a different adapter shape. Copy `outputs/manager-v1/checkpoint-750`, the base model, and the validated dataset, then use a resume launcher that pins the checkpoint manifest. Fast inference does not have this restriction: the prepared GGUF model behaves the same across supported NVIDIA devices, with hardware affecting latency rather than decisions.
 
 To avoid downloading the 3.8 GB base model again, also copy `%LOCALAPPDATA%\GROVER\manager-training\base-model` into the same location on the target account before preparation. Do not copy the `.venv`; Python/CUDA wheels should be installed fresh for the target machine.
 
