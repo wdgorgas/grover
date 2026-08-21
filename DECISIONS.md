@@ -226,6 +226,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** Unit checks will prove the key is absent from process arguments, loopback and restrictive CORS flags are fixed, malformed manager output fails closed, and shadow records cannot alter routing. A live desktop smoke will show a ready manager and an audited shadow decision while the existing deterministic route remains authoritative. **Result: confirmed.** The real Windows app launched the verified Q8 manager, displayed `Shadow ready`, completed an authenticated route in 583 ms, retained General as the authoritative context, wrote only a request hash plus decision evidence to the shadow audit, and terminated the hidden server with the app.
 
+## 2026-08-21 — Bounded continuity shadow candidates
+
+**Decision:** Extend the authenticated manager shadow with the trained continuity task. GROVER's local FTS index supplies at most eight candidate conversations containing IDs, titles, contexts, project IDs, and active status; the current conversation/project is included even when a generic follow-up has no searchable subject words. The model may reference only those IDs. Its proposal is audited after the route shadow but cannot create, reopen, branch, navigate, or select a project.
+
+**Why:** The learned manager needs realistic state to distinguish a new project from “continue this one” or “reopen the existing tic-tac-toe project,” but sending complete history would raise latency, storage, and prompt-injection exposure. A small deterministic shortlist lets the model resolve language while local storage and validators retain authority.
+
+**Prediction (checked at this slice exit):** Tests will reject invented IDs, preserve the existing deterministic reopen behavior, cap candidate state, and avoid raw history content. The real laptop will keep the visible deterministic response under one second while route plus continuity run asynchronously; learned decisions remain shadow-only unless their own throttled-state latency later meets the three-second promotion gate. **Result: confirmed.** The live app displayed its local greeting in 78 ms, branched to Coding in 68 ms, and completed authenticated route plus continuity shadow inference in 1.837 seconds. A same-family 0.6B speculative draft was tested and rejected because its extra 0.8 GB raised per-case latency to roughly six seconds on the 4 GB GPU; the draft and incomplete benchmark were deleted.
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.

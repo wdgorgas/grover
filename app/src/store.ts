@@ -34,6 +34,13 @@ export type ManagerShadowRecord = {
   modelHash?: string | null;
   error?: string;
 };
+export type ConversationCandidate = {
+  id: string;
+  context: Context;
+  title: string;
+  projectId: string | null;
+  score: number;
+};
 
 export const CONTEXTS: { id: Context; label: string; description: string }[] = [
   { id: 'coding', label: 'Coding', description: 'Software, tools, automation, and technical projects' },
@@ -216,22 +223,24 @@ function explicitNewConversation(text: string): boolean {
   return /\b(?:new|another|separate|fresh)\s+(?:chat|conversation|thread|project)\b/i.test(text);
 }
 
-export function findMatchingConversation(
+export function findConversationCandidates(
   db: DatabaseSync,
   text: string,
   preferredContext?: Context,
   excludeId?: string,
-): { id: string; context: Context; title: string; score: number } | null {
+  limit = 8,
+): ConversationCandidate[] {
   const queryTokens = subjectTokens(text);
-  if (!queryTokens.length) return null;
+  if (!queryTokens.length) return [];
   const match = queryTokens.map((token) => `${token.replace(/[^a-z0-9]/g, '')}*`).filter(Boolean).join(' OR ');
   const rows = db.prepare(
-    `SELECT c.id, c.context, c.title, s.content, bm25(conversation_search) AS rank
+    `SELECT c.id, c.context, c.title, s.content, p.id AS project_id, bm25(conversation_search) AS rank
      FROM conversation_search s JOIN conversations c ON c.id = s.conversation_id
+     LEFT JOIN projects p ON p.conversation_id = c.id
      WHERE conversation_search MATCH ? AND (? IS NULL OR c.context = ?) AND (? IS NULL OR c.id != ?)
      ORDER BY rank LIMIT 30`
   ).all(match, preferredContext ?? null, preferredContext ?? null, excludeId ?? null, excludeId ?? null) as
-    { id: string; context: Context; title: string; content: string; rank: number }[];
+    { id: string; context: Context; title: string; content: string; project_id: string | null; rank: number }[];
   const continued = continuationRequested(text) || navigationRequested(text);
   const scored = rows.map((row) => {
     const candidate = new Set(subjectTokens(`${row.title} ${row.content}`));
@@ -242,10 +251,19 @@ export function findMatchingConversation(
     }
     if (preferredContext && row.context === preferredContext) score += 1;
     if (searchableText(row.title) === searchableText(text)) score += 4;
-    return { id: row.id, context: row.context, title: row.title, score };
+    return { id: row.id, context: row.context, title: row.title, projectId: row.project_id, score };
   }).filter((row) => row.score >= (continued ? 2 : 4))
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
-  return scored[0] ?? null;
+  return scored.slice(0, Math.max(1, Math.min(limit, 8)));
+}
+
+export function findMatchingConversation(
+  db: DatabaseSync,
+  text: string,
+  preferredContext?: Context,
+  excludeId?: string,
+): ConversationCandidate | null {
+  return findConversationCandidates(db, text, preferredContext, excludeId, 1)[0] ?? null;
 }
 
 export function resolveConversation(

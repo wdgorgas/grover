@@ -15,7 +15,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
 | P5 | Hardening drills → v2.0 | **MECHANICAL EXIT PASSED (2026-08-18)** — 51 deterministic tests; policy, kill, budget, injection, verification-failure, crash, backup/restore, and recovery-card drills green |
 | P6 | Continuity coordinator → v2.1 | **MECHANICAL CORE GREEN / PACKAGING IN PROGRESS (2026-08-18)** — local branching/reopen, fast paths, bounded history, searchable automatic memory, isolated writable Coding projects, and tiered Sol/Terra routing pass; scheduler/history-management/learned-router/visual graph remain follow-on slices |
-| P7 | Learned local manager | **NATIVE SHADOW ACTIVE / FULL INFERENCE GATE RUNNING (2026-08-21)** — checkpoint 750's exact-NF4 merged Q8 candidate passes 90/90 sampled decisions at 1.257-second p95; the Windows app now launches it through an authenticated loopback-only process and records non-authoritative route comparisons; the full 2,700-case held-out gate remains in progress |
+| P7 | Learned local manager | **NATIVE SHADOW ACTIVE / FULL INFERENCE GATE RUNNING (2026-08-21)** — checkpoint 750's exact-NF4 merged Q8 candidate passes 90/90 sampled decisions at 1.257-second p95; the Windows app launches it through an authenticated loopback-only process and records non-authoritative route plus bounded continuity comparisons; a live two-stage decision completed in 1.837 seconds while visible local routing stayed under 80 ms; the full 2,700-case held-out gate remains in progress |
 
 ## Open side-tracks
 
