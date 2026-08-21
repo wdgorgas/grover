@@ -9,11 +9,12 @@
   "main": "src/main.mjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/event-spine.test.ts test/store.test.ts test/router.test.ts test/core.test.ts test/memory.test.ts test/p5-hardening.test.ts",
+    "test": "node --test test/event-spine.test.ts test/store.test.ts test/router.test.ts test/core.test.ts test/memory.test.ts test/p5-hardening.test.ts test/manager.test.ts",
     "test:desktop": "node test/electron-smoke.mjs",
     "test:portable": "node test/portable-smoke.mjs",
     "test:engine": "node test/live-engine-smoke.mjs",
     "test:memory-live": "node test/live-memory-smoke.mjs",
+    "test:manager-live": "node test/live-manager-shadow.mjs",
     "test:coding-live": "node test/live-coding-project.mjs",
     "test:builder": "node test/live-builder-smoke.mjs",
     "test:builder-reliability": "node test/live-builder-reliability.mjs",

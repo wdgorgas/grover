@@ -459,6 +459,17 @@ function renderEngines() {
       : `${tier}: provider default`;
   });
   $('#model-routing-profiles').textContent = `Local navigation and memory bypass agents · ${labels.join(' · ')}`;
+
+  const manager = state.runtime?.managerStatus ?? { state: 'unavailable', detail: 'Local manager is not configured.' };
+  const managerLabel = {
+    ready: 'Shadow ready', starting: 'Starting', unavailable: 'Not prepared', error: 'Needs attention', stopped: 'Stopped',
+  }[manager.state] ?? 'Checking';
+  $('#manager-status').textContent = managerLabel;
+  $('#manager-status').classList.toggle('good', manager.state === 'ready');
+  $('#manager-status').classList.toggle('attention', ['unavailable', 'error'].includes(manager.state));
+  $('#manager-detail').textContent = manager.state === 'ready' && manager.lastLatencyMs
+    ? `${manager.detail} Last decision: ${(manager.lastLatencyMs / 1000).toFixed(2)} seconds.`
+    : manager.detail;
 }
 
 function renderPolicies() {

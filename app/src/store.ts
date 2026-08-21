@@ -23,6 +23,17 @@ export type CodingProject = {
 };
 export type ModelTier = 'fast' | 'balanced' | 'frontier';
 export type EngineModelProfile = { tier: ModelTier; modelId: string | null; reasoningEffort: string | null };
+export type ManagerShadowRecord = {
+  taskId: string;
+  managerTask: string;
+  status: 'matched' | 'differed' | 'invalid' | 'failed';
+  input: unknown;
+  deterministic: unknown;
+  proposed?: unknown;
+  latencyMs?: number;
+  modelHash?: string | null;
+  error?: string;
+};
 
 export const CONTEXTS: { id: Context; label: string; description: string }[] = [
   { id: 'coding', label: 'Coding', description: 'Software, tools, automation, and technical projects' },
@@ -43,6 +54,21 @@ export function transaction<T>(db: DatabaseSync, fn: () => T): T {
     db.exec('ROLLBACK;');
     throw error;
   }
+}
+
+export function recordManagerShadow(db: DatabaseSync, record: ManagerShadowRecord): string {
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO manager_shadow_decisions
+      (id, task_id, manager_task, status, input_json, deterministic_json, proposed_json,
+       latency_ms, model_hash, error_detail, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id, record.taskId, record.managerTask, record.status, JSON.stringify(record.input),
+    JSON.stringify(record.deterministic), record.proposed === undefined ? null : JSON.stringify(record.proposed),
+    record.latencyMs ?? null, record.modelHash ?? null, record.error ?? null, new Date().toISOString(),
+  );
+  return id;
 }
 
 export function inferIntent(text: string): Intent {
@@ -729,6 +755,10 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   const budget = db.prepare("SELECT * FROM budgets WHERE id = 'development-phase'").get();
   const engines = db.prepare('SELECT * FROM engine_registry ORDER BY priority').all();
   const routing = db.prepare('SELECT * FROM routing_decisions ORDER BY created_at DESC LIMIT 50').all();
+  const managerShadow = db.prepare(
+    `SELECT id, task_id, manager_task, status, latency_ms, model_hash, error_detail, created_at
+     FROM manager_shadow_decisions ORDER BY created_at DESC LIMIT 100`
+  ).all();
   const modelProfiles = db.prepare(
     'SELECT * FROM engine_model_profiles WHERE enabled = 1 ORDER BY engine_id, model_tier'
   ).all();
@@ -764,7 +794,7 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
     'SELECT * FROM recovery_cards ORDER BY created_at DESC LIMIT 100'
   ).all();
   return {
-    tasks, features, events, memories, memoryTotal, memoryProposals, memoryNamespaces, costs, budget, engines, routing, modelProfiles,
+    tasks, features, events, memories, memoryTotal, memoryProposals, memoryNamespaces, costs, budget, engines, routing, managerShadow, modelProfiles,
     contextRouting, conversationRoutes, conversations, messages, projects, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',
