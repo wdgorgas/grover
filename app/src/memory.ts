@@ -28,6 +28,7 @@ export type IncidentalMemoryResult = {
 export type RetrievedMemory = {
   id: string;
   namespace: string;
+  category: string;
   content: string;
   source: string;
   createdAt: string;
@@ -418,6 +419,7 @@ export class MemoryService {
       selected.push({
         id: item.row.id,
         namespace: item.row.namespace,
+        category: item.row.category,
         content: item.row.content,
         source: item.row.provenance,
         createdAt: item.row.created_at,

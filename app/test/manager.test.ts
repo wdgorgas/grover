@@ -9,8 +9,8 @@ import { openDb } from '../src/db.ts';
 import { EngineRouter, type ExecutionEngine } from '../src/engine.ts';
 import { addConversationMessage, createConversation, findConversationCandidates } from '../src/store.ts';
 import {
-  ManagerHttpClient, managerServerArgs, rawManagerPrompt, validateContinuityDecision, validateRouteDecision,
-  type ContinuityDecision, type ManagerPlanner, type ManagerStatus, type RouteDecision,
+  ManagerHttpClient, managerServerArgs, rawManagerPrompt, validateContinuityDecision, validateRetrievalDecision, validateRouteDecision,
+  type ContinuityDecision, type ManagerPlanner, type ManagerStatus, type RetrievalDecision, type RouteDecision,
 } from '../src/manager.ts';
 
 const route: RouteDecision = {
@@ -78,6 +78,26 @@ test('continuity candidate search stays bounded before model inference', () => {
   const candidates = findConversationCandidates(db, 'Update tictactoe', undefined, undefined, 100);
   assert.equal(candidates.length, 8);
   assert.equal(candidates.some((candidate) => 'content' in candidate), false);
+});
+
+test('retrieval validation rejects IDs outside the warm-start candidates', () => {
+  const output: RetrievalDecision = {
+    schema_version: '1.0', task: 'retrieval',
+    decision: {
+      conversation_ids: [], project_ids: [], memory_ids: ['mem_known'], search_queries: [], untrusted_ids: [],
+      confidence: 'high', rationale_codes: ['global_profile_fact'],
+    },
+  };
+  const allowed = {
+    conversations: new Set<string>(), projects: new Set<string>(), memories: new Set(['mem_known']), untrusted: new Set<string>(),
+  };
+  assert.deepEqual(validateRetrievalDecision(output, allowed), output);
+  assert.throws(
+    () => validateRetrievalDecision(
+      { ...output, decision: { ...output.decision, memory_ids: ['mem_invented'] } }, allowed,
+    ),
+    /unavailable memory_ids/,
+  );
 });
 
 test('manager HTTP client authenticates backend requests and validates the response', async () => {
@@ -205,4 +225,58 @@ test('continuity shadow receives bounded candidates and cannot change reopen beh
     "SELECT status FROM manager_shadow_decisions WHERE task_id = ? AND manager_task = 'continuity'"
   ).get(followup.taskId) as { status: string };
   assert.equal(followupShadow.status, 'matched');
+});
+
+test('retrieval shadow warm-starts bounded memory IDs without duplicating vault text in its audit', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-manager-retrieval-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  let retrievalInput: Record<string, unknown> | null = null;
+  const manager: ManagerPlanner = {
+    status: () => ({ state: 'ready', detail: 'test', modelHash: 'TEST_HASH', lastLatencyMs: null }),
+    inferRoute: async () => ({
+      output: {
+        schema_version: '1.0', task: 'route',
+        decision: { destination: 'general', work_kind: 'ask', confidence: 'high', rationale_codes: ['general_question'] },
+      },
+      latencyMs: 8,
+    }),
+    inferRetrieval: async (input) => {
+      retrievalInput = input;
+      const memory = ((input.candidates as Record<string, unknown>).memories as { id: string }[])[0];
+      return {
+        output: {
+          schema_version: '1.0', task: 'retrieval',
+          decision: {
+            conversation_ids: [], project_ids: [], memory_ids: [memory.id], search_queries: [], untrusted_ids: [],
+            confidence: 'high', rationale_codes: ['global_profile_fact'],
+          },
+        },
+        latencyMs: 9,
+      };
+    },
+  };
+  const engine: ExecutionEngine = {
+    id: 'test-engine', displayName: 'Test', capabilities: ['ask', 'work', 'project', 'build'], available: true,
+    run: async () => ({ answer: 'done', costUsd: 0 }), cancel: () => false,
+  };
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+  const memoryId = core.memory.remember({
+    content: 'Will prefers VS Code as an editor.', category: 'profile:preference', source: 'test',
+  });
+  const result = core.submit({ text: 'What is my preferred editor?' });
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const count = (db.prepare('SELECT COUNT(*) AS count FROM manager_shadow_decisions WHERE task_id = ?').get(result.taskId) as { count: number }).count;
+    if (count === 2) break;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const candidates = (retrievalInput?.candidates as Record<string, unknown>).memories as { id: string; summary: string; scope: string }[];
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].id, memoryId);
+  assert.match(candidates[0].summary, /VS Code/);
+  assert.equal(candidates[0].scope, 'global');
+  const shadow = db.prepare(
+    "SELECT status, input_json FROM manager_shadow_decisions WHERE task_id = ? AND manager_task = 'retrieval'"
+  ).get(result.taskId) as { status: string; input_json: string };
+  assert.equal(shadow.status, 'matched');
+  assert.equal(shadow.input_json.includes('VS Code'), false, 'audit stores candidate IDs, not vault text');
 });

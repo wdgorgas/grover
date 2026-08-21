@@ -85,3 +85,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Resume the full gate from 2,173, record its protected metrics, then implement bounded retrieval shadow candidates without sending full vault or conversation content.
 
 **Any risks or weirdness:** A same-family official Qwen3-0.6B Q8 speculative draft was tested after a throttled route exceeded three seconds. It worsened latency to roughly six seconds because the additional 0.8 GB model increased pressure on the 4 GB GPU, so it and its incomplete benchmark were deleted. No speculative dependency was adopted. The successful two-stage smoke subsequently completed under three seconds with the single exact manager.
+
+## 2026-08-21 — bounded retrieval warm start
+
+**What changed:** Added the trained retrieval task after route and continuity, but only when local FTS found relevant state or the request explicitly calls for recall, progress, scheduling, continuation, or audit. Each candidate type is capped at eight. The manager receives conversation titles, project names, stable IDs, and up to 160 characters of locally relevant memory summary; it never scans the vault. The durable shadow audit stores only IDs and a request hash.
+
+**What I verified:** Seventy-two deterministic checks pass, including invented retrieval-ID refusal, bounded memory warm start, and proof that vault text is absent from the audit record. The real app reopened the existing tic-tac-toe conversation in 68 ms, created no duplicate, and validated route, continuity, and retrieval outputs. After the preceding sustained GPU load, the full shadow chain took 24.58 seconds; because it was asynchronous, the user-visible reopen remained immediate.
+
+**What is still open:** Retrieval remains shadow-only. Its post-stress latency demonstrates that the complete learned chain cannot replace deterministic fast paths on this laptop yet. The protected evaluator is resumable at 2,477/2,700. Memory-operation, execution, clarification, briefing, supervision, and fast-response shadow tasks remain unconnected.
+
+**What the next person should do:** Finish the final 223 held-out cases and record accuracy separately from interactive warm latency. Keep exact local recall/navigation as the everyday fast path; use accumulated shadow disagreements to decide where one learned task adds enough value to justify its latency.
+
+**Any risks or weirdness:** Local memory summaries are sent only to the authenticated loopback model and are not duplicated into the shadow audit. `MemoryService.retrieve` already excludes instruction-like content and `jackson-private`; selected IDs are revalidated against the supplied candidate sets before recording. The learned chain's latency varies sharply with sustained laptop GPU power state even though visible local behavior does not.
