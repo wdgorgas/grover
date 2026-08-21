@@ -97,3 +97,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Finish the final 223 held-out cases and record accuracy separately from interactive warm latency. Keep exact local recall/navigation as the everyday fast path; use accumulated shadow disagreements to decide where one learned task adds enough value to justify its latency.
 
 **Any risks or weirdness:** Local memory summaries are sent only to the authenticated loopback model and are not duplicated into the shadow audit. `MemoryService.retrieve` already excludes instruction-like content and `jackson-private`; selected IDs are revalidated against the supplied candidate sets before recording. The learned chain's latency varies sharply with sustained laptop GPU power state even though visible local behavior does not.
+
+## 2026-08-21 — full protected inference gate complete
+
+**What changed:** Finished the resumable 2,700-case held-out inference gate and wrote the final protected report under the local manager-inference benchmark directory. The candidate was not promoted because the predeclared latency gate failed.
+
+**What I verified:** The report contains 2,700 unique cases, 100% schema validity, 100% route and continuity accuracy, 1.0 retrieval F1, 100% execution and scored memory-operation accuracy, 100% clarification balanced accuracy, and zero authority-boundary violations. There were three exact-string differences out of 300 memory cases; all three preserved the operation, scope, sensitivity, and meaning while changing "calendar responses" to "calendar displays." Sustained p95 latency was 6.1792 seconds against the 3-second ceiling.
+
+**What is still open:** The manager is accurate enough to keep collecting shadow evidence, but the complete learned chain is not fast enough to control every laptop prompt. Memory-operation, execution, clarification, briefing, supervision, and fast-response tasks remain unconnected to the app. Visual redesign remains intentionally deferred.
+
+**What the next person should do:** Keep deterministic local greetings, exact recall, navigation, and conversation continuity on the visible path. Use shadow disagreements and real user failures to select the next single learned task; optimize or distill only that task rather than adding the whole nine-task chain to every request.
+
+**Any risks or weirdness:** A delayed pre-compaction evaluator briefly created a second writer. Both processes were stopped, 11 duplicate generated rows were removed by stable case ID, and the gate resumed with exactly one runtime and one writer. The final report was generated from exactly 2,700 unique IDs, and the benchmark runtime was stopped after completion.

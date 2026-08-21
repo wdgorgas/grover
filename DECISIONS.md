@@ -242,6 +242,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** Tests will cap each candidate type, reject invented retrieval IDs, keep raw vault text out of the shadow audit, and preserve deterministic conversation behavior. A live existing-project request will reopen immediately while retrieval finishes asynchronously without creating a duplicate conversation. **Result: confirmed.** Seventy-two deterministic checks pass. In the live post-stress smoke, the existing tic-tac-toe conversation reopened in 68 ms with no duplicate and the route, continuity, and retrieval outputs all validated. The throttled three-stage shadow chain took 24.58 seconds, so it remains non-authoritative; this result is evidence against putting the full chain on the visible critical path.
 
+## 2026-08-21 — Full learned manager remains shadow-only after protected gate
+
+**Decision:** Do not promote the complete nine-task learned manager chain onto the visible request path. Keep deterministic local fast paths authoritative and run only bounded learned comparisons asynchronously until a candidate meets both the accuracy/safety gates and the three-second sustained laptop latency gate.
+
+**Why:** The exact-NF4 merged Q8 checkpoint completed all 2,700 protected cases with 100% schema validity, every scored capability above threshold, and zero authority-boundary violations. Its sustained p95 inference latency was 6.1792 seconds, more than twice the predeclared three-second limit. Three of 300 memory outputs differed only by the equivalent wording "calendar displays" instead of "calendar responses"; the operation, scope, sensitivity, and meaning were preserved.
+
+**Prediction (checked at this slice exit):** Rejecting promotion will preserve sub-second everyday navigation and recall while still producing learned disagreement evidence for targeted optimization. **Result: confirmed.** The live deterministic route/reopen path remained 68–104 ms while route, continuity, and retrieval ran as authenticated non-authoritative shadow work.
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.
