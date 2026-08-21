@@ -15,7 +15,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
 | P5 | Hardening drills → v2.0 | **MECHANICAL EXIT PASSED (2026-08-18)** — 51 deterministic tests; policy, kill, budget, injection, verification-failure, crash, backup/restore, and recovery-card drills green |
 | P6 | Continuity coordinator → v2.1 | **MECHANICAL CORE GREEN / PACKAGING IN PROGRESS (2026-08-18)** — local branching/reopen, fast paths, bounded history, searchable automatic memory, isolated writable Coding projects, and tiered Sol/Terra routing pass; scheduler/history-management/learned-router/visual graph remain follow-on slices |
-| P7 | Learned local manager | **SETUP GREEN / LONG RUN READY (2026-08-18)** — 23,715-example stateful curriculum passes strict isolation/reference checks; review UI, pinned portable QLoRA stack, real 4 GB training, checkpoint resume, detached launcher, cleanup, and fail-closed offline promotion gates verified; long run intentionally not started |
+| P7 | Learned local manager | **CHECKPOINT CANDIDATE / FULL INFERENCE GATE RUNNING (2026-08-21)** — checkpoint 750 preserved after the sustained laptop run; exact-NF4 merged Q8 candidate passes a balanced 90-case sample at 90/90 exact, zero authority violations, and 1.257-second warm p95 on the RTX 3050; full 2,700-case held-out gate remains shadow-only and in progress |
 
 ## Open side-tracks
 

@@ -23,6 +23,22 @@ def latest_checkpoint(output_dir: Path) -> Path | None:
     return max(candidates, default=(0, None), key=lambda item: item[0])[1]
 
 
+def pinned_resume_profile(
+    selected_name: str,
+    selected_profile: dict[str, Any],
+    checkpoint: Path | None,
+    prior_manifest: dict[str, Any] | None,
+) -> tuple[str, dict[str, Any]]:
+    if checkpoint is None or prior_manifest is None:
+        return selected_name, selected_profile
+    profile_name = str(prior_manifest["profile"])
+    profile = dict(prior_manifest["profile_settings"])
+    adapter_config = json.loads((checkpoint / "adapter_config.json").read_text(encoding="utf-8"))
+    if int(adapter_config["r"]) != int(profile["lora_rank"]):
+        raise RuntimeError("Checkpoint LoRA rank does not match its recorded training profile.")
+    return profile_name, profile
+
+
 def build_model(model_id: str, cache_dir: Path, rank: int, *, add_lora: bool = True) -> tuple[Any, Any]:
     import torch
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -82,16 +98,22 @@ def main() -> None:
     config = load_config(args.config)
     root = runtime_root()
     hardware = hardware_report(config, root)
-    profile_name = str(hardware["profile"])
-    profile = hardware["profile_settings"]
+    selected_profile_name = str(hardware["profile"])
+    selected_profile = hardware["profile_settings"]
+    output_dir = root / "outputs" / args.run_name
+    final_dir = output_dir / "final-adapter"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint = None if args.fresh else latest_checkpoint(output_dir)
+    prior_manifest_path = output_dir / "run_manifest.json"
+    prior_manifest = json.loads(prior_manifest_path.read_text(encoding="utf-8")) if prior_manifest_path.exists() else None
+    profile_name, profile = pinned_resume_profile(
+        selected_profile_name, selected_profile, checkpoint, prior_manifest
+    )
     if not profile.get("training_supported", False):
         raise RuntimeError("Training requires a supported NVIDIA GPU with at least 3.5 GB VRAM.")
     if not torch.cuda.is_available():
         raise RuntimeError("PyTorch cannot access CUDA even though NVIDIA hardware was detected.")
 
-    output_dir = root / "outputs" / args.run_name
-    final_dir = output_dir / "final-adapter"
-    output_dir.mkdir(parents=True, exist_ok=True)
     log_dir = root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("HF_HOME", str(root / "scratch" / "hf-runtime"))
@@ -168,7 +190,6 @@ def main() -> None:
         data_collator=collator,
         callbacks=[StatusCallback()],
     )
-    checkpoint = None if args.fresh else latest_checkpoint(output_dir)
     if final_dir.exists() and checkpoint is None and not args.fresh:
         raise RuntimeError(f"Completed run already exists without a resumable checkpoint: {final_dir}")
     run_manifest = {
@@ -177,6 +198,7 @@ def main() -> None:
         "model_id": config["model_id"],
         "profile": profile_name,
         "profile_settings": profile,
+        "detected_hardware_profile": selected_profile_name,
         "hardware": hardware,
         "train_examples": len(train_records),
         "validation_examples": len(eval_records),

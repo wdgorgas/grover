@@ -9,10 +9,12 @@ from jsonschema import Draft202012Validator
 
 from grover_manager_training.cleanup import checked_child
 from grover_manager_training.evaluate import compute_metrics
+from grover_manager_training.evaluate_server import raw_qwen3_prompt
 from grover_manager_training.generate_dataset import FACTORIES, family_split, scenario_records
 from grover_manager_training.hardware import GpuInfo, choose_profile
 from grover_manager_training.runtime import validate_run_name
 from grover_manager_training.training_data import CompletionCollator, balanced_sample
+from grover_manager_training.train import pinned_resume_profile
 from grover_manager_training.validate_dataset import semantic_normalize, validate_references
 
 
@@ -65,6 +67,18 @@ class CurriculumTests(unittest.TestCase):
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_raw_qwen3_prompt_matches_training_no_think_boundary(self) -> None:
+        prompt = raw_qwen3_prompt([
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "user"},
+        ])
+        self.assertEqual(
+            "<|im_start|>system\nsystem<|im_end|>\n"
+            "<|im_start|>user\nuser<|im_end|>\n"
+            "<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            prompt,
+        )
+
     def test_balanced_sample_covers_tasks(self) -> None:
         records = [{"task": task, "value": index} for task in ("a", "b", "c") for index in range(10)]
         selected = balanced_sample(records, 9, 7)
@@ -84,6 +98,21 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual("gpu_4gb", name)
         name, _, _ = choose_profile(config, [GpuInfo("large", 16384, 15000, "test")])
         self.assertEqual("gpu_12gb_plus", name)
+
+    def test_resume_pins_checkpoint_profile_on_stronger_gpu(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "checkpoint-750"
+            checkpoint.mkdir()
+            (checkpoint / "adapter_config.json").write_text('{"r":8}', encoding="utf-8")
+            name, profile = pinned_resume_profile(
+                "gpu_8gb",
+                {"lora_rank": 16, "max_seq_length": 1024},
+                checkpoint,
+                {"profile": "gpu_4gb", "profile_settings": {"lora_rank": 8, "max_seq_length": 768}},
+            )
+            self.assertEqual("gpu_4gb", name)
+            self.assertEqual(8, profile["lora_rank"])
+            self.assertEqual(768, profile["max_seq_length"])
 
     def test_cleanup_rejects_parent_and_accepts_child(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

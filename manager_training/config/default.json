@@ -65,6 +65,22 @@
     "save_total_limit": 2,
     "max_grad_norm": 0.3
   },
+  "inference": {
+    "runtime": "llama.cpp",
+    "runtime_version": "b10549",
+    "cuda_version": "12.4",
+    "source_checkpoint": 750,
+    "export_method": "bnb_nf4_dequantize_then_peft_safe_merge",
+    "quantization": "Q8_0",
+    "context_length": 2048,
+    "parallel_slots": 1,
+    "host_prompt_cache_mb": 0,
+    "prompt_mode": "raw_qwen3",
+    "thinking": false,
+    "temperature": 0,
+    "repeat_penalty": 1.0,
+    "warm_p95_seconds": 3.0
+  },
   "storage": {
     "minimum_free_gb_prepare": 18,
     "minimum_free_gb_train": 12,
