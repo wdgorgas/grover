@@ -73,9 +73,30 @@ try {
   assert.ok(branchVisible <= 1_000, `deterministic branch took ${branchVisible}ms to appear`);
   const codingTask = snapshot.tasks.find((item) => item.task_id === continuity.task_id);
   assert.equal(codingTask.domain, 'coding', 'continuity shadow changed the deterministic branch');
+
+  await page.locator('[data-view="home"]').click();
+  const reopenStarted = Date.now();
+  await page.locator('#home-request').fill('Update tictactoe');
+  await page.locator('#home-request').press('Enter');
+  await page.locator('#context-route-status').getByText('Reopened', { exact: false }).waitFor();
+  const reopenVisible = Date.now() - reopenStarted;
+  const retrievalDeadline = Date.now() + 30_000;
+  do {
+    snapshot = await page.evaluate(async () => window.grover.snapshot());
+    if (snapshot.managerShadow.length === 6) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } while (Date.now() < retrievalDeadline);
+  const retrievalElapsed = Date.now() - reopenStarted;
+  assert.equal(snapshot.managerShadow.length, 6, 'route, continuity, and retrieval decisions were not recorded');
+  const retrieval = snapshot.managerShadow.find((item) => item.manager_task === 'retrieval');
+  assert.ok(retrieval);
+  assert.notEqual(retrieval.status, 'failed');
+  assert.ok(reopenVisible <= 1_000, `deterministic reopen took ${reopenVisible}ms to appear`);
+  assert.equal(snapshot.conversations.filter((item) => item.context === 'coding' && /tictactoe/i.test(item.title)).length, 1,
+    'retrieval shadow created a duplicate project conversation');
   await page.screenshot({ path: join(resultDir, 'manager-shadow-live.png'), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log(`Local greeting appeared in ${helloVisible}ms; Coding branch appeared in ${branchVisible}ms; background route plus continuity completed in ${continuityElapsed}ms; screenshot: ${join(resultDir, 'manager-shadow-live.png')}`);
+  console.log(`Local greeting ${helloVisible}ms; Coding branch ${branchVisible}ms; route plus continuity ${continuityElapsed}ms; existing-project reopen ${reopenVisible}ms; three-stage shadow ${retrievalElapsed}ms; screenshot: ${join(resultDir, 'manager-shadow-live.png')}`);
 } finally {
   await application.close();
 }

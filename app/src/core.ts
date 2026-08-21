@@ -7,8 +7,8 @@ import { promisify } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
 import { EngineRouter, type EngineUpdate, type ExecutionEngine, type Route } from './engine.ts';
 import { appendEvent, appendEventInTransaction } from './events.ts';
-import { MemoryService, type IncidentalMemoryResult } from './memory.ts';
-import type { ContinuityDecision, ManagerPlanner, RouteDecision } from './manager.ts';
+import { MemoryService, type IncidentalMemoryResult, type RetrievedMemory } from './memory.ts';
+import type { ContinuityDecision, ManagerPlanner, RetrievalDecision, RouteDecision } from './manager.ts';
 import { PolicyService, type PolicyOrigin } from './policy.ts';
 import {
   addAcceptanceCheck, addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
@@ -328,6 +328,96 @@ export class GroverCore extends EventEmitter {
     });
   }
 
+  private shadowRetrieval(
+    taskId: string,
+    text: string,
+    resolution: ConversationResolution,
+    sourceConversationId: string | undefined,
+    sourceProjectId: string | null,
+    candidates: ConversationCandidate[],
+    memories: RetrievedMemory[],
+  ): Promise<void> {
+    if (!this.manager?.inferRetrieval || (!candidates.length && !memories.length &&
+        !/\b(recall|remember|project|progress|update|resume|continue|audit|schedule|calendar)\b|\bwhat\b.*\bmy\b/i.test(text))) {
+      return Promise.resolve();
+    }
+    const current = sourceConversationId ? this.db.prepare(
+      'SELECT id, context, title FROM conversations WHERE id = ?'
+    ).get(sourceConversationId) as { id: string; context: Context; title: string } | undefined : undefined;
+    const conversationCandidates = [
+      ...(current ? [{ id: current.id, title: current.title, context: current.context, trusted: true }] : []),
+      ...candidates.filter((candidate) => candidate.id !== current?.id)
+        .map((candidate) => ({ id: candidate.id, title: candidate.title, context: candidate.context, trusted: true })),
+    ].slice(0, 8);
+    const projectById = new Map<string, { id: string; name: string; context: Context; trusted: boolean }>();
+    if (sourceProjectId && current) projectById.set(sourceProjectId, {
+      id: sourceProjectId, name: current.title, context: current.context, trusted: true,
+    });
+    for (const candidate of candidates) {
+      if (candidate.projectId) projectById.set(candidate.projectId, {
+        id: candidate.projectId, name: candidate.title, context: candidate.context, trusted: true,
+      });
+    }
+    const projectCandidates = [...projectById.values()].slice(0, 8);
+    const memoryCandidates = memories.slice(0, 8).map((memory) => ({
+      id: memory.id,
+      scope: memory.category.startsWith('profile:') ? 'global' : `context:${resolution.context}`,
+      summary: truncate(memory.content, 160),
+      trusted: true,
+    }));
+    const input = {
+      request: text,
+      context: resolution.context,
+      candidates: { conversations: conversationCandidates, projects: projectCandidates, memories: memoryCandidates },
+    };
+    const targetConversationId = ['continued', 'reopened', 'navigated'].includes(resolution.disposition)
+      ? resolution.conversationId : null;
+    const targetProjectId = targetConversationId === current?.id
+      ? sourceProjectId
+      : candidates.find((candidate) => candidate.id === targetConversationId)?.projectId ?? null;
+    const deterministic: RetrievalDecision = {
+      schema_version: '1.0', task: 'retrieval',
+      decision: {
+        conversation_ids: targetConversationId ? [targetConversationId] : [],
+        project_ids: targetProjectId ? [targetProjectId] : [],
+        memory_ids: memoryCandidates.map((memory) => memory.id),
+        search_queries: [], untrusted_ids: [], confidence: 'high',
+        rationale_codes: ['deterministic_bounded_retrieval'],
+      },
+    };
+    const auditInput = {
+      request_sha256: createHash('sha256').update(text, 'utf8').digest('hex'),
+      conversation_ids: conversationCandidates.map((candidate) => candidate.id),
+      project_ids: projectCandidates.map((candidate) => candidate.id),
+      memory_ids: memoryCandidates.map((candidate) => candidate.id),
+    };
+    const sameSet = (left: string[], right: string[]) => left.length === right.length && left.every((id) => right.includes(id));
+    return this.manager.inferRetrieval(input).then(({ output, latencyMs }) => {
+      const matches = ['conversation_ids', 'project_ids', 'memory_ids', 'search_queries', 'untrusted_ids'].every((field) =>
+        sameSet(output.decision[field as keyof typeof output.decision] as string[],
+          deterministic.decision[field as keyof typeof deterministic.decision] as string[])
+      );
+      recordManagerShadow(this.db, {
+        taskId, managerTask: 'retrieval', status: matches ? 'matched' : 'differed', input: auditInput,
+        deterministic, proposed: output, latencyMs, modelHash: this.manager?.status().modelHash,
+      });
+      appendEvent(this.db, {
+        scopeType: 'task', scopeId: taskId, taskId, idempotencyKey: `${taskId}:manager-shadow-retrieval`,
+        actor: 'system', domain: resolution.context, phase: 'planning',
+        plainLanguage: matches ? 'Local manager agreed with bounded retrieval' : 'Local manager proposed different bounded retrieval',
+        internalDetail: JSON.stringify({ mode: 'shadow', deterministic, proposed: output, latencyMs }),
+        modelRunId: `manager-shadow:${taskId}:retrieval`,
+      });
+      this.changed();
+    }).catch((error) => {
+      recordManagerShadow(this.db, {
+        taskId, managerTask: 'retrieval', status: 'failed', input: auditInput, deterministic,
+        modelHash: this.manager?.status().modelHash, error: truncate(String(error), 500),
+      });
+      this.changed();
+    });
+  }
+
   private localResponse(text: string, memoryResult: IncidentalMemoryResult | null): string | null {
     const normalized = text.trim();
     if (/^(?:hi|hello|hey)(?:\s+grover)?[!.?]*$/i.test(normalized)) {
@@ -453,6 +543,7 @@ export class GroverCore extends EventEmitter {
     const sourceProjectId = input.conversationId ? getCodingProject(this.db, input.conversationId)?.id ?? null : null;
     const conversation = resolveConversation(this.db, text, inference, input.conversationId, input.context);
     const { context, conversationId } = conversation;
+    const retrievalMemories = this.memory.retrieve(text, context, 2_000, 8);
     if (context === 'builder' && !['act', 'remember'].includes(intent) &&
         /\b(change|build|add|fix|update|remove|implement|redesign|refactor|create)\b/i.test(text)) {
       intent = 'build';
@@ -463,7 +554,10 @@ export class GroverCore extends EventEmitter {
     }
     const taskId = createTask(this.db, intent, text, context);
     void this.shadowRoute(taskId, text, intent, context, input.conversationId)
-      .then(() => this.shadowContinuity(taskId, text, conversation, input.conversationId, sourceProjectId, continuityCandidates));
+      .then(() => this.shadowContinuity(taskId, text, conversation, input.conversationId, sourceProjectId, continuityCandidates))
+      .then(() => this.shadowRetrieval(
+        taskId, text, conversation, input.conversationId, sourceProjectId, continuityCandidates, retrievalMemories,
+      ));
     recordConversationResolution(this.db, taskId, conversation, text);
     this.taskIntents.set(taskId, intent);
     if (conversation.localNavigation) {

@@ -234,6 +234,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** Tests will reject invented IDs, preserve the existing deterministic reopen behavior, cap candidate state, and avoid raw history content. The real laptop will keep the visible deterministic response under one second while route plus continuity run asynchronously; learned decisions remain shadow-only unless their own throttled-state latency later meets the three-second promotion gate. **Result: confirmed.** The live app displayed its local greeting in 78 ms, branched to Coding in 68 ms, and completed authenticated route plus continuity shadow inference in 1.837 seconds. A same-family 0.6B speculative draft was tested and rejected because its extra 0.8 GB raised per-case latency to roughly six seconds on the 4 GB GPU; the draft and incomplete benchmark were deleted.
 
+## 2026-08-21 — Local warm-start for retrieval shadow
+
+**Decision:** Invoke the trained retrieval task only when local indexes found relevant state or the request explicitly calls for recall, project progress, scheduling, continuation, or audit. GROVER supplies at most eight locally ranked conversations, projects, and memories per type. Conversation history is represented by title and stable IDs; memory candidates carry a 160-character relevant summary inside the authenticated local process. The durable audit stores only candidate IDs and a request hash. Every selected or untrusted ID must be present in the supplied candidates.
+
+**Why:** Searching all history inside the model would be slow, unbounded, and impossible to authorize safely. Deterministic FTS is the fast recall mechanism; the learned manager's job is to choose the minimum useful subset and request another bounded search when the warm start is insufficient.
+
+**Prediction (checked at this slice exit):** Tests will cap each candidate type, reject invented retrieval IDs, keep raw vault text out of the shadow audit, and preserve deterministic conversation behavior. A live existing-project request will reopen immediately while retrieval finishes asynchronously without creating a duplicate conversation. **Result: confirmed.** Seventy-two deterministic checks pass. In the live post-stress smoke, the existing tic-tac-toe conversation reopened in 68 ms with no duplicate and the route, continuity, and retrieval outputs all validated. The throttled three-stage shadow chain took 24.58 seconds, so it remains non-authoritative; this result is evidence against putting the full chain on the visible critical path.
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.
