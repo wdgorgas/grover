@@ -378,6 +378,7 @@ CREATE TABLE IF NOT EXISTS manager_stage_records (
   attempt         INTEGER NOT NULL DEFAULT 0,
   status          TEXT NOT NULL CHECK (status IN ('succeeded','failed')),
   input_refs_json TEXT NOT NULL,
+  input_snapshot_json TEXT NOT NULL DEFAULT '{}',
   output_json     TEXT,
   latency_ms      INTEGER NOT NULL DEFAULT 0,
   model_hash      TEXT,
@@ -424,6 +425,36 @@ CREATE TABLE IF NOT EXISTS incident_occurrences (
 
 CREATE INDEX IF NOT EXISTS incidents_by_status
 ON incidents(status, last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS regression_cases (
+  id                   TEXT PRIMARY KEY,
+  incident_id          TEXT NOT NULL UNIQUE REFERENCES incidents(id),
+  task_id              TEXT,
+  stage                TEXT CHECK (stage IN
+                         ('route','continuity','retrieval','memory','respond','clarify','execution','brief','supervise')),
+  input_snapshot_json  TEXT,
+  original_output_json TEXT,
+  expected_output_json TEXT,
+  expected_note        TEXT,
+  status               TEXT NOT NULL CHECK (status IN ('draft','active','disabled')),
+  last_result          TEXT,
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS replay_runs (
+  id            TEXT PRIMARY KEY,
+  case_id       TEXT NOT NULL REFERENCES regression_cases(id),
+  model_hash    TEXT,
+  output_json   TEXT,
+  status        TEXT NOT NULL CHECK (status IN ('unchanged','changed','passed','failed','unavailable','error')),
+  latency_ms    INTEGER NOT NULL DEFAULT 0,
+  error_detail  TEXT,
+  created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS replay_runs_by_case
+ON replay_runs(case_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS engine_model_profiles (
   engine_id        TEXT NOT NULL REFERENCES engine_registry(id),
@@ -593,6 +624,10 @@ export function openDb(path: string): DatabaseSync {
   ]) if (!memoryColumns.has(name)) db.exec(`ALTER TABLE memories ADD COLUMN ${name} ${definition}`);
   const proposalColumns = new Set((db.prepare("PRAGMA table_info('memory_update_proposals')").all() as unknown as { name: string }[]).map((column) => column.name));
   if (!proposalColumns.has('proposed_content')) db.exec('ALTER TABLE memory_update_proposals ADD COLUMN proposed_content TEXT');
+  const managerStageColumns = new Set((db.prepare("PRAGMA table_info('manager_stage_records')").all() as unknown as { name: string }[]).map((column) => column.name));
+  if (!managerStageColumns.has('input_snapshot_json')) {
+    db.exec("ALTER TABLE manager_stage_records ADD COLUMN input_snapshot_json TEXT NOT NULL DEFAULT '{}'");
+  }
   db.exec(`UPDATE engine_registry
     SET capabilities = '["ask","work","project","build","review","read","write"]'
     WHERE id IN ('codex-cli','claude-cli')`);

@@ -157,3 +157,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Implement replay against recorded stage inputs, preserve original/current model outcomes side by side, and promote corrected cases into a permanent regression suite.
 
 **Any risks or weirdness:** The smoke also surfaced an automatic failure incident from its deliberate kill-switch scenario, which is expected and demonstrates mixed automatic/user reporting in the same inbox.
+
+## 2026-08-25 — replay and regression promotion
+
+**What changed:** Flight stages now retain replayable bounded input snapshots while replacing raw request/goal strings with task references. Reports map to their affected manager stage, can be replayed from the inbox, show changed/unchanged/current status, and can promote one user-approved replay into an exact active regression. The inbox can rerun all active cases and automatically reopen failures.
+
+**What I verified:** All 81 deterministic checks and the rendered Electron smoke pass. A quant-bot route case proved that the replay snapshot contains no raw request, reconstructs the original input, detects finance-to-coding output change, promotes the corrected output, passes it again, and later reopens the incident when the old finance route returns.
+
+**What is still open:** End-to-end specialist answer replay needs worker/artifact fixtures; current exact replay targets the learned manager stage responsible for routing, continuity, memory, response selection, execution, briefing, and supervision. Flight/case retention still needs pruning rules.
+
+**What the next person should do:** Add project-scoped memory/outcome/artifact records and use them as the durable state that end-to-end project troubleshooting can replay against.
+
+**Any risks or weirdness:** Natural-language expected behavior is preserved as guidance but never treated as a machine pass condition. Exact automation begins only after Will approves a concrete replay output.

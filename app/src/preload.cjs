@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('grover', Object.freeze({
   rateTask: (taskId, rating) => ipcRenderer.invoke('grover:rate-task', { taskId, rating }),
   reportProblem: (taskId, kind, note, correction) => ipcRenderer.invoke('grover:report-problem', { taskId, kind, note, correction }),
   incidentAction: (incidentId, action) => ipcRenderer.invoke('grover:incident-action', { incidentId, action }),
+  replayIncident: (incidentId) => ipcRenderer.invoke('grover:replay-incident', incidentId),
+  promoteIncidentReplay: (incidentId) => ipcRenderer.invoke('grover:promote-incident-replay', incidentId),
+  runRegressions: () => ipcRenderer.invoke('grover:run-regressions'),
   onState: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on('grover:state', listener);

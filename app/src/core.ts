@@ -844,7 +844,7 @@ export class GroverCore extends EventEmitter {
           };
       this.diagnostics.recordStage({
         taskId, stage: managerTask, inputRefs: input, output: stage.output,
-        latencyMs: stage.latencyMs, modelHash: this.manager?.status().modelHash,
+        replayInput: stage.input, latencyMs: stage.latencyMs, modelHash: this.manager?.status().modelHash,
       });
       appendEvent(this.db, {
         scopeType: 'task', scopeId: taskId, taskId, idempotencyKey: `${taskId}:manager-authority:${managerTask}`,
@@ -1257,7 +1257,7 @@ export class GroverCore extends EventEmitter {
         evidence_kinds: Array.isArray(input.evidence)
           ? (input.evidence as { kind?: unknown }[]).map((item) => item.kind).filter((kind) => typeof kind === 'string')
           : [],
-      }, output: decision, latencyMs,
+      }, replayInput: input, output: decision, latencyMs,
       modelHash: this.manager?.status().modelHash,
     });
     appendEvent(this.db, {
@@ -1304,7 +1304,7 @@ export class GroverCore extends EventEmitter {
           worker_id: workerId,
           required_evidence: requiredEvidence,
           evidence_kinds: evidence.map((item) => item.kind),
-        }, error, modelHash: this.manager.status().modelHash,
+        }, replayInput: input, error, modelHash: this.manager.status().modelHash,
       });
       throw error;
     }
@@ -1809,6 +1809,68 @@ export class GroverCore extends EventEmitter {
   incidentAction(id: string, action: 'diagnose' | 'fixed' | 'close' | 'reopen'): void {
     this.diagnostics.updateIncidentStatus(id, action);
     this.changed();
+  }
+
+  private async replayManagerStage(stage: ManagerStage, input: Record<string, unknown>): Promise<{ output: unknown; latencyMs: number }> {
+    if (!this.manager || this.manager.status().state !== 'ready') {
+      throw new Error('The local manager must be ready before replaying an incident.');
+    }
+    switch (stage) {
+      case 'route': return this.manager.inferRoute(input);
+      case 'continuity': if (this.manager.inferContinuity) return this.manager.inferContinuity(input); break;
+      case 'retrieval': if (this.manager.inferRetrieval) return this.manager.inferRetrieval(input); break;
+      case 'memory': if (this.manager.inferMemory) return this.manager.inferMemory(input); break;
+      case 'respond': if (this.manager.inferRespond) return this.manager.inferRespond(input); break;
+      case 'clarify': if (this.manager.inferClarify) return this.manager.inferClarify(input); break;
+      case 'execution': if (this.manager.inferExecution) return this.manager.inferExecution(input); break;
+      case 'brief': if (this.manager.inferBrief) return this.manager.inferBrief(input); break;
+      case 'supervise': if (this.manager.inferSupervise) return this.manager.inferSupervise(input); break;
+    }
+    throw new Error(`The local manager does not currently expose the ${stage} replay contract.`);
+  }
+
+  async replayIncident(incidentId: string): Promise<string> {
+    const replay = this.diagnostics.replayCaseForIncident(incidentId);
+    try {
+      const result = await this.replayManagerStage(replay.stage, replay.input);
+      const status = this.diagnostics.recordReplay(
+        replay.id, result.output, result.latencyMs, this.manager?.status().modelHash,
+      );
+      appendEvent(this.db, {
+        scopeType: 'task', scopeId: replay.taskId, taskId: replay.taskId,
+        idempotencyKey: `${randomUUID()}:incident-replay`, actor: 'system', phase: 'verifying',
+        plainLanguage: `Replayed the reported ${replay.stage} decision: ${status}`,
+        internalDetail: JSON.stringify({ incidentId, caseId: replay.id, stage: replay.stage, status }),
+      });
+      this.changed();
+      return status;
+    } catch (error) {
+      this.diagnostics.recordReplayError(replay.id, error, this.manager?.status().modelHash);
+      this.changed();
+      throw error;
+    }
+  }
+
+  promoteIncidentReplay(incidentId: string): void {
+    this.diagnostics.promoteLatestReplay(incidentId);
+    this.changed();
+  }
+
+  async runRegressionSuite(): Promise<{ total: number; passed: number; failed: number }> {
+    const incidentIds = this.diagnostics.activeRegressionIncidentIds();
+    let passed = 0;
+    let failed = 0;
+    for (const incidentId of incidentIds) {
+      try {
+        const status = await this.replayIncident(incidentId);
+        if (status === 'passed') passed += 1;
+        else failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    this.changed();
+    return { total: incidentIds.length, passed, failed };
   }
 
   setPreferredEngine(engineId: 'auto' | 'codex-cli' | 'claude-cli'): void {

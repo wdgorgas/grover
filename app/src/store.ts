@@ -847,6 +847,14 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
             correction_json, diagnostic_json, occurrence_count, first_seen_at, last_seen_at, updated_at
      FROM incidents ORDER BY last_seen_at DESC LIMIT 200`
   ).all();
+  const regressionCases = db.prepare(
+    `SELECT id, incident_id, task_id, stage, expected_note, status, last_result, created_at, updated_at
+     FROM regression_cases ORDER BY updated_at DESC LIMIT 200`
+  ).all();
+  const replayRuns = db.prepare(
+    `SELECT id, case_id, model_hash, status, latency_ms, error_detail, created_at
+     FROM replay_runs ORDER BY created_at DESC LIMIT 500`
+  ).all();
   const modelProfiles = db.prepare(
     'SELECT * FROM engine_model_profiles WHERE enabled = 1 ORDER BY engine_id, model_tier'
   ).all();
@@ -883,7 +891,7 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   ).all();
   return {
     tasks, features, events, memories, memoryTotal, memoryProposals, memoryNamespaces, costs, budget, engines, routing,
-    managerShadow, managerFlights, managerStages, incidents, modelProfiles,
+    managerShadow, managerFlights, managerStages, incidents, regressionCases, replayRuns, modelProfiles,
     contextRouting, conversationRoutes, conversations, messages, projects, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',
