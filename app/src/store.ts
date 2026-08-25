@@ -336,6 +336,60 @@ export function resolveConversation(
   };
 }
 
+export function resolveManagerConversation(
+  db: DatabaseSync,
+  text: string,
+  destination: Context,
+  decision: {
+    action: 'continue' | 'reopen' | 'create' | 'branch' | 'clarify';
+    target_conversation_id: string | null;
+  },
+  sourceConversationId?: string,
+): ConversationResolution {
+  const source = sourceConversationId ? getConversation(db, sourceConversationId) : undefined;
+  if (sourceConversationId && !source) throw new Error('That conversation is no longer available. Start a new one.');
+  if (decision.action === 'continue' || decision.action === 'reopen') {
+    if (!decision.target_conversation_id) throw new Error('The manager did not supply a conversation target.');
+    const target = getConversation(db, decision.target_conversation_id);
+    if (!target) throw new Error('The manager selected a conversation that is no longer available.');
+    const navigated = decision.action === 'reopen' && navigationRequested(text) && pureNavigationRequested(text);
+    return {
+      conversationId: target.id,
+      context: target.context,
+      disposition: decision.action === 'continue' ? 'continued' : (navigated ? 'navigated' : 'reopened'),
+      reason: decision.action === 'continue'
+        ? 'The local manager kept this request with its current conversation.'
+        : `The local manager reopened “${target.title}”.`,
+      sourceConversationId: source?.id ?? null,
+      localNavigation: navigated,
+    };
+  }
+  if (decision.action === 'clarify' && source) {
+    return {
+      conversationId: source.id,
+      context: source.context,
+      disposition: 'continued',
+      reason: 'The local manager kept the request here while clarification is gathered.',
+      sourceConversationId: source.id,
+      localNavigation: false,
+    };
+  }
+  const conversationId = createConversation(db, destination, text);
+  const branched = decision.action === 'branch' && Boolean(source);
+  return {
+    conversationId,
+    context: destination,
+    disposition: branched ? 'branched' : 'created',
+    reason: branched
+      ? 'The local manager branched this work into the appropriate workspace without changing the source conversation.'
+      : decision.action === 'clarify'
+        ? 'The local manager opened a conversation to clarify this request.'
+        : 'The local manager opened a new conversation for this request.',
+    sourceConversationId: source?.id ?? null,
+    localNavigation: false,
+  };
+}
+
 export function recordConversationResolution(
   db: DatabaseSync,
   taskId: string,

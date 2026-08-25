@@ -258,6 +258,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** Rejecting promotion will preserve sub-second everyday navigation and recall while still producing learned disagreement evidence for targeted optimization. **Result: confirmed.** The live deterministic route/reopen path remained 68–104 ms while route, continuity, and retrieval ran as authenticated non-authoritative shadow work.
 
+## 2026-08-25 — Full manager capability is the authoritative semantic path
+
+**Decision:** Accepted PlanningProposal 009 supersedes the earlier latency-gated shadow-only promotion decision. When the verified local manager is enabled, every meaningful request runs through its trained route, continuity, retrieval, memory, response, clarification, execution, brief, and post-worker supervision capabilities as applicable. Deterministic application code still validates IDs, permissions, privacy, budgets, and evidence, but cannot silently replace a valid manager semantic decision. The manager may request one bounded verification, retry, or fallback; a result that still does not earn `accept` is not presented as successful.
+
+**Why:** Will explicitly chose best-result manager behavior as the baseline and accepted its current latency. Keeping the trained manager on a shelf while handcrafted rules competed for normal requests would defeat the purpose of the model and make real-world failures harder to diagnose.
+
+**Prediction (checked at this slice exit):** A valid manager decision will control destination, conversation disposition, selected memories, safe automatic memory writes, local response, worker/tier/brief, and acceptance of the worker result; malformed or out-of-scope outputs and protected actions will still fail closed. **Result: confirmed by 76 deterministic checks, including authoritative routing, local response, automatic learned memory, bounded references, and recorded post-worker acceptance.**
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.

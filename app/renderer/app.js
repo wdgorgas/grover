@@ -462,7 +462,7 @@ function renderEngines() {
 
   const manager = state.runtime?.managerStatus ?? { state: 'unavailable', detail: 'Local manager is not configured.' };
   const managerLabel = {
-    ready: 'Shadow ready', starting: 'Starting', unavailable: 'Not prepared', error: 'Needs attention', stopped: 'Stopped',
+    ready: 'Manager ready', starting: 'Starting', unavailable: 'Not prepared', error: 'Needs attention', stopped: 'Stopped',
   }[manager.state] ?? 'Checking';
   $('#manager-status').textContent = managerLabel;
   $('#manager-status').classList.toggle('good', manager.state === 'ready');

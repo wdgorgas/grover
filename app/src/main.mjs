@@ -55,7 +55,7 @@ function installIpc() {
   ipcMain.handle('grover:snapshot', () => core.getSnapshot());
   ipcMain.handle('grover:conversation-messages', (_event, conversationId) => core.conversationMessages(conversationId));
   ipcMain.handle('grover:search-memories', (_event, query) => core.searchMemories(String(query ?? '')));
-  ipcMain.handle('grover:submit', (_event, input) => core.submit(input));
+  ipcMain.handle('grover:submit', (_event, input) => manager ? core.submitManaged(input) : core.submit(input));
   ipcMain.handle('grover:task-action', (_event, { taskId, action }) => core.taskAction(taskId, action));
   ipcMain.handle('grover:kill-switch', (_event, enabled) => core.setKillSwitch(Boolean(enabled)));
   ipcMain.handle('grover:preferred-engine', (_event, engineId) => core.setPreferredEngine(engineId));
