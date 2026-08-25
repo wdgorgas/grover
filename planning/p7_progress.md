@@ -109,3 +109,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Keep deterministic local greetings, exact recall, navigation, and conversation continuity on the visible path. Use shadow disagreements and real user failures to select the next single learned task; optimize or distill only that task rather than adding the whole nine-task chain to every request.
 
 **Any risks or weirdness:** A delayed pre-compaction evaluator briefly created a second writer. Both processes were stopped, 11 duplicate generated rows were removed by stable case ID, and the gate resumed with exactly one runtime and one writer. The final report was generated from exactly 2,700 unique IDs, and the benchmark runtime was stopped after completion.
+
+## 2026-08-25 — all trained lifecycle contracts connected
+
+**What changed:** Added native runtime prompts, typed clients, and fail-closed validators for memory, execution, clarification, briefing, supervision, and response alongside the existing route, continuity, and retrieval tasks. All nine trained task contracts are now callable through the authenticated loopback runtime. The per-task timeout is 45 seconds to accommodate the accepted best-result laptop baseline.
+
+**What I verified:** Seventy-three deterministic checks pass. The full-lifecycle validator test rejects invented memory, worker, tool, and context references; existing manager authentication/isolation tests and the rendered Electron golden-path smoke remain green.
+
+**What is still open:** The six newly connected tasks are callable but not yet sequenced through the application request lifecycle. Route, continuity, and retrieval still record the previous shadow comparison behavior until the next authority slice replaces it.
+
+**What the next person should do:** Implement the asynchronous manager-first request pipeline, record each lifecycle stage, and make valid manager route/continuity/retrieval/clarification/execution/brief decisions control semantic flow while deterministic policy remains the validator.
+
+**Any risks or weirdness:** The existing task-specific schemas were retained exactly as trained. Full lifecycle use may require several sequential inferences; current latency is accepted under Proposal 009 and must be measured rather than hidden by a competing rule path.

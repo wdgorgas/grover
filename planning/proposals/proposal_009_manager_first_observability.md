@@ -32,4 +32,3 @@
 - A malformed manager output, timeout, provider failure, failed verification, and high-latency request each produce a bounded automatic incident.
 - Completing project work records artifact references, verified outcomes, and next actions; “what happened with this project?” is answerable after restart without scanning the full vault.
 - A promoted fast path demonstrates replay parity on its complete eligibility corpus and falls back to the manager outside that corpus.
-

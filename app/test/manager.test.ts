@@ -9,7 +9,9 @@ import { openDb } from '../src/db.ts';
 import { EngineRouter, type ExecutionEngine } from '../src/engine.ts';
 import { addConversationMessage, createConversation, findConversationCandidates } from '../src/store.ts';
 import {
-  ManagerHttpClient, managerServerArgs, rawManagerPrompt, validateContinuityDecision, validateRetrievalDecision, validateRouteDecision,
+  ManagerHttpClient, managerServerArgs, rawManagerPrompt, validateBriefDecision, validateClarifyDecision,
+  validateContinuityDecision, validateExecutionDecision, validateMemoryDecision, validateRespondDecision,
+  validateRetrievalDecision, validateRouteDecision, validateSuperviseDecision,
   type ContinuityDecision, type ManagerPlanner, type ManagerStatus, type RetrievalDecision, type RouteDecision,
 } from '../src/manager.ts';
 
@@ -98,6 +100,81 @@ test('retrieval validation rejects IDs outside the warm-start candidates', () =>
     ),
     /unavailable memory_ids/,
   );
+});
+
+test('all trained manager lifecycle tasks validate only supplied application state', () => {
+  const memoryInput = {
+    project_id: 'proj_known', existing_memories: [{ id: 'mem_known', scope: 'project:proj_known', content: 'Old fact' }],
+  };
+  const memory = {
+    schema_version: '1.0', task: 'memory', decision: {
+      operation: 'update', target_memory_id: 'mem_known', scope: 'project:proj_known', canonical_fact: 'Verified fact',
+      sensitivity: 'private', expires: false, confidence: 'high', rationale_codes: ['verified_project_fact'],
+    },
+  };
+  assert.deepEqual(validateMemoryDecision(memory, memoryInput), memory);
+  assert.throws(() => validateMemoryDecision({
+    ...memory, decision: { ...memory.decision, target_memory_id: 'mem_invented' },
+  }, memoryInput), /unavailable memory/);
+
+  const executionInput = {
+    tools: [{ id: 'project_files', available: true }], workers: [{ id: 'codex-cli', available: true }],
+    workspaces: [{ id: 'proj_known', available: true }],
+  };
+  const execution = {
+    schema_version: '1.0', task: 'execution', decision: {
+      response_mode: 'delegate', tool_ids: ['project_files'], worker_id: 'codex-cli', tier: 'frontier',
+      workspace_id: 'proj_known', permission_triggers: [], confidence: 'high', rationale_codes: ['project_work'],
+    },
+  };
+  assert.deepEqual(validateExecutionDecision(execution, executionInput), execution);
+  assert.throws(() => validateExecutionDecision({
+    ...execution, decision: { ...execution.decision, worker_id: 'claude-unavailable' },
+  }, executionInput), /unavailable worker/);
+
+  const clarify = {
+    schema_version: '1.0', task: 'clarify', decision: {
+      needed: true, can_begin: false, question: 'Which project do you mean?', missing_fields: ['project'],
+      confidence: 'high', rationale_codes: ['ambiguous_project'],
+    },
+  };
+  assert.deepEqual(validateClarifyDecision(clarify), clarify);
+  assert.throws(() => validateClarifyDecision({
+    ...clarify, decision: { ...clarify.decision, question: null },
+  }), /omitted its question/);
+
+  const briefInput = { available_refs: [{ id: 'proj_known' }, { id: 'mem_known' }] };
+  const brief = {
+    schema_version: '1.0', task: 'brief', decision: {
+      objective: 'Update the known project', context_refs: ['proj_known', 'mem_known'], constraints: ['stay local'],
+      deliverables: ['working result'], verification: ['run tests'], stop_conditions: ['stop before deployment'],
+    },
+  };
+  assert.deepEqual(validateBriefDecision(brief, briefInput), brief);
+  assert.throws(() => validateBriefDecision({
+    ...brief, decision: { ...brief.decision, context_refs: ['proj_invented'] },
+  }, briefInput), /unavailable context/);
+
+  const superviseInput = { workers: [{ id: 'codex-cli', available: true }] };
+  const supervise = {
+    schema_version: '1.0', task: 'supervise', decision: {
+      action: 'accept', next_worker_id: null, missing_evidence: [], question: null,
+      confidence: 'high', rationale_codes: ['required_evidence_present'],
+    },
+  };
+  assert.deepEqual(validateSuperviseDecision(supervise, superviseInput), supervise);
+
+  const respondInput = { tools: [{ id: 'memory_search', available: true }] };
+  const respond = {
+    schema_version: '1.0', task: 'respond', decision: {
+      action: 'query_local', tool_ids: ['memory_search'], response: 'The saved value is available.',
+      confidence: 'high', rationale_codes: ['authoritative_local_memory'],
+    },
+  };
+  assert.deepEqual(validateRespondDecision(respond, respondInput), respond);
+  assert.throws(() => validateRespondDecision({
+    ...respond, decision: { ...respond.decision, tool_ids: ['invented_tool'] },
+  }, respondInput), /unavailable tool/);
 });
 
 test('manager HTTP client authenticates backend requests and validates the response', async () => {
