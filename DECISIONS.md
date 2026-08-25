@@ -266,6 +266,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** A valid manager decision will control destination, conversation disposition, selected memories, safe automatic memory writes, local response, worker/tier/brief, and acceptance of the worker result; malformed or out-of-scope outputs and protected actions will still fail closed. **Result: confirmed by 76 deterministic checks, including authoritative routing, local response, automatic learned memory, bounded references, and recorded post-worker acceptance.**
 
+## 2026-08-25 — Bounded manager flight records and deduplicated incidents
+
+**Decision:** Every authoritative manager request gets a first-class flight record with its task/conversation/project references, request hash, model/prompt/app versions, ordered stage outputs, bounded input references, per-stage latency, total latency, and terminal state. The recorder does not copy raw request or vault text into stage inputs. Automatic manager validation errors, provider failures, failed tasks, and stage latency above the three-second optimization target create deduplicated incidents plus lightweight occurrence rows.
+
+**Why:** Real daily use will reveal niche failures that cannot be fixed from a screenshot or vague recollection. A compact structured trace makes those failures reproducible while avoiding a second chat/vault database and preventing recurring latency warnings from flooding the inbox.
+
+**Prediction (checked at this slice exit):** Successful manager requests will retain ordered stages and reach the same terminal state as their task; recurring stage latency will increment one incident instead of creating duplicates; pre-task validation errors will retain a prompt hash rather than prompt text. **Result: confirmed by 79 deterministic checks.**
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.

@@ -348,6 +348,83 @@ CREATE TABLE IF NOT EXISTS manager_shadow_decisions (
 CREATE INDEX IF NOT EXISTS manager_shadow_by_task
 ON manager_shadow_decisions(task_id, created_at);
 
+-- First-class learned-manager flight recorder. Inputs are bounded references
+-- and hashes; source prompts and vault contents stay in their authoritative
+-- conversation/memory records instead of being duplicated here.
+CREATE TABLE IF NOT EXISTS manager_flights (
+  id                 TEXT PRIMARY KEY,
+  task_id            TEXT NOT NULL UNIQUE,
+  conversation_id    TEXT REFERENCES conversations(id),
+  project_id         TEXT,
+  request_hash       TEXT NOT NULL,
+  model_hash         TEXT,
+  prompt_version     TEXT NOT NULL,
+  app_version        TEXT NOT NULL,
+  state              TEXT NOT NULL CHECK (state IN
+                       ('planning','executing','blocked','completed','failed','cancelled')),
+  total_latency_ms   INTEGER NOT NULL DEFAULT 0,
+  error_summary      TEXT,
+  started_at         TEXT NOT NULL,
+  completed_at       TEXT,
+  updated_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS manager_stage_records (
+  id              TEXT PRIMARY KEY,
+  flight_id       TEXT NOT NULL REFERENCES manager_flights(id),
+  sequence        INTEGER NOT NULL,
+  stage           TEXT NOT NULL CHECK (stage IN
+                    ('route','continuity','retrieval','memory','respond','clarify','execution','brief','supervise')),
+  attempt         INTEGER NOT NULL DEFAULT 0,
+  status          TEXT NOT NULL CHECK (status IN ('succeeded','failed')),
+  input_refs_json TEXT NOT NULL,
+  output_json     TEXT,
+  latency_ms      INTEGER NOT NULL DEFAULT 0,
+  model_hash      TEXT,
+  prompt_version  TEXT NOT NULL,
+  error_detail    TEXT,
+  created_at      TEXT NOT NULL,
+  UNIQUE(flight_id, stage, attempt)
+);
+
+CREATE INDEX IF NOT EXISTS manager_stages_by_flight
+ON manager_stage_records(flight_id, sequence);
+
+CREATE TABLE IF NOT EXISTS incidents (
+  id                TEXT PRIMARY KEY,
+  flight_id         TEXT REFERENCES manager_flights(id),
+  task_id           TEXT,
+  stage_record_id   TEXT REFERENCES manager_stage_records(id),
+  source            TEXT NOT NULL CHECK (source IN ('automatic','will_report','will_correction')),
+  kind              TEXT NOT NULL CHECK (kind IN
+                      ('manager_error','validation_failure','provider_failure','task_failure','latency',
+                       'wrong_route','wrong_continuity','wrong_memory','wrong_tool','wrong_answer','ux','other')),
+  severity          TEXT NOT NULL CHECK (severity IN ('low','medium','high')),
+  status            TEXT NOT NULL CHECK (status IN
+                      ('open','diagnosed','fix_prepared','waiting','fixed','replay_passed','closed')),
+  fingerprint       TEXT NOT NULL UNIQUE,
+  summary           TEXT NOT NULL,
+  note              TEXT,
+  correction_json   TEXT,
+  diagnostic_json   TEXT,
+  occurrence_count  INTEGER NOT NULL DEFAULT 1,
+  first_seen_at     TEXT NOT NULL,
+  last_seen_at      TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS incident_occurrences (
+  id           TEXT PRIMARY KEY,
+  incident_id  TEXT NOT NULL REFERENCES incidents(id),
+  flight_id    TEXT REFERENCES manager_flights(id),
+  task_id      TEXT,
+  detail_json  TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS incidents_by_status
+ON incidents(status, last_seen_at DESC);
+
 CREATE TABLE IF NOT EXISTS engine_model_profiles (
   engine_id        TEXT NOT NULL REFERENCES engine_registry(id),
   model_tier       TEXT NOT NULL CHECK (model_tier IN ('fast','balanced','frontier')),

@@ -831,6 +831,22 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
     `SELECT id, task_id, manager_task, status, latency_ms, model_hash, error_detail, created_at
      FROM manager_shadow_decisions ORDER BY created_at DESC LIMIT 100`
   ).all();
+  const managerFlights = db.prepare(
+    `SELECT id, task_id, conversation_id, project_id, model_hash, prompt_version, app_version, state,
+            total_latency_ms, error_summary, started_at, completed_at, updated_at
+     FROM manager_flights ORDER BY started_at DESC LIMIT 100`
+  ).all();
+  const managerStages = db.prepare(
+    `SELECT s.id, s.flight_id, s.sequence, s.stage, s.attempt, s.status, s.latency_ms, s.model_hash,
+            s.prompt_version, s.error_detail, s.created_at
+     FROM manager_stage_records s JOIN manager_flights f ON f.id = s.flight_id
+     ORDER BY s.created_at DESC LIMIT 500`
+  ).all();
+  const incidents = db.prepare(
+    `SELECT id, flight_id, task_id, stage_record_id, source, kind, severity, status, summary, note,
+            correction_json, diagnostic_json, occurrence_count, first_seen_at, last_seen_at, updated_at
+     FROM incidents ORDER BY last_seen_at DESC LIMIT 200`
+  ).all();
   const modelProfiles = db.prepare(
     'SELECT * FROM engine_model_profiles WHERE enabled = 1 ORDER BY engine_id, model_tier'
   ).all();
@@ -866,7 +882,8 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
     'SELECT * FROM recovery_cards ORDER BY created_at DESC LIMIT 100'
   ).all();
   return {
-    tasks, features, events, memories, memoryTotal, memoryProposals, memoryNamespaces, costs, budget, engines, routing, managerShadow, modelProfiles,
+    tasks, features, events, memories, memoryTotal, memoryProposals, memoryNamespaces, costs, budget, engines, routing,
+    managerShadow, managerFlights, managerStages, incidents, modelProfiles,
     contextRouting, conversationRoutes, conversations, messages, projects, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',

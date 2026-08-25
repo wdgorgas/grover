@@ -338,12 +338,16 @@ test('managed submission makes valid manager route and continuity authoritative'
     await new Promise((resolve) => setImmediate(resolve));
   }
   const stages = db.prepare(
-    'SELECT manager_task, deterministic_json FROM manager_shadow_decisions WHERE task_id = ? ORDER BY created_at'
-  ).all(result.taskId) as { manager_task: string; deterministic_json: string }[];
-  assert.deepEqual(stages.map((stage) => stage.manager_task).sort(), [
+    `SELECT s.stage FROM manager_stage_records s JOIN manager_flights f ON f.id = s.flight_id
+     WHERE f.task_id = ? ORDER BY s.sequence`
+  ).all(result.taskId) as { stage: string }[];
+  assert.deepEqual(stages.map((stage) => stage.stage).sort(), [
     'brief', 'clarify', 'continuity', 'execution', 'memory', 'respond', 'retrieval', 'route', 'supervise',
   ]);
-  assert.ok(stages.every((stage) => JSON.parse(stage.deterministic_json).mode === 'manager_authority'));
+  const flight = db.prepare('SELECT state, request_hash FROM manager_flights WHERE task_id = ?').get(result.taskId) as
+    { state: string; request_hash: string };
+  assert.equal(flight.state, 'completed');
+  assert.match(flight.request_hash, /^[a-f0-9]{64}$/);
 });
 
 test('managed local response is used instead of a conflicting built-in answer', async () => {
