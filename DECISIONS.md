@@ -4,6 +4,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 ---
 
+## 2026-08-25 — Full trained manager contract in the native runtime
+
+**Decision:** Connect all nine trained task prompts and strict output validators through the existing authenticated local runtime. Keep every reference-bearing output constrained to application-supplied IDs and availability. Raise the per-task client timeout from 12 to 45 seconds because the accepted manager-first baseline includes longer brief/supervision outputs under sustained laptop throttling.
+
+**Why:** Proposal 009 makes the trained manager the semantic baseline. The application cannot safely execute that decision unless memory, execution, clarification, brief, supervision, and response outputs receive the same fail-closed validation already used for route, continuity, and retrieval. The timeout accommodates measured local behavior without granting new authority.
+
+**Prediction (checked at slice exit):** Unit tests will accept valid outputs for every trained task, refuse invented memory/worker/tool/context references, and preserve authenticated loopback-only runtime behavior. Existing deterministic and desktop regressions will remain green. **Result: confirmed.** The suite passes 73/73, including the new full-lifecycle validator case, and the Electron golden-path smoke remains green.
+
 ## 2026-07-05 — P1 stack: Node 22 built-ins, zero external dependencies
 
 **Decision:** App runs on Node ≥22.18 using built-in TypeScript type-stripping (erasable syntax only — no TS enums/namespaces), `node:sqlite` for the database, `node:test` for tests, `node:http` for the server (later slice). No npm dependencies.
