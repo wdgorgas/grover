@@ -4,13 +4,13 @@
 
 - Native Windows desktop application; portable RC.3 exists and has passed its prior live smoke.
 - General can branch into Coding, reopen an existing project conversation, and use bounded local memory.
-- The local manager is accurate and safety-bounded, but its complete chain measured 6.1792-second sustained p95 on this laptop. It is therefore shadow-only; deterministic local behavior remains authoritative and typically appears in 68–104 ms.
+- The local manager is accurate and safety-bounded. Its complete chain measured 6.1792-second sustained p95 on this laptop; Will accepted that latency as the best-result baseline on 2026-08-25. Proposal 009 makes the manager the semantic authority while deterministic code remains the safety validator/executor.
 - Visual redesign is intentionally deferred.
 - Local `master` is ahead of the remote. Do not disturb the pre-existing deletion of `JACKSON_START_HERE.md`.
 
 ## Next objective: everyday reliability and control
 
-The immediate goal is not another manager capability or a niche sub-application. Finish the general-purpose project and memory foundation so Will can use GROVER to build those applications from inside GROVER:
+Finish the complete manager lifecycle and its troubleshooting harness, then integrate the general-purpose project and memory foundation so Will can use GROVER to build niche applications from inside GROVER:
 
 1. **Codex-first provider readiness.** Codex is the normal execution engine because Will does not expect to maintain a Claude subscription. Auto must choose Codex whenever Codex is ready and must never attempt an unavailable Claude installation/session. Keep Claude behind the provider-neutral adapter as an optional future switch/checker. Convert provider failures into a clear in-app recovery action rather than a raw error code.
 2. **Project memory integrated with the vault.** Give every project a durable identity and automatically maintained, provenance-backed record of its goal, current state, important decisions, outputs/artifacts, verified outcomes, and next actions. Link those records to the project and conversation instead of mixing them with global profile facts. Retrieve the exact project's bounded memory before a worker starts; never send the whole vault.
@@ -20,7 +20,7 @@ The immediate goal is not another manager capability or a niche sub-application.
 
 ## Manager strategy
 
-Keep route, continuity, and retrieval in authenticated local shadow mode. Collect real disagreements from these workflows. If one learned task proves valuable, optimize or distill that task alone; do not put the full manager chain in front of every prompt until it meets the three-second sustained-latency gate.
+Use route, continuity, retrieval, memory, clarification, execution, briefing, supervision, and response through the authenticated local manager as the baseline semantic path. Deterministic code validates references and enforces policy but does not replace a valid manager choice. Record every stage in a local flight record and make failures/corrections replayable. Add narrow fast paths later only after they demonstrate complete behavioral parity and safe fallback; three seconds remains an optimization target rather than an authority gate.
 
 ## Verification required for every slice
 
@@ -37,5 +37,5 @@ Keep route, continuity, and retrieval in authenticated local shadow mode. Collec
 - Visual redesign and memory graph.
 - Lifestyle scheduling and other niche/domain sub-applications; GROVER should be able to build these after the general project/memory foundation is usable.
 - Remote calendar/account synchronization and any server deployment.
-- Full-manager promotion or another broad training run.
+- Another broad training run before real incident and correction evidence identifies the needed curriculum.
 - Permanent deletion controls until the destructive-action policy is agreed.
