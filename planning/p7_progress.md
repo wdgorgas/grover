@@ -121,3 +121,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Implement the asynchronous manager-first request pipeline, record each lifecycle stage, and make valid manager route/continuity/retrieval/clarification/execution/brief decisions control semantic flow while deterministic policy remains the validator.
 
 **Any risks or weirdness:** The existing task-specific schemas were retained exactly as trained. Full lifecycle use may require several sequential inferences; current latency is accepted under Proposal 009 and must be measured rather than hidden by a competing rule path.
+
+## 2026-08-25 — authoritative lifecycle orchestration
+
+**What changed:** The native request path now awaits the learned manager and treats its valid route, continuity, retrieval, memory, response, clarification, execution, worker brief, and supervision decisions as authoritative. High-confidence standard/private facts save automatically with manager provenance; incidental sensitive facts remain review proposals; explicit corrections and deletions act on validated existing IDs. Worker results require manager acceptance, with at most one bounded manager-directed verification, retry, or fallback.
+
+**What I verified:** All 76 deterministic application checks pass. Focused coverage proves the manager can override the old route, create the selected context conversation, select bounded memory IDs, provide the displayed local answer, automatically save a durable profile fact, select the worker/tier/brief, and record a post-worker `accept`. Existing policy, jackson-private, budget, kill-switch, backup/restore, and rendered golden-path protections remain green.
+
+**What is still open:** Replace the transitional manager-shadow audit rows with a first-class flight recorder, incident inbox, replay/regression loop, richer project memory, measured behavior-preserving latency work, and a new portable Windows candidate.
+
+**What the next person should do:** Build the flight/incident data model around the now-authoritative pipeline, then expose user reporting and replay before changing manager performance behavior.
+
+**Any risks or weirdness:** The manager chain can add several sequential local inferences before a response. Proposal 009 accepts this as the truthful baseline. A future fast path may only bypass stages after replay parity and fallback are proven.

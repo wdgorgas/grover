@@ -221,7 +221,11 @@ export function validateRouteDecision(value: unknown): RouteDecision {
   return value as RouteDecision;
 }
 
-export function validateContinuityDecision(value: unknown, allowedTargets: Map<string, string | null>): ContinuityDecision {
+export function validateContinuityDecision(
+  value: unknown,
+  allowedTargets: Map<string, string | null>,
+  currentConversationId?: string | null,
+): ContinuityDecision {
   if (!value || typeof value !== 'object') throw new Error('Manager output is not an object.');
   const envelope = value as Record<string, unknown>;
   if (!hasExactKeys(envelope, ['schema_version', 'task', 'decision']) || envelope.schema_version !== '1.0' || envelope.task !== 'continuity') {
@@ -248,6 +252,9 @@ export function validateContinuityDecision(value: unknown, allowedTargets: Map<s
     }
     if (projectId !== allowedTargets.get(conversationId)) {
       throw new Error('Manager continuity paired a conversation with the wrong project.');
+    }
+    if (decision.action === 'continue' && (!currentConversationId || conversationId !== currentConversationId)) {
+      throw new Error('Manager continuity can continue only the current conversation.');
     }
   } else if (conversationId !== null || projectId !== null) {
     throw new Error('Manager continuity supplied a target for a targetless action.');
@@ -540,7 +547,9 @@ export class ManagerHttpClient {
       }
     }
     return {
-      output: validateContinuityDecision(result.parsed, allowedTargets),
+      output: validateContinuityDecision(
+        result.parsed, allowedTargets, current && typeof current.id === 'string' ? current.id : null,
+      ),
       latencyMs: result.latencyMs,
     };
   }

@@ -233,6 +233,213 @@ test('shadow manager records disagreement without changing the deterministic rou
   assert.equal(JSON.parse(shadow.proposed_json).decision.destination, 'coding');
 });
 
+test('managed submission makes valid manager route and continuity authoritative', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-manager-authority-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const manager: ManagerPlanner = {
+    status: () => ({ state: 'ready', detail: 'test', modelHash: 'AUTHORITY_HASH', lastLatencyMs: null }),
+    inferRoute: async () => ({
+      output: {
+        schema_version: '1.0', task: 'route',
+        decision: { destination: 'coding', work_kind: 'work', confidence: 'high', rationale_codes: ['manager_selected_coding'] },
+      },
+      latencyMs: 7,
+    }),
+    inferContinuity: async () => ({
+      output: {
+        schema_version: '1.0', task: 'continuity',
+        decision: {
+          action: 'branch', target_conversation_id: null, target_project_id: null, search_needed: false,
+          confidence: 'high', rationale_codes: ['manager_new_specialist_work'],
+        },
+      },
+      latencyMs: 8,
+    }),
+    inferRetrieval: async (input) => {
+      const conversations = ((input.candidates as Record<string, unknown>).conversations as { id: string }[]);
+      return {
+        output: {
+          schema_version: '1.0', task: 'retrieval',
+          decision: {
+            conversation_ids: [conversations[0].id], project_ids: [], memory_ids: [], search_queries: [], untrusted_ids: [],
+            confidence: 'high', rationale_codes: ['manager_minimum_context'],
+          },
+        },
+        latencyMs: 9,
+      };
+    },
+    inferMemory: async () => ({
+      output: {
+        schema_version: '1.0', task: 'memory',
+        decision: {
+          operation: 'none', target_memory_id: null, scope: null, canonical_fact: null, sensitivity: null,
+          expires: false, confidence: 'high', rationale_codes: ['no_durable_fact'],
+        },
+      },
+      latencyMs: 9,
+    }),
+    inferRespond: async () => ({
+      output: {
+        schema_version: '1.0', task: 'respond',
+        decision: { action: 'delegate', tool_ids: [], response: null, confidence: 'high', rationale_codes: ['worker_needed'] },
+      },
+      latencyMs: 10,
+    }),
+    inferClarify: async () => ({
+      output: {
+        schema_version: '1.0', task: 'clarify',
+        decision: { needed: false, can_begin: true, question: null, missing_fields: [], confidence: 'high', rationale_codes: ['request_clear'] },
+      },
+      latencyMs: 11,
+    }),
+    inferExecution: async () => ({
+      output: {
+        schema_version: '1.0', task: 'execution',
+        decision: {
+          response_mode: 'delegate', tool_ids: ['project_files'], worker_id: 'worker_frontier', tier: 'frontier',
+          workspace_id: 'workspace_project', permission_triggers: [], confidence: 'high', rationale_codes: ['coding_worker'],
+        },
+      },
+      latencyMs: 12,
+    }),
+    inferBrief: async (input) => ({
+      output: {
+        schema_version: '1.0', task: 'brief',
+        decision: {
+          objective: 'Handle the coding request',
+          context_refs: (input.available_refs as { id: string }[]).map((item) => item.id),
+          constraints: ['stay local'], deliverables: ['working response'], verification: ['verify result'],
+          stop_conditions: ['stop before deployment'],
+        },
+      },
+      latencyMs: 13,
+    }),
+    inferSupervise: async () => ({
+      output: { schema_version: '1.0', task: 'supervise', decision: {
+        action: 'accept', next_worker_id: null, missing_evidence: [], question: null,
+        confidence: 'high', rationale_codes: ['worker_result_present'],
+      } }, latencyMs: 14,
+    }),
+  };
+  const engine: ExecutionEngine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask', 'work', 'project', 'build'], available: true,
+    run: async () => ({ answer: 'managed result', costUsd: 0 }), cancel: () => false,
+  };
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+  const result = await core.submitManaged({ text: 'Hello, take this as coding work' });
+  assert.equal(result.context, 'coding');
+  assert.equal(result.intent, 'work');
+  assert.equal(result.conversationDisposition, 'created');
+  const task = db.prepare('SELECT domain FROM task_state WHERE task_id = ?').get(result.taskId) as { domain: string };
+  assert.equal(task.domain, 'coding');
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const assistant = db.prepare("SELECT id FROM conversation_messages WHERE task_id = ? AND role = 'assistant'").get(result.taskId);
+    if (assistant) break;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const stages = db.prepare(
+    'SELECT manager_task, deterministic_json FROM manager_shadow_decisions WHERE task_id = ? ORDER BY created_at'
+  ).all(result.taskId) as { manager_task: string; deterministic_json: string }[];
+  assert.deepEqual(stages.map((stage) => stage.manager_task).sort(), [
+    'brief', 'clarify', 'continuity', 'execution', 'memory', 'respond', 'retrieval', 'route', 'supervise',
+  ]);
+  assert.ok(stages.every((stage) => JSON.parse(stage.deterministic_json).mode === 'manager_authority'));
+});
+
+test('managed local response is used instead of a conflicting built-in answer', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-manager-response-authority-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  let delegated = false;
+  const manager: ManagerPlanner = {
+    status: () => ({ state: 'ready', detail: 'test', modelHash: 'AUTHORITY_HASH', lastLatencyMs: null }),
+    inferRoute: async () => ({
+      output: { schema_version: '1.0', task: 'route', decision: {
+        destination: 'general', work_kind: 'ask', confidence: 'high', rationale_codes: ['general_greeting'],
+      } }, latencyMs: 1,
+    }),
+    inferContinuity: async () => ({
+      output: { schema_version: '1.0', task: 'continuity', decision: {
+        action: 'create', target_conversation_id: null, target_project_id: null, search_needed: false,
+        confidence: 'high', rationale_codes: ['new_general_conversation'],
+      } }, latencyMs: 1,
+    }),
+    inferRetrieval: async (input) => ({
+      output: { schema_version: '1.0', task: 'retrieval', decision: {
+        conversation_ids: [((input.candidates as Record<string, unknown>).conversations as { id: string }[])[0].id],
+        project_ids: [], memory_ids: [], search_queries: [], untrusted_ids: [], confidence: 'high', rationale_codes: ['no_memory_needed'],
+      } }, latencyMs: 1,
+    }),
+    inferMemory: async () => ({
+      output: { schema_version: '1.0', task: 'memory', decision: {
+        operation: 'none', target_memory_id: null, scope: null, canonical_fact: null, sensitivity: null,
+        expires: false, confidence: 'high', rationale_codes: ['no_durable_fact'],
+      } }, latencyMs: 1,
+    }),
+    inferRespond: async () => ({
+      output: { schema_version: '1.0', task: 'respond', decision: {
+        action: 'answer_local', tool_ids: [], response: 'Manager-owned greeting.', confidence: 'high', rationale_codes: ['local_greeting'],
+      } }, latencyMs: 1,
+    }),
+    inferClarify: async () => { delegated = true; throw new Error('clarify should not run'); },
+    inferExecution: async () => { delegated = true; throw new Error('execution should not run'); },
+    inferBrief: async () => { delegated = true; throw new Error('brief should not run'); },
+    inferSupervise: async () => { delegated = true; throw new Error('supervise should not run'); },
+  };
+  const engine: ExecutionEngine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask'], available: true,
+    run: async () => { delegated = true; return { answer: 'wrong', costUsd: 0 }; }, cancel: () => false,
+  };
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+  const result = await core.submitManaged({ text: 'hello' });
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const message = db.prepare("SELECT content FROM conversation_messages WHERE task_id = ? AND role = 'assistant'").get(result.taskId);
+    if (message) break;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const message = db.prepare(
+    "SELECT content FROM conversation_messages WHERE task_id = ? AND role = 'assistant'"
+  ).get(result.taskId) as { content: string };
+  assert.equal(message.content, 'Manager-owned greeting.');
+  assert.equal(delegated, false);
+});
+
+test('managed memory decision automatically saves a high-confidence durable fact', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-manager-memory-authority-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const manager: ManagerPlanner = {
+    status: () => ({ state: 'ready', detail: 'test', modelHash: 'AUTHORITY_HASH', lastLatencyMs: null }),
+    inferRoute: async () => ({ output: { schema_version: '1.0', task: 'route', decision: {
+      destination: 'general', work_kind: 'ask', confidence: 'high', rationale_codes: ['profile_statement'],
+    } }, latencyMs: 1 }),
+    inferContinuity: async () => ({ output: { schema_version: '1.0', task: 'continuity', decision: {
+      action: 'create', target_conversation_id: null, target_project_id: null, search_needed: false,
+      confidence: 'high', rationale_codes: ['new_general_conversation'],
+    } }, latencyMs: 1 }),
+    inferRetrieval: async (input) => ({ output: { schema_version: '1.0', task: 'retrieval', decision: {
+      conversation_ids: [((input.candidates as Record<string, unknown>).conversations as { id: string }[])[0].id],
+      project_ids: [], memory_ids: [], search_queries: [], untrusted_ids: [], confidence: 'high', rationale_codes: ['none_needed'],
+    } }, latencyMs: 1 }),
+    inferMemory: async () => ({ output: { schema_version: '1.0', task: 'memory', decision: {
+      operation: 'create', target_memory_id: null, scope: 'global', canonical_fact: "Will's preferred name is Will.",
+      sensitivity: 'private', expires: false, confidence: 'high', rationale_codes: ['stable_profile_fact'],
+    } }, latencyMs: 1 }),
+    inferRespond: async () => ({ output: { schema_version: '1.0', task: 'respond', decision: {
+      action: 'answer_local', tool_ids: [], response: 'Nice to meet you, Will.', confidence: 'high', rationale_codes: ['local_acknowledgement'],
+    } }, latencyMs: 1 }),
+    inferClarify: async () => { throw new Error('clarify should not run'); },
+    inferExecution: async () => { throw new Error('execution should not run'); },
+    inferBrief: async () => { throw new Error('brief should not run'); },
+    inferSupervise: async () => { throw new Error('supervise should not run'); },
+  };
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([]) });
+  await core.submitManaged({ text: 'Hi, my name is Will.' });
+  const saved = db.prepare(
+    "SELECT content, category FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL"
+  ).get() as { content: string; category: string };
+  assert.equal(saved.content, "Will's preferred name is Will.");
+  assert.equal(saved.category, 'manager:global');
+});
+
 test('continuity shadow receives bounded candidates and cannot change reopen behavior', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'grover-manager-continuity-'));
   const db = openDb(join(dataDir, 'grover.db'));
