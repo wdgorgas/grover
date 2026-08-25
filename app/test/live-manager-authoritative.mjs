@@ -1,13 +1,14 @@
-import { _electron as electron } from 'playwright-core';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { _electron as electron } from 'playwright-core';
 
 const appDir = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(appDir, '..');
-const dataDir = mkdtempSync(join(tmpdir(), 'grover-manager-live-'));
+const dataDir = mkdtempSync(join(tmpdir(), 'grover-manager-authority-live-'));
 const resultDir = join(appDir, 'test-results');
+const screenshotPath = join(resultDir, 'manager-authority-live.png');
 mkdirSync(resultDir, { recursive: true });
 
 const application = await electron.launch({
@@ -25,78 +26,85 @@ page.on('console', (message) => { if (message.type() === 'error') errors.push(me
 page.on('pageerror', (error) => errors.push(error.message));
 
 try {
-  await page.waitForFunction(() => document.querySelector('#manager-status')?.textContent === 'Shadow ready', null, { timeout: 120_000 });
-  await page.locator('[data-view="settings"]').click();
+  await page.waitForFunction(
+    () => document.querySelector('#manager-status')?.textContent === 'Manager ready',
+    null,
+    { timeout: 180_000 },
+  );
   const startup = await page.evaluate(async () => ({
     snapshot: (await window.grover.snapshot()).runtime.managerStatus,
     visibleText: document.querySelector('#manager-status')?.textContent,
   }));
   assert.equal(startup.snapshot.state, 'ready', `manager changed state: ${JSON.stringify(startup)}`);
-  assert.equal(startup.visibleText, 'Shadow ready', `visible manager state was ${JSON.stringify(startup)}`);
+  assert.equal(startup.visibleText, 'Manager ready', `visible manager state was ${JSON.stringify(startup)}`);
 
-  await page.locator('[data-view="home"]').click();
-  const helloStarted = Date.now();
-  await page.locator('#home-request').fill('hello');
-  await page.locator('#home-request').press('Enter');
-  await page.locator('#chat-messages').getByText('What would you like to do?', { exact: false }).waitFor();
-  const helloVisible = Date.now() - helloStarted;
-  let snapshot;
-  const deadline = Date.now() + 15_000;
-  do {
-    snapshot = await page.evaluate(async () => window.grover.snapshot());
-    if (snapshot.managerShadow.length === 1) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  } while (Date.now() < deadline);
-  assert.equal(snapshot.managerShadow.length, 1, 'shadow decision was not recorded');
-  assert.equal(snapshot.managerShadow[0].status, 'matched');
-  assert.ok(helloVisible <= 1_000, `local greeting took ${helloVisible}ms to appear`);
-  const task = snapshot.tasks.find((item) => item.task_id === snapshot.managerShadow[0].task_id);
-  assert.equal(task.domain, 'general', 'shadow inference changed the deterministic route');
+  const submitAndWait = async (selector, expectedFlights) => {
+    const started = Date.now();
+    await page.locator(selector).fill('Hello');
+    await page.locator(selector).press('Enter');
+    let current;
+    const deadline = Date.now() + 240_000;
+    do {
+      current = await page.evaluate(async () => window.grover.snapshot());
+      if (current.managerFlights?.length === expectedFlights && current.managerFlights[0].state === 'completed') break;
+      const submitError = await page.locator(`${selector === '#home-request' ? '#home-composer' : '#context-composer'} .composer-error`).textContent();
+      if (submitError?.trim()) throw new Error(`Manager submission failed: ${submitError.trim()}`);
+      await page.waitForTimeout(100);
+    } while (Date.now() < deadline);
+    assert.equal(current.managerFlights?.length, expectedFlights, 'authoritative flight was not created before the timeout');
+    assert.equal(current.managerFlights[0].state, 'completed', 'authoritative flight did not finish before the timeout');
+    return { snapshot: current, elapsedMs: Date.now() - started };
+  };
 
-  await page.evaluate(async () => window.grover.setKillSwitch(true));
-  const continuityStarted = Date.now();
-  await page.locator('#context-request').fill("Let's code tictactoe");
-  await page.locator('#context-request').press('Enter');
-  await page.locator('#context-title').getByText('Coding', { exact: true }).waitFor();
-  const branchVisible = Date.now() - continuityStarted;
-  const continuityDeadline = Date.now() + 30_000;
-  do {
-    snapshot = await page.evaluate(async () => window.grover.snapshot());
-    if (snapshot.managerShadow.length === 3) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  } while (Date.now() < continuityDeadline);
-  const continuityElapsed = Date.now() - continuityStarted;
-  assert.equal(snapshot.managerShadow.length, 3, 'route plus continuity decisions were not recorded');
-  const continuity = snapshot.managerShadow.find((item) => item.manager_task === 'continuity');
-  assert.ok(continuity);
-  assert.notEqual(continuity.status, 'failed');
-  assert.ok(branchVisible <= 1_000, `deterministic branch took ${branchVisible}ms to appear`);
-  const codingTask = snapshot.tasks.find((item) => item.task_id === continuity.task_id);
-  assert.equal(codingTask.domain, 'coding', 'continuity shadow changed the deterministic branch');
+  const first = await submitAndWait('#home-request', 1);
+  const snapshot = first.snapshot;
+  assert.equal(snapshot.managerShadow.length, 0, 'authoritative requests must not write transitional shadow rows');
+  assert.equal(snapshot.managerFlights.length, 1, 'one prompt should create one authoritative flight');
+  const flight = snapshot.managerFlights[0];
+  const stages = snapshot.managerStages
+    .filter((stage) => stage.flight_id === flight.id)
+    .sort((left, right) => left.sequence - right.sequence);
+  const stageNames = stages.map((stage) => stage.stage);
+  assert.deepEqual(stageNames.slice(0, 5), ['route', 'continuity', 'retrieval', 'memory', 'respond']);
+  assert.ok(stages.every((stage) => stage.status === 'succeeded'), JSON.stringify(stages));
+  assert.equal(flight.total_latency_ms, stages.reduce((total, stage) => total + stage.latency_ms, 0));
+  const task = snapshot.tasks.find((item) => item.task_id === flight.task_id);
+  assert.equal(task?.status, 'done', `manager-controlled greeting did not finish: ${JSON.stringify(task)}`);
+  assert.equal(task?.domain, 'general');
+  const assistant = snapshot.messages.find((message) => message.task_id === flight.task_id && message.role === 'assistant');
+  assert.ok(assistant?.content, 'manager-controlled local answer was not rendered');
+  assert.equal(snapshot.memories.length, 0, 'a greeting must not become a durable profile memory');
+  assert.ok(snapshot.incidents.some((incident) => incident.kind === 'wrong_memory'),
+    'the rejected manager memory should remain visible for troubleshooting');
+  await page.locator('#chat-messages').getByText(assistant.content, { exact: true }).waitFor();
 
-  await page.locator('[data-view="home"]').click();
-  const reopenStarted = Date.now();
-  await page.locator('#home-request').fill('Update tictactoe');
-  await page.locator('#home-request').press('Enter');
-  await page.locator('#context-route-status').getByText('Reopened', { exact: false }).waitFor();
-  const reopenVisible = Date.now() - reopenStarted;
-  const retrievalDeadline = Date.now() + 30_000;
-  do {
-    snapshot = await page.evaluate(async () => window.grover.snapshot());
-    if (snapshot.managerShadow.length === 6) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  } while (Date.now() < retrievalDeadline);
-  const retrievalElapsed = Date.now() - reopenStarted;
-  assert.equal(snapshot.managerShadow.length, 6, 'route, continuity, and retrieval decisions were not recorded');
-  const retrieval = snapshot.managerShadow.find((item) => item.manager_task === 'retrieval');
-  assert.ok(retrieval);
-  assert.notEqual(retrieval.status, 'failed');
-  assert.ok(reopenVisible <= 1_000, `deterministic reopen took ${reopenVisible}ms to appear`);
-  assert.equal(snapshot.conversations.filter((item) => item.context === 'coding' && /tictactoe/i.test(item.title)).length, 1,
-    'retrieval shadow created a duplicate project conversation');
-  await page.screenshot({ path: join(resultDir, 'manager-shadow-live.png'), fullPage: true });
+  const warmed = await submitAndWait('#context-request', 2);
+  const exactRepeat = await submitAndWait('#context-request', 3);
+  const repeatFlight = exactRepeat.snapshot.managerFlights[0];
+  const repeatStages = exactRepeat.snapshot.managerStages
+    .filter((stage) => stage.flight_id === repeatFlight.id)
+    .sort((left, right) => left.sequence - right.sequence);
+  assert.deepEqual(repeatStages.map((stage) => stage.stage), ['route', 'continuity', 'retrieval', 'memory', 'respond']);
+  assert.ok(repeatStages.every((stage) => stage.latency_ms === 0), JSON.stringify(repeatStages));
+  const repeatAnswer = exactRepeat.snapshot.messages.find(
+    (message) => message.task_id === repeatFlight.task_id && message.role === 'assistant',
+  );
+  assert.equal(repeatAnswer?.content, assistant.content, 'exact cache changed the validated manager answer');
+  await page.screenshot({ path: screenshotPath, fullPage: true });
   assert.deepEqual(errors, []);
-  console.log(`Local greeting ${helloVisible}ms; Coding branch ${branchVisible}ms; route plus continuity ${continuityElapsed}ms; existing-project reopen ${reopenVisible}ms; three-stage shadow ${retrievalElapsed}ms; screenshot: ${join(resultDir, 'manager-shadow-live.png')}`);
+
+  const measurement = {
+    cold_end_to_end_ms: first.elapsedMs,
+    recorded_total_ms: flight.total_latency_ms,
+    stages: stages.map((stage) => ({ stage: stage.stage, latency_ms: stage.latency_ms })),
+    warm_state_fill_ms: warmed.elapsedMs,
+    exact_repeat_ms: exactRepeat.elapsedMs,
+    exact_repeat_recorded_ms: repeatFlight.total_latency_ms,
+    answer: assistant.content,
+    model_hash: flight.model_hash,
+    screenshot: screenshotPath,
+  };
+  console.log(`Authoritative manager smoke passed: ${JSON.stringify(measurement)}`);
 } finally {
   await application.close();
 }
