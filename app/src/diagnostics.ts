@@ -311,6 +311,20 @@ export class DiagnosticsService {
     });
   }
 
+  captureManagerMemoryPolicyRejection(taskId: string, scope: string | null, reason: string): string {
+    const flight = this.db.prepare('SELECT id FROM manager_flights WHERE task_id = ?').get(taskId) as { id: string } | undefined;
+    const stage = flight ? this.db.prepare(
+      "SELECT id FROM manager_stage_records WHERE flight_id = ? AND stage = 'memory' ORDER BY attempt DESC LIMIT 1"
+    ).get(flight.id) as { id: string } | undefined : undefined;
+    return this.recordIncident({
+      flightId: flight?.id, taskId, stageRecordId: stage?.id,
+      kind: 'wrong_memory', severity: 'medium',
+      fingerprint: automaticFingerprint('wrong_memory', `durability policy rejected ${scope ?? 'unknown'}`, 'memory'),
+      summary: 'The manager proposed a memory that did not pass the durable-memory policy.',
+      diagnostic: { scope, reason }, occurrence: { scope },
+    });
+  }
+
   reportProblem(
     taskId: string,
     kind: IncidentKind,
