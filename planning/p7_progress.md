@@ -193,3 +193,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Rewrite `app/test/live-manager-shadow.mjs` around the current manager flight records and measure real stage/total latency before choosing an optimization.
 
 **Any risks or weirdness:** Incident summary rows are intentionally durable and small. An unresolved incident can pin its current flight indefinitely; resolving/closing it permits later aging unless a regression or retained occurrence still references that trace.
+
+## 2026-08-25 — authoritative live manager and behavior-preserving warm path
+
+**What changed:** Replaced the obsolete shadow smoke with a rendered authoritative lifecycle smoke. The client now holds a 256-entry in-memory LRU of exact, already-validated manager outputs; keys are hashes of the complete task/input and every miss runs the full model. Flights label cache hits. The no-history continuity edge accepts only the model's observed targetless `start_new` spelling and omitted null project field. A manager memory create that lacks a durable source statement is refused and linked to a visible `wrong_memory` incident.
+
+**What I verified:** All 86 deterministic checks pass. A live 18-case protected sample—two cases for each of route, continuity, retrieval, memory, execution, clarification, brief, supervision, and response—remained exact; each exact repeat used the cache without a second model call. The rendered Electron greeting completed all five authoritative stages in 5.402 seconds cold, 2.162 seconds after state warming, and 0.228 seconds on exact repeat with zero recorded inference milliseconds. The manager-owned answer stayed identical, `The user said Hello.` was not stored, the rejection appeared in troubleshooting, and evidence is at `app/test-results/manager-authority-live.png`.
+
+**What is still open:** Novel full-chain prompts remain above the three-second aspiration because five separately trained contracts run sequentially. Reaching sub-three-second novel behavior requires a newly trained consolidated lifecycle contract or smaller parity-proven student, not rule bypasses. Root/app/training documentation and the Windows portable candidate still need refresh.
+
+**What the next person should do:** Update the stale shadow-only documentation, then package the verified manager runtime/model with the next release candidate and run deterministic, rendered, parity, authoritative-manager, and portable checks.
+
+**Any risks or weirdness:** JSON-schema-constrained generation was tested and rejected because it changed a protected continuity `search_needed` result. Cache contents are process-local only, bounded, and contain validated outputs; personal state is not persisted into a new cache table. The cold measurement naturally varies with laptop power state.

@@ -136,17 +136,19 @@ export type RespondDecision = {
   };
 };
 
+export type ManagerInferenceResult<T> = { output: T; latencyMs: number; cacheHit?: boolean };
+
 export interface ManagerPlanner {
   status(): ManagerStatus;
-  inferRoute(input: Record<string, unknown>): Promise<{ output: RouteDecision; latencyMs: number }>;
-  inferContinuity?(input: Record<string, unknown>): Promise<{ output: ContinuityDecision; latencyMs: number }>;
-  inferRetrieval?(input: Record<string, unknown>): Promise<{ output: RetrievalDecision; latencyMs: number }>;
-  inferMemory?(input: Record<string, unknown>): Promise<{ output: MemoryDecision; latencyMs: number }>;
-  inferExecution?(input: Record<string, unknown>): Promise<{ output: ExecutionDecision; latencyMs: number }>;
-  inferClarify?(input: Record<string, unknown>): Promise<{ output: ClarifyDecision; latencyMs: number }>;
-  inferBrief?(input: Record<string, unknown>): Promise<{ output: BriefDecision; latencyMs: number }>;
-  inferSupervise?(input: Record<string, unknown>): Promise<{ output: SuperviseDecision; latencyMs: number }>;
-  inferRespond?(input: Record<string, unknown>): Promise<{ output: RespondDecision; latencyMs: number }>;
+  inferRoute(input: Record<string, unknown>): Promise<ManagerInferenceResult<RouteDecision>>;
+  inferContinuity?(input: Record<string, unknown>): Promise<ManagerInferenceResult<ContinuityDecision>>;
+  inferRetrieval?(input: Record<string, unknown>): Promise<ManagerInferenceResult<RetrievalDecision>>;
+  inferMemory?(input: Record<string, unknown>): Promise<ManagerInferenceResult<MemoryDecision>>;
+  inferExecution?(input: Record<string, unknown>): Promise<ManagerInferenceResult<ExecutionDecision>>;
+  inferClarify?(input: Record<string, unknown>): Promise<ManagerInferenceResult<ClarifyDecision>>;
+  inferBrief?(input: Record<string, unknown>): Promise<ManagerInferenceResult<BriefDecision>>;
+  inferSupervise?(input: Record<string, unknown>): Promise<ManagerInferenceResult<SuperviseDecision>>;
+  inferRespond?(input: Record<string, unknown>): Promise<ManagerInferenceResult<RespondDecision>>;
   onStatus?(listener: () => void): void;
 }
 
@@ -227,18 +229,30 @@ export function validateContinuityDecision(
   currentConversationId?: string | null,
 ): ContinuityDecision {
   if (!value || typeof value !== 'object') throw new Error('Manager output is not an object.');
-  const envelope = value as Record<string, unknown>;
+  let envelope = value as Record<string, unknown>;
   if (!hasExactKeys(envelope, ['schema_version', 'task', 'decision']) || envelope.schema_version !== '1.0' || envelope.task !== 'continuity') {
     throw new Error('Manager continuity envelope does not match schema v1.');
   }
   if (!envelope.decision || typeof envelope.decision !== 'object') throw new Error('Manager continuity decision is missing.');
-  const decision = envelope.decision as Record<string, unknown>;
+  let decision = envelope.decision as Record<string, unknown>;
+  if (decision.action === 'start_new' && decision.target_conversation_id === null &&
+      (!Object.hasOwn(decision, 'target_project_id') || decision.target_project_id === null)) {
+    decision = { ...decision, action: 'create' };
+    envelope = { ...envelope, decision };
+  }
+  if (!Object.hasOwn(decision, 'target_project_id') && decision.target_conversation_id === null) {
+    decision = { ...decision, target_project_id: null };
+    envelope = { ...envelope, decision };
+  }
   if (!hasExactKeys(decision, [
     'action', 'target_conversation_id', 'target_project_id', 'search_needed', 'confidence', 'rationale_codes',
-  ])) throw new Error('Manager continuity decision has missing or unexpected fields.');
+  ])) throw new Error(`Manager continuity decision has missing or unexpected fields: ${Object.keys(decision).sort().join(', ') || '[none]'}.`);
   if (!new Set(['continue', 'reopen', 'create', 'branch', 'clarify']).has(String(decision.action)) ||
       typeof decision.search_needed !== 'boolean' || !new Set(['high', 'medium', 'low']).has(String(decision.confidence))) {
-    throw new Error('Manager continuity decision contains an unknown enum value.');
+    throw new Error(
+      `Manager continuity decision contains an unknown enum value: action=${String(decision.action)}, ` +
+      `search_needed_type=${typeof decision.search_needed}, confidence=${String(decision.confidence)}.`,
+    );
   }
   if (!Array.isArray(decision.rationale_codes) || !decision.rationale_codes.length ||
       decision.rationale_codes.some((code) => typeof code !== 'string' || !/^[a-z0-9_:-]+$/.test(code))) {
@@ -259,7 +273,7 @@ export function validateContinuityDecision(
   } else if (conversationId !== null || projectId !== null) {
     throw new Error('Manager continuity supplied a target for a targetless action.');
   }
-  return value as ContinuityDecision;
+  return envelope as ContinuityDecision;
 }
 
 function validUniqueStrings(value: unknown, maxItems = 16): value is string[] {
@@ -280,7 +294,7 @@ export function validateRetrievalDecision(
   const decision = envelope.decision as Record<string, unknown>;
   if (!hasExactKeys(decision, [
     'conversation_ids', 'project_ids', 'memory_ids', 'search_queries', 'untrusted_ids', 'confidence', 'rationale_codes',
-  ])) throw new Error('Manager retrieval decision has missing or unexpected fields.');
+  ])) throw new Error(`Manager retrieval decision has missing or unexpected fields: ${Object.keys(decision).sort().join(', ') || '[none]'}.`);
   for (const field of ['conversation_ids', 'project_ids', 'memory_ids', 'untrusted_ids']) {
     if (!validUniqueStrings(decision[field], 8)) throw new Error(`Manager retrieval ${field} is invalid.`);
   }
@@ -512,6 +526,8 @@ export class ManagerHttpClient {
   private readonly endpoint: string;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
+  private readonly validatedCache = new Map<string, unknown>();
+  private readonly cacheLimit = 256;
 
   constructor(endpoint: string, apiKey: string, timeoutMs = 45_000) {
     this.endpoint = endpoint;
@@ -530,78 +546,118 @@ export class ManagerHttpClient {
     }
   }
 
-  async inferRoute(input: Record<string, unknown>): Promise<{ output: RouteDecision; latencyMs: number }> {
-    const result = await this.complete('route', input, 64);
-    return { output: validateRouteDecision(result.parsed), latencyMs: result.latencyMs };
-  }
-
-  async inferContinuity(input: Record<string, unknown>): Promise<{ output: ContinuityDecision; latencyMs: number }> {
-    const result = await this.complete('continuity', input, 96);
-    const current = input.current_conversation as { id?: unknown } | null;
-    const candidates = Array.isArray(input.candidate_conversations) ? input.candidate_conversations as Record<string, unknown>[] : [];
-    const allowedTargets = new Map<string, string | null>();
-    if (current && typeof current.id === 'string') allowedTargets.set(current.id, null);
-    for (const candidate of candidates) {
-      if (typeof candidate.id === 'string') {
-        allowedTargets.set(candidate.id, typeof candidate.project_id === 'string' ? candidate.project_id : null);
-      }
+  private async cached<T>(
+    task: ManagerTask,
+    input: Record<string, unknown>,
+    produce: () => Promise<{ output: T; latencyMs: number }>,
+  ): Promise<ManagerInferenceResult<T>> {
+    const key = createHash('sha256').update(`${task}\n${sortedJson(input)}`, 'utf8').digest('hex');
+    const cached = this.validatedCache.get(key) as T | undefined;
+    if (cached !== undefined) {
+      this.validatedCache.delete(key);
+      this.validatedCache.set(key, cached);
+      return { output: structuredClone(cached), latencyMs: 0, cacheHit: true };
     }
-    return {
-      output: validateContinuityDecision(
-        result.parsed, allowedTargets, current && typeof current.id === 'string' ? current.id : null,
-      ),
-      latencyMs: result.latencyMs,
-    };
+    const result = await produce();
+    this.validatedCache.set(key, structuredClone(result.output));
+    while (this.validatedCache.size > this.cacheLimit) {
+      const oldest = this.validatedCache.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.validatedCache.delete(oldest);
+    }
+    return { ...result, cacheHit: false };
   }
 
-  async inferRetrieval(input: Record<string, unknown>): Promise<{ output: RetrievalDecision; latencyMs: number }> {
-    const result = await this.complete('retrieval', input, 128);
-    const candidates = input.candidates as Record<string, unknown>;
-    const records = (field: string) => Array.isArray(candidates?.[field]) ? candidates[field] as Record<string, unknown>[] : [];
-    const conversations = records('conversations');
-    const projects = records('projects');
-    const memories = records('memories');
-    const untrusted = [...conversations, ...projects, ...memories]
-      .filter((candidate) => candidate.trusted === false && typeof candidate.id === 'string');
-    return {
-      output: validateRetrievalDecision(result.parsed, {
-        conversations: new Set(conversations.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
-        projects: new Set(projects.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
-        memories: new Set(memories.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
-        untrusted: new Set(untrusted.map((candidate) => candidate.id as string)),
-      }),
-      latencyMs: result.latencyMs,
-    };
+  async inferRoute(input: Record<string, unknown>): Promise<ManagerInferenceResult<RouteDecision>> {
+    return this.cached('route', input, async () => {
+      const result = await this.complete('route', input, 64);
+      return { output: validateRouteDecision(result.parsed), latencyMs: result.latencyMs };
+    });
   }
 
-  async inferMemory(input: Record<string, unknown>): Promise<{ output: MemoryDecision; latencyMs: number }> {
-    const result = await this.complete('memory', input, 104);
-    return { output: validateMemoryDecision(result.parsed, input), latencyMs: result.latencyMs };
+  async inferContinuity(input: Record<string, unknown>): Promise<ManagerInferenceResult<ContinuityDecision>> {
+    return this.cached('continuity', input, async () => {
+      const result = await this.complete('continuity', input, 96);
+      const current = input.current_conversation as { id?: unknown } | null;
+      const candidates = Array.isArray(input.candidate_conversations) ? input.candidate_conversations as Record<string, unknown>[] : [];
+      const allowedTargets = new Map<string, string | null>();
+      if (current && typeof current.id === 'string') allowedTargets.set(current.id, null);
+      for (const candidate of candidates) {
+        if (typeof candidate.id === 'string') {
+          allowedTargets.set(candidate.id, typeof candidate.project_id === 'string' ? candidate.project_id : null);
+        }
+      }
+      return {
+        output: validateContinuityDecision(
+          result.parsed, allowedTargets, current && typeof current.id === 'string' ? current.id : null,
+        ),
+        latencyMs: result.latencyMs,
+      };
+    });
   }
 
-  async inferExecution(input: Record<string, unknown>): Promise<{ output: ExecutionDecision; latencyMs: number }> {
-    const result = await this.complete('execution', input, 96);
-    return { output: validateExecutionDecision(result.parsed, input), latencyMs: result.latencyMs };
+  async inferRetrieval(input: Record<string, unknown>): Promise<ManagerInferenceResult<RetrievalDecision>> {
+    return this.cached('retrieval', input, async () => {
+      const result = await this.complete('retrieval', input, 128);
+      const candidates = input.candidates as Record<string, unknown>;
+      const records = (field: string) => Array.isArray(candidates?.[field]) ? candidates[field] as Record<string, unknown>[] : [];
+      const conversations = records('conversations');
+      const projects = records('projects');
+      const memories = records('memories');
+      const untrusted = [...conversations, ...projects, ...memories]
+        .filter((candidate) => candidate.trusted === false && typeof candidate.id === 'string');
+      return {
+        output: validateRetrievalDecision(result.parsed, {
+          conversations: new Set(conversations.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
+          projects: new Set(projects.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
+          memories: new Set(memories.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
+          untrusted: new Set(untrusted.map((candidate) => candidate.id as string)),
+        }),
+        latencyMs: result.latencyMs,
+      };
+    });
   }
 
-  async inferClarify(input: Record<string, unknown>): Promise<{ output: ClarifyDecision; latencyMs: number }> {
-    const result = await this.complete('clarify', input, 96);
-    return { output: validateClarifyDecision(result.parsed), latencyMs: result.latencyMs };
+  async inferMemory(input: Record<string, unknown>): Promise<ManagerInferenceResult<MemoryDecision>> {
+    return this.cached('memory', input, async () => {
+      const result = await this.complete('memory', input, 104);
+      return { output: validateMemoryDecision(result.parsed, input), latencyMs: result.latencyMs };
+    });
   }
 
-  async inferBrief(input: Record<string, unknown>): Promise<{ output: BriefDecision; latencyMs: number }> {
-    const result = await this.complete('brief', input, 160);
-    return { output: validateBriefDecision(result.parsed, input), latencyMs: result.latencyMs };
+  async inferExecution(input: Record<string, unknown>): Promise<ManagerInferenceResult<ExecutionDecision>> {
+    return this.cached('execution', input, async () => {
+      const result = await this.complete('execution', input, 96);
+      return { output: validateExecutionDecision(result.parsed, input), latencyMs: result.latencyMs };
+    });
   }
 
-  async inferSupervise(input: Record<string, unknown>): Promise<{ output: SuperviseDecision; latencyMs: number }> {
-    const result = await this.complete('supervise', input, 96);
-    return { output: validateSuperviseDecision(result.parsed, input), latencyMs: result.latencyMs };
+  async inferClarify(input: Record<string, unknown>): Promise<ManagerInferenceResult<ClarifyDecision>> {
+    return this.cached('clarify', input, async () => {
+      const result = await this.complete('clarify', input, 96);
+      return { output: validateClarifyDecision(result.parsed), latencyMs: result.latencyMs };
+    });
   }
 
-  async inferRespond(input: Record<string, unknown>): Promise<{ output: RespondDecision; latencyMs: number }> {
-    const result = await this.complete('respond', input, 88);
-    return { output: validateRespondDecision(result.parsed, input), latencyMs: result.latencyMs };
+  async inferBrief(input: Record<string, unknown>): Promise<ManagerInferenceResult<BriefDecision>> {
+    return this.cached('brief', input, async () => {
+      const result = await this.complete('brief', input, 160);
+      return { output: validateBriefDecision(result.parsed, input), latencyMs: result.latencyMs };
+    });
+  }
+
+  async inferSupervise(input: Record<string, unknown>): Promise<ManagerInferenceResult<SuperviseDecision>> {
+    return this.cached('supervise', input, async () => {
+      const result = await this.complete('supervise', input, 96);
+      return { output: validateSuperviseDecision(result.parsed, input), latencyMs: result.latencyMs };
+    });
+  }
+
+  async inferRespond(input: Record<string, unknown>): Promise<ManagerInferenceResult<RespondDecision>> {
+    return this.cached('respond', input, async () => {
+      const result = await this.complete('respond', input, 88);
+      return { output: validateRespondDecision(result.parsed, input), latencyMs: result.latencyMs };
+    });
   }
 
   private async complete(task: ManagerTask, input: Record<string, unknown>, nPredict: number): Promise<{ parsed: unknown; latencyMs: number }> {
@@ -730,7 +786,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     }
   }
 
-  async inferRoute(input: Record<string, unknown>): Promise<{ output: RouteDecision; latencyMs: number }> {
+  async inferRoute(input: Record<string, unknown>): Promise<ManagerInferenceResult<RouteDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferRoute(input);
@@ -738,7 +794,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     return result;
   }
 
-  async inferContinuity(input: Record<string, unknown>): Promise<{ output: ContinuityDecision; latencyMs: number }> {
+  async inferContinuity(input: Record<string, unknown>): Promise<ManagerInferenceResult<ContinuityDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferContinuity(input);
@@ -746,7 +802,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     return result;
   }
 
-  async inferRetrieval(input: Record<string, unknown>): Promise<{ output: RetrievalDecision; latencyMs: number }> {
+  async inferRetrieval(input: Record<string, unknown>): Promise<ManagerInferenceResult<RetrievalDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferRetrieval(input);
@@ -754,7 +810,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     return result;
   }
 
-  async inferMemory(input: Record<string, unknown>): Promise<{ output: MemoryDecision; latencyMs: number }> {
+  async inferMemory(input: Record<string, unknown>): Promise<ManagerInferenceResult<MemoryDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferMemory(input);
@@ -762,7 +818,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     return result;
   }
 
-  async inferExecution(input: Record<string, unknown>): Promise<{ output: ExecutionDecision; latencyMs: number }> {
+  async inferExecution(input: Record<string, unknown>): Promise<ManagerInferenceResult<ExecutionDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferExecution(input);
@@ -770,7 +826,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     return result;
   }
 
-  async inferClarify(input: Record<string, unknown>): Promise<{ output: ClarifyDecision; latencyMs: number }> {
+  async inferClarify(input: Record<string, unknown>): Promise<ManagerInferenceResult<ClarifyDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferClarify(input);
@@ -778,7 +834,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     return result;
   }
 
-  async inferBrief(input: Record<string, unknown>): Promise<{ output: BriefDecision; latencyMs: number }> {
+  async inferBrief(input: Record<string, unknown>): Promise<ManagerInferenceResult<BriefDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferBrief(input);
@@ -786,7 +842,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     return result;
   }
 
-  async inferSupervise(input: Record<string, unknown>): Promise<{ output: SuperviseDecision; latencyMs: number }> {
+  async inferSupervise(input: Record<string, unknown>): Promise<ManagerInferenceResult<SuperviseDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferSupervise(input);
@@ -794,7 +850,7 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
     return result;
   }
 
-  async inferRespond(input: Record<string, unknown>): Promise<{ output: RespondDecision; latencyMs: number }> {
+  async inferRespond(input: Record<string, unknown>): Promise<ManagerInferenceResult<RespondDecision>> {
     await this.start();
     if (!this.client || this.current.state !== 'ready') throw new Error(this.current.detail);
     const result = await this.client.inferRespond(input);

@@ -306,6 +306,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** A stale unpinned flight and its stages will be removed, unresolved and regression-linked flights will remain, a 25-occurrence incident will retain three old details plus its lifetime count, and a 25-run case will retain the newest 20. **Result: confirmed by 86 deterministic checks.**
 
+## 2026-08-25 — Exact validated cache and fail-visible manager contract guards
+
+**Decision:** Keep the full manager lifecycle authoritative for every meaningful request. Cache at most 256 already-validated manager outputs in memory, keyed by a SHA-256 of the exact task and exact sorted input; any state/request difference or process restart is a full inference miss. Flights retain all stages and mark cache hits. At the contract boundary, normalize only the observed targetless continuity spelling `start_new` to `create` and an omitted `target_project_id` to null when `target_conversation_id` is explicitly null. Reject non-explicit manager memory creation when the source request lacks a durable profile/context/project signal, and open a linked `wrong_memory` incident instead of silently storing or discarding it.
+
+**Why:** The first real authoritative greeting exposed two gaps absent from the synthetic curriculum: a semantically equivalent continuity spelling and a false durable memory (`The user said Hello.`). Forcing JSON-schema grammar fixed shape but changed a protected continuity decision, so that approach was rejected. Exact cache reuse improves repeated/local workflows without substituting rules for manager reasoning; narrow structural translation and durability enforcement preserve the manager's semantic authority while preventing invalid state.
+
+**Prediction (checked at this slice exit):** Known protected outputs will remain exact, a no-history greeting will complete through route/continuity/retrieval/memory/respond, the greeting will not enter memory, its rejected proposal will be visible in troubleshooting, and an exact repeated request/state will retain all five stages with no new model call. **Result: confirmed.** Eighteen protected cases (two per trained capability) remained exact and their repeats were cache hits. The real Electron path measured 5.402 seconds cold, 2.162 seconds after state warming, and 0.228 seconds for the exact repeat; the repeat recorded all five stages at zero inference milliseconds. The rejected grammar experiment changed `search_needed` on a protected case and is not present in the implementation.
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.

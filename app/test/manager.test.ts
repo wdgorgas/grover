@@ -56,6 +56,20 @@ test('continuity validation rejects invented conversation and project IDs', () =
   };
   const targets = new Map([['conv_known', 'proj_known']]);
   assert.deepEqual(validateContinuityDecision(output, targets), output);
+  const targetlessWithoutProject = {
+    schema_version: '1.0', task: 'continuity',
+    decision: {
+      action: 'start_new', target_conversation_id: null, search_needed: false,
+      confidence: 'high', rationale_codes: ['new_conversation'],
+    },
+  };
+  const normalizedTargetless = validateContinuityDecision(targetlessWithoutProject, new Map());
+  assert.equal(normalizedTargetless.decision.action, 'create');
+  assert.equal(normalizedTargetless.decision.target_project_id, null);
+  const { target_project_id: _omitted, ...missingProjectTarget } = output.decision;
+  assert.throws(() => validateContinuityDecision({
+    ...output, decision: missingProjectTarget,
+  }, targets), /missing or unexpected/);
   assert.throws(
     () => validateContinuityDecision(
       { ...output, decision: { ...output.decision, target_conversation_id: 'conv_invented' } },
@@ -180,14 +194,18 @@ test('all trained manager lifecycle tasks validate only supplied application sta
 test('manager HTTP client authenticates backend requests and validates the response', async () => {
   const key = 'test-secret-key';
   let observedOrigin: string | undefined;
+  let requestCount = 0;
   const server = createServer((request, response) => {
+    requestCount += 1;
     assert.equal(request.headers.authorization, `Bearer ${key}`);
     observedOrigin = request.headers.origin;
     let body = '';
     request.setEncoding('utf8');
     request.on('data', (chunk) => { body += chunk; });
     request.on('end', () => {
-      assert.match(JSON.parse(body).prompt, /TASK: route/);
+      const parsed = JSON.parse(body);
+      assert.match(parsed.prompt, /TASK: route/);
+      assert.equal(parsed.json_schema, undefined);
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ content: JSON.stringify(route) }));
     });
@@ -197,8 +215,15 @@ test('manager HTTP client authenticates backend requests and validates the respo
   assert.ok(address && typeof address === 'object');
   try {
     const client = new ManagerHttpClient(`http://127.0.0.1:${address.port}`, key);
-    const result = await client.inferRoute({ request: 'Code a game', current_context: 'general', current_conversation_summary: 'Hello' });
+    const input = { request: 'Code a game', current_context: 'general', current_conversation_summary: 'Hello' };
+    const result = await client.inferRoute(input);
     assert.deepEqual(result.output, route);
+    assert.equal(result.cacheHit, false);
+    const repeated = await client.inferRoute(input);
+    assert.deepEqual(repeated.output, route);
+    assert.equal(repeated.cacheHit, true);
+    assert.equal(repeated.latencyMs, 0);
+    assert.equal(requestCount, 1, 'exact validated input reuses the bounded in-memory result');
     assert.equal(observedOrigin, undefined, 'backend request must not act like a browser origin');
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -381,8 +406,8 @@ test('managed local response is used instead of a conflicting built-in answer', 
     }),
     inferMemory: async () => ({
       output: { schema_version: '1.0', task: 'memory', decision: {
-        operation: 'none', target_memory_id: null, scope: null, canonical_fact: null, sensitivity: null,
-        expires: false, confidence: 'high', rationale_codes: ['no_durable_fact'],
+        operation: 'create', target_memory_id: null, scope: 'global', canonical_fact: 'The user said Hello.',
+        sensitivity: 'private', expires: false, confidence: 'high', rationale_codes: ['durable_greeting'],
       } }, latencyMs: 1,
     }),
     inferRespond: async () => ({
@@ -411,6 +436,10 @@ test('managed local response is used instead of a conflicting built-in answer', 
   ).get(result.taskId) as { content: string };
   assert.equal(message.content, 'Manager-owned greeting.');
   assert.equal(delegated, false);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM memories').get() as { count: number }).count, 0);
+  const memoryIncident = db.prepare("SELECT kind, status FROM incidents WHERE kind = 'wrong_memory'").get() as
+    { kind: string; status: string };
+  assert.equal(memoryIncident.status, 'open');
 });
 
 test('managed memory decision automatically saves a high-confidence durable fact', async () => {

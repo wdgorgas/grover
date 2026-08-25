@@ -22,9 +22,11 @@ The learned manager is the semantic authority for meaningful requests. It owns r
 - Replay reconstructs the affected manager stage without duplicating raw request text in its snapshot. A satisfactory replay can be explicitly approved as an exact regression expectation; active cases can be rerun as a suite.
 - Profile memory and project memory are separate. Project records retain goals, requirements, decisions, outcomes, artifacts, next actions, status, provenance, expiry, and human-readable vault files. Project state is warm-started into manager retrieval instead of being flattened into profile facts.
 - Memory backup format v2 includes project records, project memories, artifacts, minimal project conversation identity, and Markdown vault notes.
+- A 256-entry process-local exact cache reuses only already-validated manager outputs when the complete task/input hash is identical; any changed state runs full inference. Cache hits remain visible as zero-latency flight stages.
+- Non-durable manager memory proposals are refused and become linked `wrong_memory` incidents instead of polluting the vault.
 - Existing event-spine, policy, kill-switch, budget, backup/restore, project isolation, and Builder evidence protections remain active.
 
-Latest verified baseline at this writing: 86 deterministic tests plus the rendered Electron smoke. The current working branch may be ahead while the active slice is being completed; use `git log --oneline -12` and `planning/p7_progress.md` for the newest committed evidence.
+Latest verified baseline at this writing: 86 deterministic tests, the rendered Electron smoke, 18 exact protected manager parity cases, and the rendered authoritative manager lifecycle smoke. The current working branch may be ahead while the active slice is being completed; use `git log --oneline -12` and `planning/p7_progress.md` for the newest committed evidence.
 
 ## Repository and local data boundaries
 
@@ -111,6 +113,7 @@ Use live/provider/Builder checks deliberately because they invoke actual local r
 ## Known limitations and honest risks
 
 - Full manager capability means several sequential local inferences. Accuracy/best-result behavior is the baseline; latency optimization must preserve replay parity and always fall back to the full manager.
+- Current real-laptop greeting evidence measured 5.402 seconds cold, 2.162 seconds after state warming, and 0.228 seconds for an exact request/state repeat. Novel full-chain sub-three-second behavior still needs a consolidated trained contract or smaller parity-proven student.
 - The protected 2,700-case manager report was excellent on schema/accuracy/authority, but sustained p95 was 6.1792 seconds. Interactive latency varies under laptop power/GPU pressure.
 - Exact replay currently targets manager stages. End-to-end specialist answer replay still needs bounded worker/artifact fixtures; a changed manager output is never automatically called fixed without explicit approval.
 - Calendar and other external account tools remain disconnected. Lifestyle scheduling is a later sub-app, not the product center.
@@ -120,11 +123,9 @@ Use live/provider/Builder checks deliberately because they invoke actual local r
 
 ## Remaining work in required order
 
-1. Measure per-stage live latency under the authoritative path. Add only behavior-proven optimizations such as exact cache reuse or consolidated calls; require regression/shadow parity and full-manager fallback.
-2. Rewrite the old live-manager shadow smoke as an authoritative lifecycle/flight smoke and capture screenshot/timing evidence.
-3. Update application/root READMEs and planning board to remove obsolete “shadow-only” wording.
-4. Bump the release candidate version, bundle or co-deliver the verified manager runtime/model, build the Windows portable executable, and run packaged plus live-manager smoke.
-5. Record final package hash/path, final test counts, Git commit, GitHub push, and five-line handoff here and in `planning/p7_progress.md`.
+1. Update application/root/training READMEs and planning board to remove obsolete “shadow-only” wording.
+2. Bump the release candidate version, bundle or co-deliver the verified manager runtime/model, build the Windows portable executable, and run packaged plus live-manager smoke.
+3. Record final package hash/path, final test counts, Git commit, GitHub push, and five-line handoff here and in `planning/p7_progress.md`.
 
 ## Safe resume procedure for the next developer
 

@@ -31,20 +31,21 @@ const execFileAsync = promisify(execFile);
 
 type SubmitInput = { text: string; context?: Context; conversationId?: string; engine?: string };
 type ManagedRoute = Route & { decisionId: string; tier: ModelTier; profile: EngineModelProfile };
+type ManagerPlanStage<T> = { input: Record<string, unknown>; output: T; latencyMs: number; cacheHit?: boolean };
 type ManagerEntryPlan = {
   intent: Intent;
   conversation: ConversationResolution;
   continuityCandidates: ConversationCandidate[];
   retrievalMemories: RetrievedMemory[];
   selectedMemories: RetrievedMemory[];
-  route: { input: Record<string, unknown>; output: RouteDecision; latencyMs: number };
-  continuity: { input: Record<string, unknown>; output: ContinuityDecision; latencyMs: number };
-  retrieval: { input: Record<string, unknown>; output: RetrievalDecision; latencyMs: number };
-  memory?: { input: Record<string, unknown>; output: MemoryDecision; latencyMs: number };
-  clarify?: { input: Record<string, unknown>; output: ClarifyDecision; latencyMs: number };
-  execution?: { input: Record<string, unknown>; output: ExecutionDecision; latencyMs: number };
-  brief?: { input: Record<string, unknown>; output: BriefDecision; latencyMs: number };
-  respond?: { input: Record<string, unknown>; output: RespondDecision; latencyMs: number };
+  route: ManagerPlanStage<RouteDecision>;
+  continuity: ManagerPlanStage<ContinuityDecision>;
+  retrieval: ManagerPlanStage<RetrievalDecision>;
+  memory?: ManagerPlanStage<MemoryDecision>;
+  clarify?: ManagerPlanStage<ClarifyDecision>;
+  execution?: ManagerPlanStage<ExecutionDecision>;
+  brief?: ManagerPlanStage<BriefDecision>;
+  respond?: ManagerPlanStage<RespondDecision>;
 };
 
 function truncate(value: string, max = 180): string {
@@ -71,6 +72,20 @@ function projectSlug(name: string): string {
 function requestsProjectMutation(text: string): boolean {
   return /\b(code|build|create|develop|implement|update|fix|debug|add|remove|refactor|write|ship|make)\b/i.test(text) ||
     /^\s*(?:do it|go ahead|make it so|apply that|implement that|yes[, ]+do that)\b/i.test(text);
+}
+
+function durableManagerMemoryRequest(text: string, scope: string | null, explicitlyRequested: boolean, intent: Intent): boolean {
+  if (explicitlyRequested) return true;
+  if (scope?.startsWith('project:')) return ['work', 'build'].includes(intent);
+  if (scope === 'ephemeral' || !scope) return false;
+  if (scope === 'global') {
+    return /\b(?:my name is|my major is|my (?:long[- ]term )?goal is|my next steps? (?:are|is)|i (?:want|plan) to become|i prefer|i like|i(?:'m| am)\b.{0,100}\b(?:student|researcher|engineer|developer))\b/i.test(text);
+  }
+  if (scope.startsWith('context:')) {
+    return !/\b(?:today|right now|at the moment|just this once)\b/i.test(text) &&
+      /\b(?:always|normally|usually|every\s+(?:day|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|i (?:prefer|like|take)|my (?:schedule|routine|habit|medication|income|salary|bank balance))\b/i.test(text);
+  }
+  return false;
 }
 
 export function findRepoRoot(start: string): string | null {
@@ -788,10 +803,14 @@ export class GroverCore extends EventEmitter {
         risk: /\b(delete|deploy|live trad|purchase|buy|security|credential|jackson-private)\b/i.test(text) ? 'high' : 'low',
       };
       const clarifyResult = await this.inferBeforeFlight(text, 'clarify', () => this.manager!.inferClarify!(clarifyInput));
-      clarify = { input: clarifyInput, output: clarifyResult.output, latencyMs: clarifyResult.latencyMs };
+      clarify = {
+        input: clarifyInput, output: clarifyResult.output, latencyMs: clarifyResult.latencyMs, cacheHit: clarifyResult.cacheHit,
+      };
       const executionInput = this.managerExecutionState(text, conversation.context, conversation.conversationId);
       const executionResult = await this.inferBeforeFlight(text, 'execution', () => this.manager!.inferExecution!(executionInput));
-      execution = { input: executionInput, output: executionResult.output, latencyMs: executionResult.latencyMs };
+      execution = {
+        input: executionInput, output: executionResult.output, latencyMs: executionResult.latencyMs, cacheHit: executionResult.cacheHit,
+      };
       if (executionResult.output.decision.response_mode !== 'delegate') {
         throw new Error('The local manager produced conflicting response and execution decisions. The request was stopped safely.');
       }
@@ -802,7 +821,7 @@ export class GroverCore extends EventEmitter {
           available_refs: this.managerAvailableRefs(conversation, retrievalResult.output, retrievalMemories),
         };
         const briefResult = await this.inferBeforeFlight(text, 'brief', () => this.manager!.inferBrief!(briefInput));
-        brief = { input: briefInput, output: briefResult.output, latencyMs: briefResult.latencyMs };
+        brief = { input: briefInput, output: briefResult.output, latencyMs: briefResult.latencyMs, cacheHit: briefResult.cacheHit };
       }
     }
     const plan: ManagerEntryPlan = {
@@ -811,11 +830,17 @@ export class GroverCore extends EventEmitter {
       continuityCandidates: continuityState.candidates,
       retrievalMemories,
       selectedMemories,
-      route: { input: routeInput, output: routeResult.output, latencyMs: routeResult.latencyMs },
-      continuity: { input: continuityState.input, output: continuityResult.output, latencyMs: continuityResult.latencyMs },
-      retrieval: { input: retrievalInput, output: retrievalResult.output, latencyMs: retrievalResult.latencyMs },
-      memory: { input: memoryInput, output: memoryResult.output, latencyMs: memoryResult.latencyMs },
-      respond: { input: respondInput, output: respondResult.output, latencyMs: respondResult.latencyMs },
+      route: { input: routeInput, output: routeResult.output, latencyMs: routeResult.latencyMs, cacheHit: routeResult.cacheHit },
+      continuity: {
+        input: continuityState.input, output: continuityResult.output, latencyMs: continuityResult.latencyMs,
+        cacheHit: continuityResult.cacheHit,
+      },
+      retrieval: {
+        input: retrievalInput, output: retrievalResult.output, latencyMs: retrievalResult.latencyMs,
+        cacheHit: retrievalResult.cacheHit,
+      },
+      memory: { input: memoryInput, output: memoryResult.output, latencyMs: memoryResult.latencyMs, cacheHit: memoryResult.cacheHit },
+      respond: { input: respondInput, output: respondResult.output, latencyMs: respondResult.latencyMs, cacheHit: respondResult.cacheHit },
       clarify,
       execution,
       brief,
@@ -832,7 +857,7 @@ export class GroverCore extends EventEmitter {
       requestHash,
       modelHash: this.manager?.status().modelHash,
     });
-    const stages: [ManagerStage, { input: Record<string, unknown>; output: unknown; latencyMs: number }][] = [
+    const stages: [ManagerStage, ManagerPlanStage<unknown>][] = [
       ['route', plan.route], ['continuity', plan.continuity], ['retrieval', plan.retrieval],
     ];
     if (plan.memory) stages.push(['memory', plan.memory]);
@@ -865,7 +890,7 @@ export class GroverCore extends EventEmitter {
               : []),
           };
       this.diagnostics.recordStage({
-        taskId, stage: managerTask, inputRefs: input, output: stage.output,
+        taskId, stage: managerTask, inputRefs: { ...input, cache_hit: Boolean(stage.cacheHit) }, output: stage.output,
         replayInput: stage.input, latencyMs: stage.latencyMs, modelHash: this.manager?.status().modelHash,
       });
       appendEvent(this.db, {
@@ -914,6 +939,10 @@ export class GroverCore extends EventEmitter {
     }
 
     if (!content) return null;
+    if (memory.operation === 'create' && !durableManagerMemoryRequest(text, memory.scope, explicitRemember, intent)) {
+      this.diagnostics.captureManagerMemoryPolicyRejection(taskId, memory.scope, 'The request did not contain a durable fact.');
+      return null;
+    }
     if (memory.scope?.startsWith('project:')) {
       const projectId = memory.scope.slice('project:'.length);
       const kind = /\bnext (?:step|action)|\btodo\b/i.test(content) ? 'next_action'
@@ -1285,6 +1314,7 @@ export class GroverCore extends EventEmitter {
     decision: SuperviseDecision,
     latencyMs: number,
     input: Record<string, unknown>,
+    cacheHit = false,
   ): void {
     this.diagnostics.recordStage({
       taskId, stage: 'supervise', attempt: sequence,
@@ -1295,6 +1325,7 @@ export class GroverCore extends EventEmitter {
         evidence_kinds: Array.isArray(input.evidence)
           ? (input.evidence as { kind?: unknown }[]).map((item) => item.kind).filter((kind) => typeof kind === 'string')
           : [],
+        cache_hit: cacheHit,
       }, replayInput: input, output: decision, latencyMs,
       modelHash: this.manager?.status().modelHash,
     });
@@ -1333,7 +1364,7 @@ export class GroverCore extends EventEmitter {
     };
     try {
       const result = await this.manager.inferSupervise(input);
-      this.recordManagerSupervision(taskId, context, retryCount, result.output, result.latencyMs, input);
+      this.recordManagerSupervision(taskId, context, retryCount, result.output, result.latencyMs, input, Boolean(result.cacheHit));
       return result.output;
     } catch (error) {
       this.diagnostics.recordStage({
