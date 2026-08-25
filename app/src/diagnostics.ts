@@ -47,6 +47,25 @@ type IncidentInput = {
 const PROMPT_VERSION = 'manager-v1';
 const APP_VERSION = '2.0.0-rc.3';
 const INTERACTIVE_LATENCY_TARGET_MS = 3_000;
+const DEFAULT_RETENTION_DAYS = 90;
+const MIN_OCCURRENCES_PER_INCIDENT = 3;
+const MAX_OCCURRENCES_PER_INCIDENT = 20;
+const MAX_REPLAYS_PER_CASE = 20;
+
+type RetentionOptions = {
+  now?: Date;
+  retentionDays?: number;
+  minimumOccurrences?: number;
+  maximumOccurrences?: number;
+  maximumReplays?: number;
+};
+
+export type RetentionResult = {
+  flights: number;
+  stages: number;
+  occurrences: number;
+  replays: number;
+};
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
@@ -88,6 +107,81 @@ export class DiagnosticsService {
 
   constructor(db: DatabaseSync) {
     this.db = db;
+    this.pruneRetention();
+  }
+
+  pruneRetention(options: RetentionOptions = {}): RetentionResult {
+    const now = options.now ?? new Date();
+    const retentionDays = Math.max(1, Math.trunc(options.retentionDays ?? DEFAULT_RETENTION_DAYS));
+    const minimumOccurrences = Math.max(1, Math.trunc(options.minimumOccurrences ?? MIN_OCCURRENCES_PER_INCIDENT));
+    const maximumOccurrences = Math.max(
+      minimumOccurrences, Math.trunc(options.maximumOccurrences ?? MAX_OCCURRENCES_PER_INCIDENT),
+    );
+    const maximumReplays = Math.max(1, Math.trunc(options.maximumReplays ?? MAX_REPLAYS_PER_CASE));
+    const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1_000).toISOString();
+    const result: RetentionResult = { flights: 0, stages: 0, occurrences: 0, replays: 0 };
+
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const incidentIds = this.db.prepare('SELECT id FROM incidents').all() as { id: string }[];
+      const occurrences = this.db.prepare(
+        'SELECT id, created_at FROM incident_occurrences WHERE incident_id = ? ORDER BY created_at DESC, rowid DESC'
+      );
+      const deleteOccurrence = this.db.prepare('DELETE FROM incident_occurrences WHERE id = ?');
+      for (const incident of incidentIds) {
+        const rows = occurrences.all(incident.id) as { id: string; created_at: string }[];
+        for (const [index, row] of rows.entries()) {
+          if (index < minimumOccurrences) continue;
+          if (index >= maximumOccurrences || row.created_at < cutoff) {
+            result.occurrences += Number(deleteOccurrence.run(row.id).changes);
+          }
+        }
+      }
+
+      const caseIds = this.db.prepare('SELECT id FROM regression_cases').all() as { id: string }[];
+      const replayRows = this.db.prepare(
+        'SELECT id FROM replay_runs WHERE case_id = ? ORDER BY created_at DESC, rowid DESC'
+      );
+      const deleteReplay = this.db.prepare('DELETE FROM replay_runs WHERE id = ?');
+      for (const regression of caseIds) {
+        const rows = replayRows.all(regression.id) as { id: string }[];
+        for (const row of rows.slice(maximumReplays)) {
+          result.replays += Number(deleteReplay.run(row.id).changes);
+        }
+      }
+
+      const flights = this.db.prepare(
+        `SELECT f.id FROM manager_flights f
+         WHERE f.state IN ('completed','failed','cancelled')
+           AND COALESCE(f.completed_at, f.updated_at) < ?
+           AND NOT EXISTS (
+             SELECT 1 FROM incidents i WHERE i.flight_id = f.id AND i.status != 'closed'
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM incidents i JOIN regression_cases r ON r.incident_id = i.id WHERE i.flight_id = f.id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM incident_occurrences o WHERE o.flight_id = f.id
+           )`
+      ).all(cutoff) as { id: string }[];
+      const detachClosedIncident = this.db.prepare(
+        `UPDATE incidents SET flight_id = NULL, stage_record_id = NULL
+         WHERE flight_id = ? AND status = 'closed'
+           AND NOT EXISTS (SELECT 1 FROM regression_cases r WHERE r.incident_id = incidents.id)`
+      );
+      const deleteStages = this.db.prepare('DELETE FROM manager_stage_records WHERE flight_id = ?');
+      const deleteFlight = this.db.prepare('DELETE FROM manager_flights WHERE id = ?');
+      for (const flight of flights) {
+        detachClosedIncident.run(flight.id);
+        result.stages += Number(deleteStages.run(flight.id).changes);
+        result.flights += Number(deleteFlight.run(flight.id).changes);
+      }
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   beginFlight(input: BeginFlightInput): string {

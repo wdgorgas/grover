@@ -181,3 +181,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Add retention rules that preserve open incidents and active regressions, then rewrite and run the live smoke through the complete authoritative lifecycle before attempting any behavior-preserving optimization.
 
 **Any risks or weirdness:** GitHub intentionally excludes the 1.83 GB prepared model and personal vault/database. `planning/GITHUB_HANDOFF.md` contains the exact cross-device runtime transfer and regeneration boundaries. The user-owned deletion of `JACKSON_START_HERE.md` remains unstaged.
+
+## 2026-08-25 — bounded troubleshooting retention
+
+**What changed:** Diagnostics now prune stale unpinned terminal flights after 90 days, preserve unresolved-incident and regression-linked traces, retain incident summaries/lifetime counts, keep the newest three detailed occurrences plus up to 20 recent ones, and cap replay history at 20 runs per case. Retention runs automatically at application startup inside one database transaction.
+
+**What I verified:** All 86 deterministic tests pass. A focused retention scenario removed only the stale unpinned flight/stage, retained both the unresolved and closed-but-regression-linked traces, reduced 25 old occurrence details to three without changing the lifetime count, and reduced 25 replay rows to 20.
+
+**What is still open:** Replace the stale shadow-only live manager smoke with an authoritative lifecycle measurement, run it on this laptop, and add only an optimization that preserves exact regression behavior and full-manager fallback. Documentation and the portable release still need refresh.
+
+**What the next person should do:** Rewrite `app/test/live-manager-shadow.mjs` around the current manager flight records and measure real stage/total latency before choosing an optimization.
+
+**Any risks or weirdness:** Incident summary rows are intentionally durable and small. An unresolved incident can pin its current flight indefinitely; resolving/closing it permits later aging unless a regression or retained occurrence still references that trace.
