@@ -329,10 +329,19 @@ function renderConversationWorkspace() {
   if (!state || !activeContext) return;
   const projectArea = $('#coding-project');
   const project = (state.projects ?? []).find((item) => item.conversation_id === activeConversationId);
+  const projectRecord = (state.projectRecords ?? []).find((item) => item.conversation_id === activeConversationId);
+  const scopedMemories = (state.projectMemories ?? []).filter((item) => item.project_id === projectRecord?.id);
   projectArea.classList.toggle('is-hidden', activeContext !== 'coding');
   $('#coding-project-path').textContent = project?.root_path ?? 'Created automatically when Coding begins making files.';
   $('#choose-project-folder').disabled = activeContext !== 'coding' || !activeConversationId;
   $('#open-project-folder').disabled = !project;
+  $('#project-overview').classList.toggle('is-hidden', !projectRecord);
+  if (projectRecord) {
+    $('#project-overview-name').textContent = projectRecord.name;
+    $('#project-overview-goal').textContent = `Goal: ${projectRecord.goal}`;
+    $('#project-overview-state').textContent = projectRecord.summary || projectRecord.current_state;
+    $('#project-overview-count').textContent = `${scopedMemories.length} project memories`;
+  }
   const mover = $('#move-conversation');
   mover.disabled = !activeConversationId;
   mover.value = activeContext;
@@ -616,7 +625,15 @@ function renderPolicies() {
 function render(next) {
   state = next;
   mergeCachedMessages(state.messages ?? []);
-  if (!$('#memory-search').value.trim()) memoryResults = state.memories ?? [];
+  if (!$('#memory-search').value.trim()) {
+    const projectNames = new Map((state.projectRecords ?? []).map((project) => [project.id, project.name]));
+    const projectRows = (state.projectMemories ?? []).map((memory) => ({
+      ...memory,
+      namespace: `project:${projectNames.get(memory.project_id) ?? memory.project_id}`,
+    }));
+    memoryResults = [...projectRows, ...(state.memories ?? [])]
+      .sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+  }
   renderContexts();
   renderEngines();
   renderPolicies();

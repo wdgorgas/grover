@@ -234,9 +234,9 @@ export function findConversationCandidates(
   if (!queryTokens.length) return [];
   const match = queryTokens.map((token) => `${token.replace(/[^a-z0-9]/g, '')}*`).filter(Boolean).join(' OR ');
   const rows = db.prepare(
-    `SELECT c.id, c.context, c.title, s.content, p.id AS project_id, bm25(conversation_search) AS rank
+    `SELECT c.id, c.context, c.title, p.id AS project_id, s.content, bm25(conversation_search) AS rank
      FROM conversation_search s JOIN conversations c ON c.id = s.conversation_id
-     LEFT JOIN projects p ON p.conversation_id = c.id
+     LEFT JOIN project_records p ON p.conversation_id = c.id
      WHERE conversation_search MATCH ? AND (? IS NULL OR c.context = ?) AND (? IS NULL OR c.id != ?)
      ORDER BY rank LIMIT 30`
   ).all(match, preferredContext ?? null, preferredContext ?? null, excludeId ?? null, excludeId ?? null) as
@@ -442,11 +442,19 @@ export function linkCodingProject(
     ).run(name, rootPath, createdAutomatically ? 1 : 0, now, conversationId);
     return { ...current, name, rootPath, createdAutomatically };
   }
-  const id = randomUUID();
+  const projectRecord = db.prepare('SELECT id FROM project_records WHERE conversation_id = ?').get(conversationId) as
+    { id: string } | undefined;
+  const id = projectRecord?.id ?? randomUUID();
   db.prepare(
     `INSERT INTO projects(id, conversation_id, context, name, root_path, created_automatically, created_at, updated_at)
      VALUES (?, ?, 'coding', ?, ?, ?, ?, ?)`
   ).run(id, conversationId, name, rootPath, createdAutomatically ? 1 : 0, now, now);
+  db.prepare(
+    `INSERT OR IGNORE INTO project_records
+      (id, conversation_id, context, name, goal, summary, current_state, status, created_at, updated_at)
+     VALUES (?, ?, 'coding', ?, ?, '', 'Project folder linked; work has not completed yet.', 'active', ?, ?)`
+  ).run(id, conversationId, name, name, now, now);
+  db.prepare('UPDATE project_records SET name = ?, updated_at = ? WHERE id = ?').run(name, now, id);
   return { id, conversationId, name, rootPath, createdAutomatically };
 }
 
@@ -810,9 +818,14 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
             vault_path, created_at, updated_at
      FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL ORDER BY updated_at DESC LIMIT 200`
   ).all();
-  const memoryTotal = (db.prepare(
+  const profileMemoryTotal = (db.prepare(
     'SELECT COUNT(*) AS count FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL'
   ).get() as { count: number }).count;
+  const projectMemoryTotal = (db.prepare(
+    `SELECT COUNT(*) AS count FROM project_memories WHERE deleted_at IS NULL AND superseded_by IS NULL
+     AND (expires_at IS NULL OR expires_at > ?)`
+  ).get(new Date().toISOString()) as { count: number }).count;
+  const memoryTotal = profileMemoryTotal + projectMemoryTotal;
   const memoryProposals = db.prepare(
     `SELECT id, namespace, proposed_operation, target_memory_id, status, provenance, sensitivity,
             rationale, proposed_content, created_at
@@ -880,6 +893,19 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
     'SELECT * FROM conversation_route_log ORDER BY created_at DESC LIMIT 200'
   ).all();
   const projects = db.prepare('SELECT * FROM projects ORDER BY updated_at DESC').all();
+  const projectRecords = db.prepare(
+    `SELECT id, conversation_id, context, name, goal, summary, current_state, status, created_at, updated_at
+     FROM project_records ORDER BY updated_at DESC LIMIT 200`
+  ).all();
+  const projectMemories = db.prepare(
+    `SELECT id, project_id, kind, content, source_task_id, provenance, verification_state, importance,
+            expires_at, vault_path, created_at, updated_at
+     FROM project_memories WHERE deleted_at IS NULL AND superseded_by IS NULL
+       AND (expires_at IS NULL OR expires_at > ?) ORDER BY updated_at DESC LIMIT 500`
+  ).all(new Date().toISOString());
+  const projectArtifacts = db.prepare(
+    'SELECT * FROM project_artifacts ORDER BY created_at DESC LIMIT 500'
+  ).all();
   const policyRules = db.prepare(
     'SELECT * FROM policy_registry WHERE active = 1 ORDER BY rule_id'
   ).all();
@@ -892,7 +918,8 @@ export function snapshot(db: DatabaseSync): Record<string, unknown> {
   return {
     tasks, features, events, memories, memoryTotal, memoryProposals, memoryNamespaces, costs, budget, engines, routing,
     managerShadow, managerFlights, managerStages, incidents, regressionCases, replayRuns, modelProfiles,
-    contextRouting, conversationRoutes, conversations, messages, projects, policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
+    contextRouting, conversationRoutes, conversations, messages, projects, projectRecords, projectMemories, projectArtifacts,
+    policyRules, policyDecisions, recoveryCards, contexts: CONTEXTS,
     settings: {
       killSwitch: getSetting(db, 'kill_switch') === 'true',
       workspaceRoot: getSetting(db, 'workspace_root'),

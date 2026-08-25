@@ -290,6 +290,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** A reported wrong route can reconstruct its original request without storing it in the replay snapshot, show a changed corrected decision, promote that decision, pass unchanged later, and reopen the incident when a later model regresses. **Result: confirmed by 81 deterministic checks and a green rendered desktop smoke.**
 
+## 2026-08-25 — Project memory stays scoped, portable, and manager-selected
+
+**Decision:** Every sustained work/build conversation has one context-neutral project record. Goals, requirements, decisions, outcomes, artifacts, next actions, status, and notes live in a separate project-memory index and human-readable `will-private/projects/<project-id>` vault folder. Local search warm-starts bounded project candidates before global profile facts; the manager chooses the useful IDs. Successful specialist work records an outcome, and verified Builder work records the commit artifact. Project state is included in backup format v2 while legacy v1 profile-only restores leave current project state untouched.
+
+**Why:** A project such as a finance product being built in Coding needs durable, isolated continuity without turning its whole history into personal profile facts or forcing the manager to scan every chat. Structured state gives later audit/reopen requests fast candidates, preserves provenance and corrections, and remains understandable and portable outside the database.
+
+**Prediction (checked at this slice exit):** Two projects will retrieve only their own state; manager-created requirements, worker outcomes, and artifacts will remain distinct; edits and expiry will update the active index; backup/restore will preserve records, searchable conversation identity, artifacts, and vault notes without exposing `jackson-private`. **Result: confirmed by 85 deterministic checks and the rendered Electron smoke.**
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.

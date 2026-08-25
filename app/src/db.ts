@@ -541,6 +541,62 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS projects_by_updated
 ON projects(updated_at DESC);
 
+-- Durable project identity and scoped memory are separate from Coding's
+-- optional filesystem folder. A project can live in any conversation context.
+CREATE TABLE IF NOT EXISTS project_records (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id),
+  context         TEXT NOT NULL CHECK (context IN
+                    ('general','coding','research','finance','health','business','builder')),
+  name            TEXT NOT NULL,
+  goal            TEXT NOT NULL,
+  summary         TEXT NOT NULL DEFAULT '',
+  current_state   TEXT NOT NULL DEFAULT '',
+  status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','completed','archived')),
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS project_memories (
+  id                 TEXT PRIMARY KEY,
+  project_id         TEXT NOT NULL REFERENCES project_records(id),
+  kind               TEXT NOT NULL CHECK (kind IN
+                       ('goal','requirement','decision','outcome','artifact','next_action','status','note')),
+  content            TEXT NOT NULL,
+  source_task_id     TEXT,
+  provenance         TEXT NOT NULL,
+  verification_state TEXT NOT NULL CHECK (verification_state IN ('manager','worker','verified','user')),
+  importance         TEXT NOT NULL DEFAULT 'normal',
+  expires_at         TEXT,
+  vault_path         TEXT,
+  superseded_by      TEXT,
+  deleted_at         TEXT,
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS project_memories_by_project
+ON project_memories(project_id, updated_at DESC);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS project_memories_fts USING fts5(
+  memory_id UNINDEXED,
+  project_id UNINDEXED,
+  content,
+  tokenize = 'porter unicode61'
+);
+
+CREATE TABLE IF NOT EXISTS project_artifacts (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES project_records(id),
+  task_id     TEXT,
+  kind        TEXT NOT NULL CHECK (kind IN ('folder','file','commit','report','link','other')),
+  uri_or_path TEXT NOT NULL,
+  summary     TEXT NOT NULL,
+  hash        TEXT,
+  created_at  TEXT NOT NULL,
+  UNIQUE(project_id, kind, uri_or_path)
+);
+
 INSERT OR IGNORE INTO budgets(id, soft_micro_usd, hard_micro_usd, enabled)
 VALUES ('development-phase', 25000000, 50000000, 1);
 
@@ -649,5 +705,9 @@ export function openDb(path: string): DatabaseSync {
       .join(' ').toLowerCase().replace(/\btic[\s-]+tac[\s-]+toe\b/g, 'tictactoe').replace(/[^a-z0-9]+/g, ' ').trim().slice(-24_000);
     insertSearch.run(conversation.id, conversation.context, content);
   }
+  db.exec(`INSERT OR IGNORE INTO project_records
+    (id, conversation_id, context, name, goal, summary, current_state, status, created_at, updated_at)
+    SELECT p.id, p.conversation_id, p.context, p.name, p.name, '', '', 'active', p.created_at, p.updated_at
+    FROM projects p`);
   return db;
 }

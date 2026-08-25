@@ -14,6 +14,7 @@ import type {
   RetrievalDecision, RouteDecision, SuperviseDecision,
 } from './manager.ts';
 import { PolicyService, type PolicyOrigin } from './policy.ts';
+import { ProjectMemoryService, type ProjectRecord } from './project-memory.ts';
 import {
   addAcceptanceCheck, addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
   completeRoutingDecision, createBuild, createTask, engineRanking,
@@ -115,6 +116,7 @@ export class GroverCore extends EventEmitter {
   readonly memory: MemoryService;
   readonly policy: PolicyService;
   readonly diagnostics: DiagnosticsService;
+  readonly projectMemory: ProjectMemoryService;
   readonly manager: ManagerPlanner | null;
   readonly dataDir: string;
   private workspaceRoot: string | null;
@@ -152,6 +154,7 @@ export class GroverCore extends EventEmitter {
     this.memory.autoApplyEligibleProposals();
     this.policy = new PolicyService(this.db);
     this.diagnostics = new DiagnosticsService(this.db);
+    this.projectMemory = new ProjectMemoryService(this.db, this.dataDir);
     this.recoverInterruptedBuilds();
   }
 
@@ -534,12 +537,15 @@ export class GroverCore extends EventEmitter {
     }
     mkdirSync(root, { recursive: false });
     root = this.checkedProjectRoot(root);
-    return linkCodingProject(this.db, conversationId, name, root, true);
+    const project = linkCodingProject(this.db, conversationId, name, root, true);
+    this.projectMemory.recordArtifact(project.id, null, 'folder', root, 'Coding project folder');
+    return project;
   }
 
   linkProjectFolder(conversationId: string, root: string): CodingProject {
     const actual = this.checkedProjectRoot(root);
     const project = linkCodingProject(this.db, conversationId, basename(actual), actual, false);
+    this.projectMemory.recordArtifact(project.id, null, 'folder', actual, 'Linked Coding project folder');
     this.changed();
     return project;
   }
@@ -563,7 +569,7 @@ export class GroverCore extends EventEmitter {
       'SELECT id, context, title FROM conversations WHERE id = ?'
     ).get(sourceConversationId) as { id: string; context: Context; title: string } | undefined : undefined;
     if (sourceConversationId && !current) throw new Error('That conversation is no longer available. Start a new one.');
-    const sourceProjectId = sourceConversationId ? getCodingProject(this.db, sourceConversationId)?.id ?? null : null;
+    const sourceProjectId = sourceConversationId ? this.projectMemory.getByConversation(sourceConversationId)?.id ?? null : null;
     const searched = candidates.map((candidate) => ({
       id: candidate.id, title: candidate.title, context: candidate.context,
       project_id: candidate.projectId, status: 'active',
@@ -591,7 +597,7 @@ export class GroverCore extends EventEmitter {
     candidates: ConversationCandidate[],
     memories: RetrievedMemory[],
   ): Record<string, unknown> {
-    const currentProject = getCodingProject(this.db, conversation.conversationId);
+    const currentProject = this.projectMemory.getByConversation(conversation.conversationId);
     const conversationCandidates = [
       {
         id: conversation.conversationId,
@@ -620,7 +626,9 @@ export class GroverCore extends EventEmitter {
         projects: [...projects.values()].slice(0, 8),
         memories: memories.slice(0, 8).map((memory) => ({
           id: memory.id,
-          scope: memory.category.startsWith('profile:') ? 'global' : `context:${conversation.context}`,
+          scope: memory.category.startsWith('project:')
+            ? memory.category.split(':').slice(0, 2).join(':')
+            : memory.category.startsWith('profile:') ? 'global' : `context:${conversation.context}`,
           summary: truncate(memory.content, 160),
           trusted: true,
         })),
@@ -636,7 +644,7 @@ export class GroverCore extends EventEmitter {
     };
     const codexAvailable = usable('codex-cli');
     const claudeAvailable = usable('claude-cli');
-    const project = getCodingProject(this.db, conversationId);
+    const project = this.projectMemory.getByConversation(conversationId);
     return {
       goal: text,
       context,
@@ -676,7 +684,7 @@ export class GroverCore extends EventEmitter {
       refs.push({ id: conversation.conversationId, summary: `Conversation: ${current.title}` });
     }
     for (const projectId of retrieval.decision.project_ids) {
-      const project = this.db.prepare('SELECT name FROM projects WHERE id = ?').get(projectId) as { name: string } | undefined;
+      const project = this.db.prepare('SELECT name FROM project_records WHERE id = ?').get(projectId) as { name: string } | undefined;
       if (project) refs.push({ id: projectId, summary: `Project: ${project.name}` });
     }
     const selectedMemories = new Set(retrieval.decision.memory_ids);
@@ -721,19 +729,33 @@ export class GroverCore extends EventEmitter {
     const conversation = resolveManagerConversation(
       this.db, text, destination, continuityResult.output.decision, input.conversationId,
     );
-    const retrievalMemories = this.memory.retrieve(text, conversation.context, 2_000, 8);
+    const conversationTitle = (this.db.prepare('SELECT title FROM conversations WHERE id = ?').get(conversation.conversationId) as
+      { title: string }).title;
+    const existingManagedProject = this.projectMemory.getByConversation(conversation.conversationId);
+    const managedProject = ['work', 'build'].includes(routeResult.output.decision.work_kind)
+      ? this.projectMemory.ensureProject(
+        conversation.conversationId, conversation.context, conversationTitle, text, existingManagedProject?.id,
+      )
+      : existingManagedProject;
+    const projectMemories = managedProject ? this.projectMemory.retrieve(managedProject.id, text, 8) : [];
+    const globalMemories = this.memory.retrieve(text, conversation.context, 2_000, 8);
+    const retrievalMemories = [...projectMemories, ...globalMemories]
+      .filter((memory, index, all) => all.findIndex((candidate) => candidate.id === memory.id) === index)
+      .slice(0, 8);
     const retrievalInput = this.managerRetrievalInput(text, conversation, continuityState.candidates, retrievalMemories);
     const retrievalResult = await this.inferBeforeFlight(text, 'retrieval', () => this.manager!.inferRetrieval!(retrievalInput));
     const selected = new Set(retrievalResult.output.decision.memory_ids);
     const selectedMemories = retrievalMemories.filter((memory) => selected.has(memory.id));
-    const project = getCodingProject(this.db, conversation.conversationId);
+    const project = managedProject;
     const memoryInput = {
       request: text,
       current_context: conversation.context,
       project_id: project?.id ?? null,
       existing_memories: retrievalMemories.map((memory) => ({
         id: memory.id,
-        scope: memory.category.startsWith('manager:') ? memory.category.slice('manager:'.length) : 'global',
+        scope: memory.category.startsWith('project:')
+          ? memory.category.split(':').slice(0, 2).join(':')
+          : memory.category.startsWith('manager:') ? memory.category.slice('manager:'.length) : 'global',
         content: memory.content,
       })),
     };
@@ -760,7 +782,7 @@ export class GroverCore extends EventEmitter {
         request: text,
         known_facts: [
           ...selectedMemories.map((memory) => truncate(memory.content, 160)),
-          ...(getCodingProject(this.db, conversation.conversationId) ? ['project is known'] : []),
+          ...(managedProject ? ['project is known'] : []),
         ].slice(0, 12),
         missing_candidates: missingCandidates,
         risk: /\b(delete|deploy|live trad|purchase|buy|security|credential|jackson-private)\b/i.test(text) ? 'high' : 'low',
@@ -806,7 +828,7 @@ export class GroverCore extends EventEmitter {
     this.diagnostics.beginFlight({
       taskId,
       conversationId: plan.conversation.conversationId,
-      projectId: getCodingProject(this.db, plan.conversation.conversationId)?.id ?? null,
+      projectId: this.projectMemory.getByConversation(plan.conversation.conversationId)?.id ?? null,
       requestHash,
       modelHash: this.manager?.status().modelHash,
     });
@@ -874,7 +896,8 @@ export class GroverCore extends EventEmitter {
         });
         return null;
       }
-      this.memory.forget(memory.target_memory_id);
+      if (this.projectMemory.hasMemory(memory.target_memory_id)) this.projectMemory.forget(memory.target_memory_id);
+      else this.memory.forget(memory.target_memory_id);
       return { kind: 'saved', id: memory.target_memory_id, content: '[deleted]' };
     }
 
@@ -884,11 +907,26 @@ export class GroverCore extends EventEmitter {
         const id = this.memory.propose(taskId, content, sensitivity);
         return { kind: 'proposed', id, content };
       }
-      const id = this.memory.correct(memory.target_memory_id, content, `manager:${taskId}`);
+      const id = this.projectMemory.hasMemory(memory.target_memory_id)
+        ? this.projectMemory.correct(memory.target_memory_id, content, taskId)
+        : this.memory.correct(memory.target_memory_id, content, `manager:${taskId}`);
       return { kind: 'saved', id, content };
     }
 
     if (!content) return null;
+    if (memory.scope?.startsWith('project:')) {
+      const projectId = memory.scope.slice('project:'.length);
+      const kind = /\bnext (?:step|action)|\btodo\b/i.test(content) ? 'next_action'
+        : /\bdecid|\bdecision\b/i.test(content) ? 'decision'
+        : /\bgoal\b|\bobjective\b/i.test(content) ? 'goal'
+        : 'requirement';
+      const expiresAt = memory.expires ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString() : null;
+      const id = this.projectMemory.remember(
+        projectId, kind, content, taskId, `manager:${taskId}`, 'manager',
+        memory.confidence === 'high' ? 'high' : 'normal', expiresAt,
+      );
+      return { kind: 'saved', id, content };
+    }
     const duplicate = this.db.prepare(
       `SELECT id FROM memories WHERE namespace = 'will-private' AND lower(content) = lower(?)
        AND deleted_at IS NULL AND superseded_by IS NULL LIMIT 1`
@@ -944,7 +982,7 @@ export class GroverCore extends EventEmitter {
     const preferredCandidateContext = inference.explicit && inference.context !== 'general' ? inference.context : undefined;
     const continuityCandidates = managerPlan?.continuityCandidates ??
       findConversationCandidates(this.db, text, preferredCandidateContext, input.conversationId);
-    const sourceProjectId = input.conversationId ? getCodingProject(this.db, input.conversationId)?.id ?? null : null;
+    const sourceProjectId = input.conversationId ? this.projectMemory.getByConversation(input.conversationId)?.id ?? null : null;
     const conversation = managerPlan?.conversation ?? resolveConversation(this.db, text, inference, input.conversationId, input.context);
     const { context, conversationId } = conversation;
     const retrievalMemories = managerPlan?.retrievalMemories ?? this.memory.retrieve(text, context, 2_000, 8);
@@ -1440,6 +1478,9 @@ export class GroverCore extends EventEmitter {
     );
     appendTaskProgress(this.db, taskId, 'done', 'Finished', result.answer, actual);
     this.addAssistantMessage(taskId, result.answer || 'Finished without a text response.');
+    const managedProject = this.conversationForTask(taskId);
+    const projectRecord = managedProject ? this.projectMemory.getByConversation(managedProject) : null;
+    if (projectRecord) this.projectMemory.captureOutcome(projectRecord.id, taskId, result.answer);
     if (project) this.db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), project.id);
     completeRoutingDecision(this.db, route.decisionId, `passed:${selected.id}`, actualProfile);
     this.changed();
@@ -1603,6 +1644,12 @@ export class GroverCore extends EventEmitter {
     recordCommit(this.db, runId, commitHash, branch, commitMessage, diff);
     addEvidence(this.db, runId, `${runId}:recorded-change`, 'commit', 'git', `git:${commitHash}`, `Committed ${commitHash.slice(0, 8)}`, commitHash);
     completeReceipt(this.db, runId, `Estimated $1.00; actual $${result.costUsd.toFixed(4)}; tests passed; commit ${commitHash.slice(0, 8)}`);
+    const buildConversationId = this.conversationForTask(run.task_id);
+    const buildProject = buildConversationId ? this.projectMemory.getByConversation(buildConversationId) : null;
+    if (buildProject) {
+      this.projectMemory.captureOutcome(buildProject.id, run.task_id, result.answer);
+      this.projectMemory.recordArtifact(buildProject.id, run.task_id, 'commit', `git:${commitHash}`, commitMessage, commitHash);
+    }
 
     if (!closureReady(this.db, runId)) throw new Error('Verification finished, but the closure invariant rejected the run.');
     transitionRun(this.db, runId, 'passed', 'done', 'The change passed its checks and was committed', {
@@ -1722,12 +1769,15 @@ export class GroverCore extends EventEmitter {
   }
 
   forget(memoryId: string): void {
-    this.memory.forget(memoryId);
+    if (this.projectMemory.hasMemory(memoryId)) this.projectMemory.forget(memoryId);
+    else this.memory.forget(memoryId);
     this.changed();
   }
 
   correctMemory(memoryId: string, content: string): string {
-    const replacement = this.memory.correct(memoryId, content);
+    const replacement = this.projectMemory.hasMemory(memoryId)
+      ? this.projectMemory.correct(memoryId, content, null)
+      : this.memory.correct(memoryId, content);
     this.changed();
     return replacement;
   }
@@ -1744,7 +1794,9 @@ export class GroverCore extends EventEmitter {
   }
 
   searchMemories(query: string): Record<string, any>[] {
-    return this.memory.search(query, 100);
+    return [...this.projectMemory.searchAll(query, 100), ...this.memory.search(query, 100)]
+      .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)))
+      .slice(0, 100) as Record<string, any>[];
   }
 
   conversationMessages(conversationId: string): Record<string, any>[] {
@@ -1759,7 +1811,8 @@ export class GroverCore extends EventEmitter {
     const namespaces = this.db.prepare(
       "SELECT id FROM memory_namespaces WHERE fails_closed = 0 AND kind != 'future'"
     ).all() as { id: string }[];
-    const changed = namespaces.reduce((total, namespace) => total + this.memory.syncVault(namespace.id), 0);
+    const changed = namespaces.reduce((total, namespace) => total + this.memory.syncVault(namespace.id), 0) +
+      this.projectMemory.syncVault();
     this.changed();
     return changed;
   }
@@ -1772,6 +1825,7 @@ export class GroverCore extends EventEmitter {
 
   restoreMemory(exportRoot: string): Record<string, unknown> {
     const result = this.memory.restoreFrom(exportRoot);
+    this.projectMemory.rewriteVault();
     this.changed();
     return result;
   }
