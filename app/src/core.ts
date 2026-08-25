@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, realpathSync, writeFileSync, existsSync } from
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
-import { DiagnosticsService, type ManagerStage } from './diagnostics.ts';
+import { DiagnosticsService, type IncidentKind, type ManagerStage } from './diagnostics.ts';
 import { EngineRouter, type EngineResult, type EngineUpdate, type ExecutionEngine, type Route } from './engine.ts';
 import { appendEvent, appendEventInTransaction } from './events.ts';
 import { MemoryService, type IncidentalMemoryResult, type RetrievedMemory } from './memory.ts';
@@ -1791,6 +1791,23 @@ export class GroverCore extends EventEmitter {
   rateTask(taskId: string, rating: 'positive' | 'negative'): void {
     if (!['positive', 'negative'].includes(rating)) throw new Error('Unknown rating.');
     rateTaskRouting(this.db, taskId, rating);
+    this.changed();
+  }
+
+  reportProblem(taskId: string, kind: IncidentKind, note: string, correction?: string | null): string {
+    const incidentId = this.diagnostics.reportProblem(taskId, kind, note, correction);
+    appendEvent(this.db, {
+      scopeType: 'task', scopeId: taskId, taskId,
+      idempotencyKey: `${incidentId}:will-report`, actor: 'will', phase: 'system',
+      plainLanguage: 'Reported a result for troubleshooting',
+      internalDetail: JSON.stringify({ incidentId, kind, hasCorrection: Boolean(correction?.trim()) }),
+    });
+    this.changed();
+    return incidentId;
+  }
+
+  incidentAction(id: string, action: 'diagnose' | 'fixed' | 'close' | 'reopen'): void {
+    this.diagnostics.updateIncidentStatus(id, action);
     this.changed();
   }
 

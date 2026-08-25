@@ -69,3 +69,26 @@ test('manager failures before task creation are retained without storing the pro
   assert.equal(row.kind, 'validation_failure');
   assert.equal(JSON.stringify(db.prepare('SELECT * FROM incidents').all()).includes('private request text'), false);
 });
+
+test('user report preserves correction and supports inbox status changes', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-user-incident-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const diagnostics = new DiagnosticsService(db);
+  const conversationId = createConversation(db, 'coding', 'quant bot');
+  const taskId = createTask(db, 'work', 'build a quant bot', 'coding');
+  diagnostics.beginFlight({ taskId, conversationId, requestHash: 'b'.repeat(64) });
+  const id = diagnostics.reportProblem(
+    taskId, 'wrong_route', 'This should have stayed in Coding.', 'Use Coding even though the product is financial.',
+  );
+  const report = db.prepare('SELECT source, kind, note, correction_json, status FROM incidents WHERE id = ?').get(id) as
+    { source: string; kind: string; note: string; correction_json: string; status: string };
+  assert.equal(report.source, 'will_correction');
+  assert.equal(report.kind, 'wrong_route');
+  assert.equal(report.note, 'This should have stayed in Coding.');
+  assert.equal(JSON.parse(report.correction_json).expected, 'Use Coding even though the product is financial.');
+  assert.equal(report.status, 'open');
+  diagnostics.updateIncidentStatus(id, 'fixed');
+  assert.equal((db.prepare('SELECT status FROM incidents WHERE id = ?').get(id) as { status: string }).status, 'fixed');
+  diagnostics.updateIncidentStatus(id, 'reopen');
+  assert.equal((db.prepare('SELECT status FROM incidents WHERE id = ?').get(id) as { status: string }).status, 'open');
+});

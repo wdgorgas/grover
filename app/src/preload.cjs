@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('grover', Object.freeze({
   exportMemory: () => ipcRenderer.invoke('grover:export-memory'),
   restoreMemory: () => ipcRenderer.invoke('grover:restore-memory'),
   rateTask: (taskId, rating) => ipcRenderer.invoke('grover:rate-task', { taskId, rating }),
+  reportProblem: (taskId, kind, note, correction) => ipcRenderer.invoke('grover:report-problem', { taskId, kind, note, correction }),
+  incidentAction: (incidentId, action) => ipcRenderer.invoke('grover:incident-action', { incidentId, action }),
   onState: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on('grover:state', listener);

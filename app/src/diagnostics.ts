@@ -206,6 +206,44 @@ export class DiagnosticsService {
     });
   }
 
+  reportProblem(
+    taskId: string,
+    kind: IncidentKind,
+    note: string,
+    correction?: string | null,
+  ): string {
+    const task = this.db.prepare('SELECT task_id FROM task_state WHERE task_id = ?').get(taskId);
+    if (!task) throw new Error('That result is no longer available to report.');
+    const allowed = new Set<IncidentKind>([
+      'wrong_route', 'wrong_continuity', 'wrong_memory', 'wrong_tool', 'wrong_answer', 'ux', 'other',
+    ]);
+    if (!allowed.has(kind)) throw new Error('Choose a valid problem type.');
+    const trimmedNote = cleanSummary(note, 2_000);
+    if (!trimmedNote || trimmedNote === 'Unknown failure') throw new Error('Describe what went wrong.');
+    const trimmedCorrection = correction?.trim().slice(0, 4_000) || null;
+    const flight = this.db.prepare('SELECT id FROM manager_flights WHERE task_id = ?').get(taskId) as { id: string } | undefined;
+    const latestStage = flight ? this.db.prepare(
+      'SELECT id FROM manager_stage_records WHERE flight_id = ? ORDER BY sequence DESC LIMIT 1'
+    ).get(flight.id) as { id: string } | undefined : undefined;
+    return this.recordIncident({
+      flightId: flight?.id, taskId, stageRecordId: latestStage?.id,
+      source: trimmedCorrection ? 'will_correction' : 'will_report', kind, severity: 'medium',
+      fingerprint: hash(`will-report|${taskId}|${kind}`),
+      summary: `Will reported a ${kind.replaceAll('_', ' ')} problem.`,
+      note: trimmedNote,
+      correction: trimmedCorrection ? { expected: trimmedCorrection } : undefined,
+      occurrence: { reported_from: 'assistant_result' },
+    });
+  }
+
+  updateIncidentStatus(id: string, action: 'diagnose' | 'fixed' | 'close' | 'reopen'): void {
+    const status = ({ diagnose: 'diagnosed', fixed: 'fixed', close: 'closed', reopen: 'open' } as const)[action];
+    if (!status) throw new Error('Unknown incident action.');
+    const result = this.db.prepare('UPDATE incidents SET status = ?, updated_at = ? WHERE id = ?')
+      .run(status, new Date().toISOString(), id);
+    if (result.changes !== 1) throw new Error('That incident is no longer available.');
+  }
+
   syncFlightStates(): void {
     const active = this.db.prepare(
       `SELECT f.id, f.task_id, t.status, t.plain_language

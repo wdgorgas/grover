@@ -182,26 +182,115 @@ function renderRecentConversations() {
   conversations.slice(0, 8).forEach((conversation) => container.append(conversationButton(conversation)));
 }
 
-function feedbackForTask(taskId) {
+function feedbackForTask(taskId, problemOnly = false) {
   const routing = (state.routing ?? []).find((item) => item.task_id === taskId);
   const area = document.createElement('div');
   area.className = 'message-feedback';
-  if (routing?.rating) {
-    area.textContent = routing.rating === 'positive' ? 'Marked useful' : 'Marked for improvement';
-    return area;
+  if (problemOnly) {
+    area.append(document.createTextNode('Something went wrong? '));
+  } else if (routing?.rating) {
+    area.append(document.createTextNode(routing.rating === 'positive' ? 'Marked useful. ' : 'Marked for improvement. '));
+  } else {
+    area.append(document.createTextNode('Was this useful? '));
+    for (const [rating, label] of [['positive', 'Yes'], ['negative', 'No']]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.addEventListener('click', async () => {
+        await window.grover.rateTask(taskId, rating);
+        area.firstChild.textContent = 'Feedback saved. ';
+        button.remove();
+      });
+      area.append(button);
+    }
   }
-  area.append(document.createTextNode('Was this useful? '));
-  for (const [rating, label] of [['positive', 'Yes'], ['negative', 'No']]) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = label;
-    button.addEventListener('click', async () => {
-      await window.grover.rateTask(taskId, rating);
-      area.textContent = 'Feedback saved.';
-    });
-    area.append(button);
-  }
+  const report = document.createElement('button');
+  report.type = 'button';
+  report.textContent = 'Report problem';
+  report.addEventListener('click', () => openProblemDialog(taskId));
+  area.append(report);
   return area;
+}
+
+function openProblemDialog(taskId) {
+  $('#problem-task-id').value = taskId;
+  $('#problem-kind').value = 'wrong_answer';
+  $('#problem-note').value = '';
+  $('#problem-correction').value = '';
+  $('#problem-error').textContent = '';
+  $('#problem-dialog').showModal();
+  $('#problem-note').focus();
+}
+
+function renderIncidents() {
+  const incidents = state.incidents ?? [];
+  const open = incidents.filter((incident) => !['closed', 'replay_passed'].includes(incident.status));
+  const automatic = open.filter((incident) => incident.source === 'automatic').length;
+  const reported = open.length - automatic;
+  $('#incident-summary').textContent = open.length
+    ? `${open.length} open problem${open.length === 1 ? '' : 's'} · ${reported} reported by you · ${automatic} captured automatically`
+    : 'No open problems. Closed history remains below.';
+  const container = $('#incident-list');
+  container.replaceChildren();
+  if (!incidents.length) {
+    container.className = 'memory-list empty-state';
+    container.textContent = 'No recorded problems.';
+    return;
+  }
+  container.className = 'memory-list';
+  for (const incident of incidents) {
+    const card = document.createElement('article');
+    card.className = 'settings-card incident-card';
+    const info = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = incident.summary;
+    const note = document.createElement('p');
+    note.textContent = incident.note || 'Captured automatically from the request flight.';
+    const meta = document.createElement('div');
+    meta.className = 'incident-meta';
+    const flight = (state.managerFlights ?? []).find((item) => item.id === incident.flight_id);
+    const stages = (state.managerStages ?? []).filter((item) => item.flight_id === incident.flight_id);
+    const stage = stages.find((item) => item.id === incident.stage_record_id);
+    meta.textContent = [
+      incident.status.replaceAll('_', ' '),
+      incident.source === 'automatic' ? 'automatic' : 'reported by you',
+      incident.occurrence_count > 1 ? `${incident.occurrence_count} occurrences` : '1 occurrence',
+      stage ? `${stage.stage} · ${(stage.latency_ms / 1000).toFixed(2)}s` : null,
+      flight ? `flight ${(flight.total_latency_ms / 1000).toFixed(2)}s` : null,
+    ].filter(Boolean).join(' · ');
+    info.append(title, note, meta);
+    const actions = document.createElement('div');
+    actions.className = 'memory-actions';
+    if (flight?.conversation_id) {
+      const openConversation = document.createElement('button');
+      openConversation.type = 'button';
+      openConversation.textContent = 'Open conversation';
+      openConversation.addEventListener('click', () => {
+        const conversation = (state.conversations ?? []).find((item) => item.id === flight.conversation_id);
+        if (conversation) openContext(conversation.context, conversation.id);
+      });
+      actions.append(openConversation);
+    }
+    if (incident.status === 'closed') {
+      const reopen = document.createElement('button');
+      reopen.type = 'button';
+      reopen.textContent = 'Reopen';
+      reopen.addEventListener('click', () => window.grover.incidentAction(incident.id, 'reopen'));
+      actions.append(reopen);
+    } else {
+      const handled = document.createElement('button');
+      handled.type = 'button';
+      handled.textContent = 'Mark handled';
+      handled.addEventListener('click', () => window.grover.incidentAction(incident.id, 'fixed'));
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = 'Close';
+      close.addEventListener('click', () => window.grover.incidentAction(incident.id, 'close'));
+      actions.append(handled, close);
+    }
+    card.append(info, actions);
+    container.append(card);
+  }
 }
 
 function renderConversationWorkspace() {
@@ -247,8 +336,8 @@ function renderConversationWorkspace() {
     content.className = 'message-content';
     content.textContent = message.content;
     bubble.append(role, content);
-    if (message.role === 'assistant' && message.task_id && message.state === 'complete') {
-      bubble.append(feedbackForTask(message.task_id));
+    if (message.role === 'assistant' && message.task_id && ['complete', 'failed'].includes(message.state)) {
+      bubble.append(feedbackForTask(message.task_id, message.state === 'failed'));
     }
     panel.append(bubble);
     if (message.role === 'assistant' && message.task_id && message.state === 'failed') {
@@ -508,6 +597,7 @@ function render(next) {
   renderEvents(state.events ?? []);
   renderMemories(memoryResults);
   renderMemoryProposals(state.memoryProposals ?? []);
+  renderIncidents();
   const backup = state.memoryBackup ?? {};
   $('#memory-backup-status').textContent = backup.reason ?? 'No verified backup yet.';
   $('#memory-backup-status').classList.toggle('good', Boolean(backup.green));
@@ -634,6 +724,28 @@ $('#memory-search').addEventListener('input', (event) => {
     memoryResults = await window.grover.searchMemories(query);
     renderMemories(memoryResults);
   }, 150);
+});
+
+$('#cancel-problem').addEventListener('click', () => $('#problem-dialog').close());
+$('#problem-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  $('#problem-error').textContent = '';
+  try {
+    await window.grover.reportProblem(
+      $('#problem-task-id').value,
+      $('#problem-kind').value,
+      $('#problem-note').value,
+      $('#problem-correction').value,
+    );
+    $('#problem-dialog').close();
+    showUtility('incidents');
+  } catch (error) {
+    $('#problem-error').textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
 });
 
 document.addEventListener('keydown', (event) => {
