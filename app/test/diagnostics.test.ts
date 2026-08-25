@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { DiagnosticsService } from '../src/diagnostics.ts';
 import { openDb } from '../src/db.ts';
-import { appendTaskProgress, createConversation, createTask } from '../src/store.ts';
+import { addConversationMessage, appendTaskProgress, createConversation, createTask } from '../src/store.ts';
 
 test('flight recorder stores ordered bounded stages and follows terminal task state', () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'grover-flight-'));
@@ -91,4 +91,45 @@ test('user report preserves correction and supports inbox status changes', () =>
   assert.equal((db.prepare('SELECT status FROM incidents WHERE id = ?').get(id) as { status: string }).status, 'fixed');
   diagnostics.updateIncidentStatus(id, 'reopen');
   assert.equal((db.prepare('SELECT status FROM incidents WHERE id = ?').get(id) as { status: string }).status, 'open');
+});
+
+test('reported manager decision replays, promotes, and detects a later regression', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-regression-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const diagnostics = new DiagnosticsService(db);
+  const conversationId = createConversation(db, 'general', 'quant bot request');
+  const taskId = createTask(db, 'work', 'build a quant bot for investing', 'coding');
+  addConversationMessage(db, conversationId, taskId, 'user', 'build a quant bot for investing');
+  diagnostics.beginFlight({ taskId, conversationId, requestHash: 'c'.repeat(64), modelHash: 'MODEL_A' });
+  const original = { schema_version: '1.0', task: 'route', decision: {
+    destination: 'finance', work_kind: 'work', confidence: 'high', rationale_codes: ['financial_product'],
+  } };
+  diagnostics.recordStage({
+    taskId, stage: 'route', inputRefs: { request_sha256: 'c'.repeat(64) },
+    replayInput: {
+      request: 'build a quant bot for investing', current_context: 'general',
+      current_conversation_summary: 'quant bot request',
+    },
+    output: original, latencyMs: 100, modelHash: 'MODEL_A',
+  });
+  const incidentId = diagnostics.reportProblem(
+    taskId, 'wrong_route', 'Software construction belongs in Coding.', 'Route this work to Coding.',
+  );
+  const storedSnapshot = (db.prepare(
+    'SELECT input_snapshot_json FROM regression_cases WHERE incident_id = ?'
+  ).get(incidentId) as { input_snapshot_json: string }).input_snapshot_json;
+  assert.equal(storedSnapshot.includes('build a quant bot for investing'), false, 'replay snapshot references the task request');
+  const replay = diagnostics.replayCaseForIncident(incidentId);
+  assert.equal(replay.stage, 'route');
+  assert.equal(replay.input.request, 'build a quant bot for investing');
+  const corrected = { schema_version: '1.0', task: 'route', decision: {
+    destination: 'coding', work_kind: 'work', confidence: 'high', rationale_codes: ['software_creation'],
+  } };
+  assert.equal(diagnostics.recordReplay(replay.id, corrected, 90, 'MODEL_B'), 'changed');
+  diagnostics.promoteLatestReplay(incidentId);
+  assert.equal(diagnostics.activeRegressionIncidentIds().includes(incidentId), true);
+  assert.equal(diagnostics.recordReplay(replay.id, corrected, 80, 'MODEL_B'), 'passed');
+  assert.equal((db.prepare('SELECT status FROM incidents WHERE id = ?').get(incidentId) as { status: string }).status, 'replay_passed');
+  assert.equal(diagnostics.recordReplay(replay.id, original, 70, 'MODEL_C'), 'failed');
+  assert.equal((db.prepare('SELECT status FROM incidents WHERE id = ?').get(incidentId) as { status: string }).status, 'open');
 });

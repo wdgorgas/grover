@@ -103,6 +103,9 @@ function installIpc() {
   ipcMain.handle('grover:report-problem', (_event, { taskId, kind, note, correction }) =>
     core.reportProblem(taskId, kind, note, correction));
   ipcMain.handle('grover:incident-action', (_event, { incidentId, action }) => core.incidentAction(incidentId, action));
+  ipcMain.handle('grover:replay-incident', (_event, incidentId) => core.replayIncident(incidentId));
+  ipcMain.handle('grover:promote-incident-replay', (_event, incidentId) => core.promoteIncidentReplay(incidentId));
+  ipcMain.handle('grover:run-regressions', () => core.runRegressionSuite());
   ipcMain.handle('grover:choose-workspace', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose the GROVER project folder',

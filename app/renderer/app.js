@@ -227,9 +227,14 @@ function renderIncidents() {
   const open = incidents.filter((incident) => !['closed', 'replay_passed'].includes(incident.status));
   const automatic = open.filter((incident) => incident.source === 'automatic').length;
   const reported = open.length - automatic;
+  const activeCases = (state.regressionCases ?? []).filter((item) => item.status === 'active');
   $('#incident-summary').textContent = open.length
     ? `${open.length} open problem${open.length === 1 ? '' : 's'} · ${reported} reported by you · ${automatic} captured automatically`
     : 'No open problems. Closed history remains below.';
+  $('#run-regressions').disabled = !activeCases.length || state.runtime?.managerStatus?.state !== 'ready';
+  $('#regression-status').textContent = activeCases.length
+    ? `${activeCases.length} active regression${activeCases.length === 1 ? '' : 's'}`
+    : 'No approved regressions yet';
   const container = $('#incident-list');
   container.replaceChildren();
   if (!incidents.length) {
@@ -251,12 +256,18 @@ function renderIncidents() {
     const flight = (state.managerFlights ?? []).find((item) => item.id === incident.flight_id);
     const stages = (state.managerStages ?? []).filter((item) => item.flight_id === incident.flight_id);
     const stage = stages.find((item) => item.id === incident.stage_record_id);
+    const regression = (state.regressionCases ?? []).find((item) => item.incident_id === incident.id);
+    const latestReplay = regression
+      ? (state.replayRuns ?? []).find((item) => item.case_id === regression.id)
+      : null;
     meta.textContent = [
       incident.status.replaceAll('_', ' '),
       incident.source === 'automatic' ? 'automatic' : 'reported by you',
       incident.occurrence_count > 1 ? `${incident.occurrence_count} occurrences` : '1 occurrence',
       stage ? `${stage.stage} · ${(stage.latency_ms / 1000).toFixed(2)}s` : null,
       flight ? `flight ${(flight.total_latency_ms / 1000).toFixed(2)}s` : null,
+      regression ? `replay ${latestReplay?.status ?? 'not run'}` : null,
+      regression?.status === 'active' ? 'regression active' : null,
     ].filter(Boolean).join(' · ');
     info.append(title, note, meta);
     const actions = document.createElement('div');
@@ -270,6 +281,27 @@ function renderIncidents() {
         if (conversation) openContext(conversation.context, conversation.id);
       });
       actions.append(openConversation);
+    }
+    if (regression) {
+      const replay = document.createElement('button');
+      replay.type = 'button';
+      replay.textContent = 'Replay';
+      replay.disabled = state.runtime?.managerStatus?.state !== 'ready';
+      replay.addEventListener('click', async () => {
+        replay.disabled = true;
+        try { await window.grover.replayIncident(incident.id); }
+        catch (error) { window.alert(error.message); }
+        finally { replay.disabled = false; }
+      });
+      actions.append(replay);
+      if (regression.status === 'draft' && ['changed', 'unchanged', 'passed', 'failed'].includes(latestReplay?.status)) {
+        const approve = document.createElement('button');
+        approve.type = 'button';
+        approve.textContent = 'Approve replay';
+        approve.title = 'Use the latest replay result as the expected behavior in future regression checks.';
+        approve.addEventListener('click', () => window.grover.promoteIncidentReplay(incident.id));
+        actions.append(approve);
+      }
     }
     if (incident.status === 'closed') {
       const reopen = document.createElement('button');
@@ -745,6 +777,20 @@ $('#problem-form').addEventListener('submit', async (event) => {
     $('#problem-error').textContent = error.message;
   } finally {
     submit.disabled = false;
+  }
+});
+
+$('#run-regressions').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  $('#regression-status').textContent = 'Running…';
+  try {
+    const result = await window.grover.runRegressions();
+    $('#regression-status').textContent = `${result.passed}/${result.total} passed`;
+  } catch (error) {
+    $('#regression-status').textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 });
 

@@ -282,6 +282,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** A rendered assistant result can create a correction-bearing incident, the inbox will immediately show it and retain its source/status linkage, and the isolated desktop smoke can run beside an open portable GROVER instance. **Result: confirmed by 80 deterministic checks and the Electron report-to-inbox smoke.**
 
+## 2026-08-25 — Replay first, approve expectations second
+
+**Decision:** Replayable reports retain a bounded stage input snapshot with the original request represented by task reference rather than duplicated text. A replay runs only the affected manager contract, records current output/model/latency beside the original, and labels it unchanged or changed. It does not silently declare a natural-language correction fixed. Will must approve a satisfactory replay once; that exact validated output becomes an active regression expectation, and future suite runs mark exact matches passed and reopen mismatches.
+
+**Why:** Automatically treating any changed output as a fix would create false confidence. Human approval is useful at the single moment where intent matters; after approval, exact schema output makes ongoing checks automatic and cheap.
+
+**Prediction (checked at this slice exit):** A reported wrong route can reconstruct its original request without storing it in the replay snapshot, show a changed corrected decision, promote that decision, pass unchanged later, and reopen the incident when a later model regresses. **Result: confirmed by 81 deterministic checks and a green rendered desktop smoke.**
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.

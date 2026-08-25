@@ -22,6 +22,7 @@ type StageInput = {
   stage: ManagerStage;
   attempt?: number;
   inputRefs: unknown;
+  replayInput?: Record<string, unknown>;
   output?: unknown;
   latencyMs?: number;
   modelHash?: string | null;
@@ -73,6 +74,15 @@ function automaticFingerprint(kind: IncidentKind, summary: string, stage?: strin
   return hash(`${kind}|${stage ?? ''}|${normalized}`);
 }
 
+function replaySnapshot(taskId: string, input: Record<string, unknown> | undefined): string {
+  if (!input) return '{}';
+  const copy = JSON.parse(stableJson(input)) as Record<string, unknown>;
+  for (const field of ['request', 'goal']) {
+    if (typeof copy[field] === 'string') copy[field] = { __grover_ref: 'task_request', task_id: taskId };
+  }
+  return stableJson(copy);
+}
+
 export class DiagnosticsService {
   readonly db: DatabaseSync;
 
@@ -116,12 +126,13 @@ export class DiagnosticsService {
     const error = input.error === undefined ? null : cleanSummary(input.error, 2_000);
     this.db.prepare(
       `INSERT INTO manager_stage_records
-        (id, flight_id, sequence, stage, attempt, status, input_refs_json, output_json, latency_ms,
+        (id, flight_id, sequence, stage, attempt, status, input_refs_json, input_snapshot_json, output_json, latency_ms,
          model_hash, prompt_version, error_detail, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id, flight.id, sequence, input.stage, attempt, error ? 'failed' : 'succeeded', stableJson(input.inputRefs),
-      input.output === undefined ? null : stableJson(input.output), latencyMs, input.modelHash ?? null,
+      replaySnapshot(input.taskId, input.replayInput), input.output === undefined ? null : stableJson(input.output),
+      latencyMs, input.modelHash ?? null,
       PROMPT_VERSION, error, now,
     );
     this.db.prepare(
@@ -222,11 +233,25 @@ export class DiagnosticsService {
     if (!trimmedNote || trimmedNote === 'Unknown failure') throw new Error('Describe what went wrong.');
     const trimmedCorrection = correction?.trim().slice(0, 4_000) || null;
     const flight = this.db.prepare('SELECT id FROM manager_flights WHERE task_id = ?').get(taskId) as { id: string } | undefined;
-    const latestStage = flight ? this.db.prepare(
-      'SELECT id FROM manager_stage_records WHERE flight_id = ? ORDER BY sequence DESC LIMIT 1'
-    ).get(flight.id) as { id: string } | undefined : undefined;
-    return this.recordIncident({
-      flightId: flight?.id, taskId, stageRecordId: latestStage?.id,
+    const mappedStage = ({
+      wrong_route: 'route', wrong_continuity: 'continuity', wrong_memory: 'memory', wrong_tool: 'execution',
+      wrong_answer: 'respond', other: null, ux: null,
+    } as const)[kind as 'wrong_route' | 'wrong_continuity' | 'wrong_memory' | 'wrong_tool' | 'wrong_answer' | 'other' | 'ux'];
+    let replayStage: ManagerStage | null = mappedStage;
+    if (kind === 'wrong_answer' && flight) {
+      const supervised = this.db.prepare(
+        "SELECT id FROM manager_stage_records WHERE flight_id = ? AND stage = 'supervise' ORDER BY attempt DESC LIMIT 1"
+      ).get(flight.id);
+      if (supervised) replayStage = 'supervise';
+    }
+    const selectedStage = flight ? this.db.prepare(
+      replayStage
+        ? 'SELECT id, stage, input_snapshot_json, output_json FROM manager_stage_records WHERE flight_id = ? AND stage = ? ORDER BY attempt DESC LIMIT 1'
+        : 'SELECT id, stage, input_snapshot_json, output_json FROM manager_stage_records WHERE flight_id = ? ORDER BY sequence DESC LIMIT 1'
+    ).get(...(replayStage ? [flight.id, replayStage] : [flight.id])) as
+      { id: string; stage: ManagerStage; input_snapshot_json: string; output_json: string | null } | undefined : undefined;
+    const incidentId = this.recordIncident({
+      flightId: flight?.id, taskId, stageRecordId: selectedStage?.id,
       source: trimmedCorrection ? 'will_correction' : 'will_report', kind, severity: 'medium',
       fingerprint: hash(`will-report|${taskId}|${kind}`),
       summary: `Will reported a ${kind.replaceAll('_', ' ')} problem.`,
@@ -234,6 +259,105 @@ export class DiagnosticsService {
       correction: trimmedCorrection ? { expected: trimmedCorrection } : undefined,
       occurrence: { reported_from: 'assistant_result' },
     });
+    if (selectedStage && selectedStage.input_snapshot_json !== '{}') {
+      const now = new Date().toISOString();
+      this.db.prepare(
+        `INSERT INTO regression_cases
+          (id, incident_id, task_id, stage, input_snapshot_json, original_output_json, expected_note, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+         ON CONFLICT(incident_id) DO UPDATE SET expected_note = excluded.expected_note, updated_at = excluded.updated_at`
+      ).run(
+        randomUUID(), incidentId, taskId, selectedStage.stage, selectedStage.input_snapshot_json,
+        selectedStage.output_json, trimmedCorrection, now, now,
+      );
+    }
+    return incidentId;
+  }
+
+  replayCaseForIncident(incidentId: string): {
+    id: string; incidentId: string; taskId: string; stage: ManagerStage; input: Record<string, unknown>;
+  } {
+    const row = this.db.prepare(
+      `SELECT id, incident_id, task_id, stage, input_snapshot_json FROM regression_cases
+       WHERE incident_id = ? AND status != 'disabled'`
+    ).get(incidentId) as {
+      id: string; incident_id: string; task_id: string; stage: ManagerStage | null; input_snapshot_json: string | null;
+    } | undefined;
+    if (!row?.stage || !row.input_snapshot_json) throw new Error('This incident does not have a replayable manager stage.');
+    const request = (this.db.prepare(
+      "SELECT content FROM conversation_messages WHERE task_id = ? AND role = 'user' ORDER BY created_at LIMIT 1"
+    ).get(row.task_id) as { content: string } | undefined)?.content ??
+      (this.db.prepare('SELECT request FROM conversation_route_log WHERE task_id = ? ORDER BY created_at LIMIT 1')
+        .get(row.task_id) as { request: string } | undefined)?.request;
+    if (!request) throw new Error('The original request is no longer available for replay.');
+    const revive = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(revive);
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        if (record.__grover_ref === 'task_request' && record.task_id === row.task_id) return request;
+        return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, revive(item)]));
+      }
+      return value;
+    };
+    return {
+      id: row.id, incidentId: row.incident_id, taskId: row.task_id, stage: row.stage,
+      input: revive(JSON.parse(row.input_snapshot_json)) as Record<string, unknown>,
+    };
+  }
+
+  recordReplay(caseId: string, output: unknown, latencyMs: number, modelHash?: string | null): string {
+    const regression = this.db.prepare(
+      'SELECT incident_id, original_output_json, expected_output_json, status FROM regression_cases WHERE id = ?'
+    ).get(caseId) as {
+      incident_id: string; original_output_json: string | null; expected_output_json: string | null; status: string;
+    } | undefined;
+    if (!regression) throw new Error('That replay case is no longer available.');
+    const serialized = stableJson(output);
+    const status = regression.expected_output_json
+      ? (serialized === regression.expected_output_json ? 'passed' : 'failed')
+      : (serialized === regression.original_output_json ? 'unchanged' : 'changed');
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `INSERT INTO replay_runs (id, case_id, model_hash, output_json, status, latency_ms, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, caseId, modelHash ?? null, serialized, status, Math.max(0, Math.round(latencyMs)), now);
+    this.db.prepare('UPDATE regression_cases SET last_result = ?, updated_at = ? WHERE id = ?').run(status, now, caseId);
+    if (regression.status === 'active') {
+      this.db.prepare('UPDATE incidents SET status = ?, updated_at = ? WHERE id = ?')
+        .run(status === 'passed' ? 'replay_passed' : 'open', now, regression.incident_id);
+    }
+    return status;
+  }
+
+  recordReplayError(caseId: string, error: unknown, modelHash?: string | null): void {
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `INSERT INTO replay_runs (id, case_id, model_hash, status, error_detail, created_at)
+       VALUES (?, ?, ?, 'error', ?, ?)`
+    ).run(randomUUID(), caseId, modelHash ?? null, cleanSummary(error, 2_000), now);
+    this.db.prepare("UPDATE regression_cases SET last_result = 'error', updated_at = ? WHERE id = ?").run(now, caseId);
+  }
+
+  promoteLatestReplay(incidentId: string): void {
+    const regression = this.db.prepare('SELECT id FROM regression_cases WHERE incident_id = ?').get(incidentId) as
+      { id: string } | undefined;
+    if (!regression) throw new Error('This incident does not have a replay case.');
+    const replay = this.db.prepare(
+      `SELECT output_json FROM replay_runs WHERE case_id = ? AND output_json IS NOT NULL
+       AND status IN ('changed','unchanged','passed','failed') ORDER BY created_at DESC LIMIT 1`
+    ).get(regression.id) as { output_json: string } | undefined;
+    if (!replay) throw new Error('Replay this incident before approving its current behavior.');
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `UPDATE regression_cases SET expected_output_json = ?, status = 'active', last_result = 'passed', updated_at = ? WHERE id = ?`
+    ).run(replay.output_json, now, regression.id);
+    this.db.prepare("UPDATE incidents SET status = 'replay_passed', updated_at = ? WHERE id = ?").run(now, incidentId);
+  }
+
+  activeRegressionIncidentIds(): string[] {
+    return (this.db.prepare("SELECT incident_id FROM regression_cases WHERE status = 'active' ORDER BY created_at").all() as
+      { incident_id: string }[]).map((row) => row.incident_id);
   }
 
   updateIncidentStatus(id: string, action: 'diagnose' | 'fixed' | 'close' | 'reopen'): void {
