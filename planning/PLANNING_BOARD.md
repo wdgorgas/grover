@@ -15,7 +15,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
 | P5 | Hardening drills → v2.0 | **MECHANICAL EXIT PASSED (2026-08-18)** — 51 deterministic tests; policy, kill, budget, injection, verification-failure, crash, backup/restore, and recovery-card drills green |
 | P6 | Continuity coordinator → v2.1 | **MECHANICAL CORE GREEN / PACKAGING IN PROGRESS (2026-08-18)** — local branching/reopen, fast paths, bounded history, searchable automatic memory, isolated writable Coding projects, and tiered Sol/Terra routing pass; scheduler/history-management/learned-router/visual graph remain follow-on slices |
-| P7 | Learned local manager | **ACCURACY GREEN / LATENCY GATE FAILED / NATIVE SHADOW ACTIVE (2026-08-21)** — checkpoint 750's exact-NF4 merged Q8 candidate completed all 2,700 protected cases with 100% schema validity, every scored capability above threshold, and zero authority-boundary violations. Sustained laptop inference measured 6.1792-second p95 against the 3-second limit, so the learned chain remains non-authoritative and asynchronous; visible deterministic routing/reopen remains 68–104 ms. |
+| P7 | Learned local manager | **MANAGER-FIRST AUTHORITY APPROVED / IMPLEMENTATION ACTIVE (2026-08-25)** — checkpoint 750 completed all 2,700 protected cases with 100% schema validity, every scored capability above threshold, and zero authority-boundary violations. Proposal 009 accepts the 6.1792-second sustained p95 as the initial best-result baseline; all trained lifecycle tasks will be connected behind deterministic safety validation, with later replay-proven fast paths treated only as optimizations. |
 
 ## Open side-tracks
 
@@ -31,6 +31,7 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Continuous functional delivery | **Codex** | PlanningProposal 006 accepted 2026-08-18; no routine phase pauses, final visual/human pass retained | `planning/proposals/proposal_006_continuous_functional_delivery.md` |
 | Continuity coordinator | **Codex** | PlanningProposal 007 accepted 2026-08-18; initial routing/memory/history slice mechanically green | `planning/proposals/proposal_007_continuity_coordinator.md` |
 | Local learned manager | **Codex** | PlanningProposal 008 accepted 2026-08-18; training setup active, live promotion evaluation-gated | `planning/proposals/proposal_008_local_manager_training.md` |
+| Manager-first troubleshooting loop | **Codex** | PlanningProposal 009 accepted 2026-08-25; authoritative lifecycle, flight recorder, incident replay, and project-memory integration active | `planning/proposals/proposal_009_manager_first_observability.md` |
 
 ## Decisions locked by Will (do not reopen in any workstream)
 
