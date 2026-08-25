@@ -13,7 +13,7 @@ let core;
 let mainWindow;
 let manager;
 
-if (!app.requestSingleInstanceLock()) app.quit();
+if (!process.env.GROVER_TEST_DATA_DIR && !app.requestSingleInstanceLock()) app.quit();
 app.setName('GROVER');
 if (process.env.GROVER_TEST_DATA_DIR) app.setPath('userData', process.env.GROVER_TEST_DATA_DIR);
 
@@ -100,6 +100,9 @@ function installIpc() {
     return core.restoreMemory(result.filePaths[0]);
   });
   ipcMain.handle('grover:rate-task', (_event, { taskId, rating }) => core.rateTask(taskId, rating));
+  ipcMain.handle('grover:report-problem', (_event, { taskId, kind, note, correction }) =>
+    core.reportProblem(taskId, kind, note, correction));
+  ipcMain.handle('grover:incident-action', (_event, { incidentId, action }) => core.incidentAction(incidentId, action));
   ipcMain.handle('grover:choose-workspace', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose the GROVER project folder',

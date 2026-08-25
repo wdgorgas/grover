@@ -274,6 +274,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** Successful manager requests will retain ordered stages and reach the same terminal state as their task; recurring stage latency will increment one incident instead of creating duplicates; pre-task validation errors will retain a prompt hash rather than prompt text. **Result: confirmed by 79 deterministic checks.**
 
+## 2026-08-25 — Result-linked troubleshooting inbox
+
+**Decision:** Completed and failed assistant results expose a direct problem-report action. A report requires a problem type and note, may include expected behavior, and remains linked to the exact task/flight/conversation. The bottom utility row includes a troubleshooting inbox for automatic and user-reported incidents with status controls and conversation reopening. Test data profiles are exempt from the production single-instance lock so rendered verification can run without closing Will's normal GROVER window.
+
+**Why:** Troubleshooting after weeks of daily use should start from the exact failing decision trace, not a reconstructed verbal description. The test-only lock exemption keeps verification isolated while preserving the one-instance rule for the real app.
+
+**Prediction (checked at this slice exit):** A rendered assistant result can create a correction-bearing incident, the inbox will immediately show it and retain its source/status linkage, and the isolated desktop smoke can run beside an open portable GROVER instance. **Result: confirmed by 80 deterministic checks and the Electron report-to-inbox smoke.**
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.

@@ -145,3 +145,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Add one-click reporting to assistant results and a plain incident inbox, then connect corrections to deterministic replay cases.
 
 **Any risks or weirdness:** A flight currently retains compact manager output JSON for diagnosis and replay, while large request/vault input remains referenced by ID/hash. Retention pruning should wait until replay promotion can pin important cases.
+
+## 2026-08-25 — report and incident inbox
+
+**What changed:** Added a report action to every completed or failed assistant result, a compact form for problem type/note/expected behavior, a dedicated `!` troubleshooting utility view, report/status IPC, and conversation reopening from linked incidents. Isolated test profiles can now launch beside the already-open production portable app without weakening its single-instance guard.
+
+**What I verified:** All 80 deterministic checks pass. The rendered Electron smoke created a correction-bearing UX report from an actual chat result, opened the troubleshooting view automatically, displayed both the report and its expected source counts, and saved the normal screenshot at `app/test-results/electron-smoke.png`.
+
+**What is still open:** Incidents need exact replay, expected-output promotion, regression execution, and safe retention/pinning.
+
+**What the next person should do:** Implement replay against recorded stage inputs, preserve original/current model outcomes side by side, and promote corrected cases into a permanent regression suite.
+
+**Any risks or weirdness:** The smoke also surfaced an automatic failure incident from its deliberate kill-switch scenario, which is expected and demonstrates mixed automatic/user reporting in the same inbox.

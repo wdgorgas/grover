@@ -26,6 +26,7 @@
       <nav id="context-navigation" class="context-navigation"></nav>
       <nav class="utility-navigation" aria-label="Utilities">
         <button class="utility-button active" data-view="home" type="button" title="Home" aria-label="Home">⌂</button>
+        <button class="utility-button" data-view="incidents" type="button" title="Troubleshooting" aria-label="Troubleshooting">!</button>
         <button class="utility-button" data-view="memory" type="button" title="Memory" aria-label="Memory">M</button>
         <button class="utility-button" data-view="settings" type="button" title="Settings" aria-label="Settings">⚙</button>
       </nav>
@@ -123,6 +124,18 @@
         </section>
       </section>
 
+      <section id="view-incidents" class="view">
+        <div class="context-header">
+          <div><p class="eyebrow">Captured automatically and by you</p><h1>Troubleshooting</h1></div>
+        </div>
+        <p>Failures, slow manager stages, and problems you report stay here until they are fixed or closed.</p>
+        <div id="incident-summary" class="settings-card">No recorded problems.</div>
+        <section class="section-block">
+          <div class="section-heading"><h2>Problem inbox</h2></div>
+          <div id="incident-list" class="memory-list empty-state">No recorded problems.</div>
+        </section>
+      </section>
+
       <section id="view-settings" class="view">
         <p class="eyebrow">Local configuration</p>
         <h1>Settings</h1>
@@ -160,6 +173,34 @@
       </section>
     </main>
   </div>
+  <dialog id="problem-dialog">
+    <form id="problem-form" class="problem-form">
+      <input id="problem-task-id" type="hidden">
+      <h2>Report a problem</h2>
+      <label>What went wrong?
+        <select id="problem-kind" required>
+          <option value="wrong_answer">Wrong answer</option>
+          <option value="wrong_route">Wrong workspace</option>
+          <option value="wrong_continuity">Wrong conversation or project</option>
+          <option value="wrong_memory">Memory problem</option>
+          <option value="wrong_tool">Wrong agent or tool</option>
+          <option value="ux">App behavior</option>
+          <option value="other">Something else</option>
+        </select>
+      </label>
+      <label>What happened?
+        <textarea id="problem-note" rows="4" maxlength="2000" required></textarea>
+      </label>
+      <label>What should have happened? <span class="small-empty">Optional, but useful for replay.</span>
+        <textarea id="problem-correction" rows="3" maxlength="4000"></textarea>
+      </label>
+      <p id="problem-error" class="error" role="alert"></p>
+      <div class="context-actions">
+        <button id="cancel-problem" type="button">Cancel</button>
+        <button class="primary" type="submit">Save report</button>
+      </div>
+    </form>
+  </dialog>
   <script src="app.js" defer></script>
 </body>
 </html>

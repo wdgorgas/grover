@@ -119,6 +119,13 @@ select, button:not(.context-button):not(.utility-button):not(.conversation-butto
 .settings-section .section-heading p { margin: 4px 0 0; font-size: 12px; }
 .engine-connections { display: grid; gap: 9px; }
 .engine-card + .engine-card { margin-top: 0; }
+dialog { width: min(560px, calc(100vw - 40px)); border: 1px solid var(--line); border-radius: 14px; padding: 0; color: var(--text); background: var(--surface); box-shadow: 0 22px 70px rgba(20,25,22,.24); }
+dialog::backdrop { background: rgba(25,30,27,.3); }
+.problem-form { display: grid; gap: 14px; padding: 22px; }
+.problem-form label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.problem-form textarea, .problem-form select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 9px; color: var(--text); background: var(--surface); resize: vertical; }
+.incident-card { align-items: flex-start; }
+.incident-meta { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; color: var(--muted); font-size: 11px; }
 
 @media (max-width: 980px) {
   .app-shell { grid-template-columns: 150px 1fr; }

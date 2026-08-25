@@ -107,6 +107,14 @@ try {
   await first.page.locator('#recent-conversations .conversation-button').filter({ hasText: 'Remember that the Windows desktop app' }).click();
   assert.equal(await first.page.locator('#coding-project').isVisible(), false, 'project controls leaked into General');
   await first.page.locator('#kill-switch').uncheck();
+  await first.page.locator('#chat-messages .message-feedback').getByText('Report problem', { exact: true }).last().click();
+  await first.page.locator('#problem-kind').selectOption('ux');
+  await first.page.locator('#problem-note').fill('The test needs a visible troubleshooting record.');
+  await first.page.locator('#problem-correction').fill('Keep the report linked to this exact result.');
+  await first.page.locator('#problem-form button[type="submit"]').click();
+  await first.page.locator('#view-incidents').getByText('Will reported a ux problem.', { exact: true }).waitFor();
+  await first.page.locator('#view-incidents').getByText('The test needs a visible troubleshooting record.', { exact: true }).waitFor();
+  assert.match(await first.page.locator('#incident-summary').textContent(), /1 reported by you/);
 
   await first.page.locator('[data-view="settings"]').click();
   await first.page.locator('#model-routing-profiles').getByText('gpt-5.6-terra', { exact: false }).waitFor();
