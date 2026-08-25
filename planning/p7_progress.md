@@ -133,3 +133,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Build the flight/incident data model around the now-authoritative pipeline, then expose user reporting and replay before changing manager performance behavior.
 
 **Any risks or weirdness:** The manager chain can add several sequential local inferences before a response. Proposal 009 accepts this as the truthful baseline. A future fast path may only bypass stages after replay parity and fallback are proven.
+
+## 2026-08-25 — flight recorder foundation
+
+**What changed:** Added a first-class manager flight, stage, incident, and occurrence schema plus a diagnostics service. Authoritative manager stages no longer masquerade as shadow comparisons. Flights retain bounded references, decisions, versions, timings, and terminal state; latency, validation, provider, and task failures enter a deduplicated incident store automatically.
+
+**What I verified:** All 79 deterministic checks pass. Recorder coverage proves stage order, exact accumulated latency, task-to-flight completion, raw-prompt exclusion from diagnostic input, recurring-latency deduplication, occurrence retention, and pre-task validation capture.
+
+**What is still open:** The incident store needs user reporting/correction controls, a readable inbox, replay/regression promotion, retention controls, and live desktop evidence.
+
+**What the next person should do:** Add one-click reporting to assistant results and a plain incident inbox, then connect corrections to deterministic replay cases.
+
+**Any risks or weirdness:** A flight currently retains compact manager output JSON for diagnosis and replay, while large request/vault input remains referenced by ID/hash. Retention pruning should wait until replay promotion can pin important cases.

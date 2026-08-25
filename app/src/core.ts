@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, realpathSync, writeFileSync, existsSync } from
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
+import { DiagnosticsService, type ManagerStage } from './diagnostics.ts';
 import { EngineRouter, type EngineResult, type EngineUpdate, type ExecutionEngine, type Route } from './engine.ts';
 import { appendEvent, appendEventInTransaction } from './events.ts';
 import { MemoryService, type IncidentalMemoryResult, type RetrievedMemory } from './memory.ts';
@@ -113,6 +114,7 @@ export class GroverCore extends EventEmitter {
   readonly router: EngineRouter;
   readonly memory: MemoryService;
   readonly policy: PolicyService;
+  readonly diagnostics: DiagnosticsService;
   readonly manager: ManagerPlanner | null;
   readonly dataDir: string;
   private workspaceRoot: string | null;
@@ -149,6 +151,7 @@ export class GroverCore extends EventEmitter {
     this.memory = new MemoryService(this.db, this.dataDir);
     this.memory.autoApplyEligibleProposals();
     this.policy = new PolicyService(this.db);
+    this.diagnostics = new DiagnosticsService(this.db);
     this.recoverInterruptedBuilds();
   }
 
@@ -202,6 +205,7 @@ export class GroverCore extends EventEmitter {
   }
 
   private changed(): void {
+    this.diagnostics.syncFlightStates();
     this.emit('state', this.getSnapshot());
   }
 
@@ -682,6 +686,15 @@ export class GroverCore extends EventEmitter {
     return refs.slice(0, 24);
   }
 
+  private async inferBeforeFlight<T>(request: string, stage: ManagerStage, call: () => Promise<T>): Promise<T> {
+    try {
+      return await call();
+    } catch (error) {
+      this.diagnostics.captureUnassignedManagerFailure(request, stage, error);
+      throw error;
+    }
+  }
+
   async submitManaged(input: SubmitInput): Promise<ReturnType<GroverCore['submit']>> {
     if (!this.manager?.inferContinuity || !this.manager.inferRetrieval || !this.manager.inferRespond ||
         !this.manager.inferMemory || !this.manager.inferClarify || !this.manager.inferExecution || !this.manager.inferBrief ||
@@ -699,18 +712,18 @@ export class GroverCore extends EventEmitter {
       current_context: current?.context ?? input.context ?? 'general',
       current_conversation_summary: current?.title ?? 'No active conversation summary.',
     };
-    const routeResult = await this.manager.inferRoute(routeInput);
+    const routeResult = await this.inferBeforeFlight(text, 'route', () => this.manager!.inferRoute(routeInput));
     const destination = this.managerDestination(routeResult.output.decision.destination);
     const directIntent = inferIntent(text);
     const intent = directIntent === 'remember' ? 'remember' : routeResult.output.decision.work_kind;
     const continuityState = this.managerContinuityCandidates(text, destination, input.conversationId);
-    const continuityResult = await this.manager.inferContinuity(continuityState.input);
+    const continuityResult = await this.inferBeforeFlight(text, 'continuity', () => this.manager!.inferContinuity!(continuityState.input));
     const conversation = resolveManagerConversation(
       this.db, text, destination, continuityResult.output.decision, input.conversationId,
     );
     const retrievalMemories = this.memory.retrieve(text, conversation.context, 2_000, 8);
     const retrievalInput = this.managerRetrievalInput(text, conversation, continuityState.candidates, retrievalMemories);
-    const retrievalResult = await this.manager.inferRetrieval(retrievalInput);
+    const retrievalResult = await this.inferBeforeFlight(text, 'retrieval', () => this.manager!.inferRetrieval!(retrievalInput));
     const selected = new Set(retrievalResult.output.decision.memory_ids);
     const selectedMemories = retrievalMemories.filter((memory) => selected.has(memory.id));
     const project = getCodingProject(this.db, conversation.conversationId);
@@ -724,7 +737,7 @@ export class GroverCore extends EventEmitter {
         content: memory.content,
       })),
     };
-    const memoryResult = await this.manager.inferMemory(memoryInput);
+    const memoryResult = await this.inferBeforeFlight(text, 'memory', () => this.manager!.inferMemory!(memoryInput));
     const respondInput = {
       request: text,
       local_state: {
@@ -737,7 +750,7 @@ export class GroverCore extends EventEmitter {
         { id: 'task_status', available: true },
       ],
     };
-    const respondResult = await this.manager.inferRespond(respondInput);
+    const respondResult = await this.inferBeforeFlight(text, 'respond', () => this.manager!.inferRespond!(respondInput));
     let clarify: ManagerEntryPlan['clarify'];
     let execution: ManagerEntryPlan['execution'];
     let brief: ManagerEntryPlan['brief'];
@@ -752,10 +765,10 @@ export class GroverCore extends EventEmitter {
         missing_candidates: missingCandidates,
         risk: /\b(delete|deploy|live trad|purchase|buy|security|credential|jackson-private)\b/i.test(text) ? 'high' : 'low',
       };
-      const clarifyResult = await this.manager.inferClarify(clarifyInput);
+      const clarifyResult = await this.inferBeforeFlight(text, 'clarify', () => this.manager!.inferClarify!(clarifyInput));
       clarify = { input: clarifyInput, output: clarifyResult.output, latencyMs: clarifyResult.latencyMs };
       const executionInput = this.managerExecutionState(text, conversation.context, conversation.conversationId);
-      const executionResult = await this.manager.inferExecution(executionInput);
+      const executionResult = await this.inferBeforeFlight(text, 'execution', () => this.manager!.inferExecution!(executionInput));
       execution = { input: executionInput, output: executionResult.output, latencyMs: executionResult.latencyMs };
       if (executionResult.output.decision.response_mode !== 'delegate') {
         throw new Error('The local manager produced conflicting response and execution decisions. The request was stopped safely.');
@@ -766,7 +779,7 @@ export class GroverCore extends EventEmitter {
           resolved_context: conversation.context,
           available_refs: this.managerAvailableRefs(conversation, retrievalResult.output, retrievalMemories),
         };
-        const briefResult = await this.manager.inferBrief(briefInput);
+        const briefResult = await this.inferBeforeFlight(text, 'brief', () => this.manager!.inferBrief!(briefInput));
         brief = { input: briefInput, output: briefResult.output, latencyMs: briefResult.latencyMs };
       }
     }
@@ -790,7 +803,14 @@ export class GroverCore extends EventEmitter {
 
   private recordManagerEntryPlan(taskId: string, text: string, context: Context, plan: ManagerEntryPlan): void {
     const requestHash = createHash('sha256').update(text, 'utf8').digest('hex');
-    const stages: [string, { input: Record<string, unknown>; output: unknown; latencyMs: number }][] = [
+    this.diagnostics.beginFlight({
+      taskId,
+      conversationId: plan.conversation.conversationId,
+      projectId: getCodingProject(this.db, plan.conversation.conversationId)?.id ?? null,
+      requestHash,
+      modelHash: this.manager?.status().modelHash,
+    });
+    const stages: [ManagerStage, { input: Record<string, unknown>; output: unknown; latencyMs: number }][] = [
       ['route', plan.route], ['continuity', plan.continuity], ['retrieval', plan.retrieval],
     ];
     if (plan.memory) stages.push(['memory', plan.memory]);
@@ -822,9 +842,9 @@ export class GroverCore extends EventEmitter {
               ? (value as { id?: unknown }[]).map((item) => item?.id).filter((id) => typeof id === 'string')
               : []),
           };
-      recordManagerShadow(this.db, {
-        taskId, managerTask, status: 'matched', input, deterministic: { mode: 'manager_authority' },
-        proposed: stage.output, latencyMs: stage.latencyMs, modelHash: this.manager?.status().modelHash,
+      this.diagnostics.recordStage({
+        taskId, stage: managerTask, inputRefs: input, output: stage.output,
+        latencyMs: stage.latencyMs, modelHash: this.manager?.status().modelHash,
       });
       appendEvent(this.db, {
         scopeType: 'task', scopeId: taskId, taskId, idempotencyKey: `${taskId}:manager-authority:${managerTask}`,
@@ -1089,6 +1109,7 @@ export class GroverCore extends EventEmitter {
         const route = this.routeTask(taskId, intent, plannedEngine, tier);
         void this.runConversation(taskId, intent, text, route, codingProject, projectWritable).catch((error) => {
           if (this.stopReasons.has(taskId)) return;
+          this.diagnostics.captureProviderFailure(taskId, route.selected.id, error);
           completeRoutingDecision(this.db, route.decisionId, `failed:${route.selected.id}`);
           appendTaskProgress(this.db, taskId, 'failed', 'The request stopped before completion', String(error));
           this.addAssistantMessage(taskId, this.friendlyFailure(error), 'failed');
@@ -1227,17 +1248,16 @@ export class GroverCore extends EventEmitter {
     latencyMs: number,
     input: Record<string, unknown>,
   ): void {
-    recordManagerShadow(this.db, {
-      taskId, managerTask: 'supervise', status: 'matched',
-      input: {
+    this.diagnostics.recordStage({
+      taskId, stage: 'supervise', attempt: sequence,
+      inputRefs: {
         retry_count: input.retry_count,
         worker_id: (input.worker_result as { worker_id?: unknown } | undefined)?.worker_id ?? null,
         required_evidence: input.required_evidence,
         evidence_kinds: Array.isArray(input.evidence)
           ? (input.evidence as { kind?: unknown }[]).map((item) => item.kind).filter((kind) => typeof kind === 'string')
           : [],
-      },
-      deterministic: { mode: 'manager_authority', sequence }, proposed: decision, latencyMs,
+      }, output: decision, latencyMs,
       modelHash: this.manager?.status().modelHash,
     });
     appendEvent(this.db, {
@@ -1273,9 +1293,21 @@ export class GroverCore extends EventEmitter {
       retry_count: retryCount,
       workers: this.managerSupervisionWorkers(),
     };
-    const result = await this.manager.inferSupervise(input);
-    this.recordManagerSupervision(taskId, context, retryCount, result.output, result.latencyMs, input);
-    return result.output;
+    try {
+      const result = await this.manager.inferSupervise(input);
+      this.recordManagerSupervision(taskId, context, retryCount, result.output, result.latencyMs, input);
+      return result.output;
+    } catch (error) {
+      this.diagnostics.recordStage({
+        taskId, stage: 'supervise', attempt: retryCount, inputRefs: {
+          retry_count: retryCount,
+          worker_id: workerId,
+          required_evidence: requiredEvidence,
+          evidence_kinds: evidence.map((item) => item.kind),
+        }, error, modelHash: this.manager.status().modelHash,
+      });
+      throw error;
+    }
   }
 
   private supervisionEngine(workerId: string | null, current: ExecutionEngine, fallback: ExecutionEngine | null): ExecutionEngine {
