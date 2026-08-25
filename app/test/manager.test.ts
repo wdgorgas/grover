@@ -268,12 +268,13 @@ test('managed submission makes valid manager route and continuity authoritative'
         latencyMs: 9,
       };
     },
-    inferMemory: async () => ({
+    inferMemory: async (input) => ({
       output: {
         schema_version: '1.0', task: 'memory',
         decision: {
-          operation: 'none', target_memory_id: null, scope: null, canonical_fact: null, sensitivity: null,
-          expires: false, confidence: 'high', rationale_codes: ['no_durable_fact'],
+          operation: 'create', target_memory_id: null, scope: `project:${input.project_id}`,
+          canonical_fact: 'The project should be handled as Coding work.', sensitivity: 'private',
+          expires: false, confidence: 'high', rationale_codes: ['project_requirement'],
         },
       },
       latencyMs: 9,
@@ -348,6 +349,11 @@ test('managed submission makes valid manager route and continuity authoritative'
     { state: string; request_hash: string };
   assert.equal(flight.state, 'completed');
   assert.match(flight.request_hash, /^[a-f0-9]{64}$/);
+  const projectMemory = db.prepare(
+    `SELECT pm.kind, pm.content FROM project_memories pm JOIN project_records p ON p.id = pm.project_id
+     WHERE p.conversation_id = ? AND pm.kind = 'requirement'`
+  ).get(result.conversationId) as { kind: string; content: string };
+  assert.equal(projectMemory.content, 'The project should be handled as Coding work.');
 });
 
 test('managed local response is used instead of a conflicting built-in answer', async () => {

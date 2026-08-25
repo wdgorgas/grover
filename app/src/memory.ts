@@ -508,7 +508,16 @@ export class MemoryService {
     const namespaces = this.db.prepare(
       "SELECT * FROM memory_namespaces WHERE id != 'jackson-private' ORDER BY id"
     ).all();
-    const payload = JSON.stringify({ version: 1, createdAt: new Date().toISOString(), namespaces, memories: rows }, null, 2);
+    const projectRecords = this.db.prepare('SELECT * FROM project_records ORDER BY id').all();
+    const projectMemories = this.db.prepare('SELECT * FROM project_memories ORDER BY project_id, id').all();
+    const projectArtifacts = this.db.prepare('SELECT * FROM project_artifacts ORDER BY project_id, id').all();
+    const projectConversations = this.db.prepare(
+      `SELECT c.* FROM conversations c JOIN project_records p ON p.conversation_id = c.id ORDER BY c.id`
+    ).all();
+    const payload = JSON.stringify({
+      version: 2, createdAt: new Date().toISOString(), namespaces, memories: rows,
+      projectRecords, projectMemories, projectArtifacts, projectConversations,
+    }, null, 2);
     writeFileSync(join(exportRoot, 'memory-export.json'), payload, 'utf8');
     const vaultDestination = join(exportRoot, 'vault');
     mkdirSync(vaultDestination);
@@ -517,7 +526,7 @@ export class MemoryService {
       if (existsSync(source)) cpSync(source, join(vaultDestination, namespace.id), { recursive: true });
     }
     const hash = createHash('sha256').update(payload).digest('hex');
-    writeFileSync(join(exportRoot, 'manifest.json'), JSON.stringify({ version: 1, sha256: hash }, null, 2), 'utf8');
+    writeFileSync(join(exportRoot, 'manifest.json'), JSON.stringify({ version: 2, sha256: hash }, null, 2), 'utf8');
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(
@@ -533,9 +542,9 @@ export class MemoryService {
     appendEvent(this.db, {
       scopeType: 'memory', scopeId: id, idempotencyKey: `${id}:exported`, actor: 'will', domain: 'memory',
       phase: 'memory', plainLanguage: 'Created a local memory backup',
-      internalDetail: JSON.stringify({ exportId: id, path: exportRoot, hash, memoryCount: rows.length }),
+      internalDetail: JSON.stringify({ exportId: id, path: exportRoot, hash, memoryCount: rows.length + projectMemories.length }),
     });
-    return { id, path: exportRoot, hash, memoryCount: rows.length };
+    return { id, path: exportRoot, hash, memoryCount: rows.length + projectMemories.length };
   }
 
   restoreFrom(exportRoot: string): { restored: number; preRestoreBackup: string; hash: string } {
@@ -546,9 +555,13 @@ export class MemoryService {
     const payloadText = readFileSync(payloadPath, 'utf8');
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { version?: number; sha256?: string };
     const hash = createHash('sha256').update(payloadText).digest('hex');
-    if (manifest.version !== 1 || manifest.sha256 !== hash) return this.rejectRestore('That memory backup failed its integrity check and was not restored.');
-    const payload = JSON.parse(payloadText) as { version?: number; namespaces?: Record<string, any>[]; memories?: Record<string, any>[] };
-    if (payload.version !== 1 || !Array.isArray(payload.namespaces) || !Array.isArray(payload.memories)) {
+    if (![1, 2].includes(manifest.version ?? 0) || manifest.sha256 !== hash) return this.rejectRestore('That memory backup failed its integrity check and was not restored.');
+    const payload = JSON.parse(payloadText) as {
+      version?: number; namespaces?: Record<string, any>[]; memories?: Record<string, any>[];
+      projectRecords?: Record<string, any>[]; projectMemories?: Record<string, any>[];
+      projectArtifacts?: Record<string, any>[]; projectConversations?: Record<string, any>[];
+    };
+    if (![1, 2].includes(payload.version ?? 0) || !Array.isArray(payload.namespaces) || !Array.isArray(payload.memories)) {
       return this.rejectRestore('That folder does not contain a supported GROVER memory backup.');
     }
     if (payload.namespaces.some((item) => item.id === 'jackson-private') || payload.memories.some((item) => item.namespace === 'jackson-private')) {
@@ -558,11 +571,76 @@ export class MemoryService {
     for (const memory of payload.memories) {
       if (!memory.id || !memory.content || !known.has(memory.namespace)) return this.rejectRestore('The backup contains an invalid or unknown memory record.');
     }
+    if (payload.version === 2 && (!Array.isArray(payload.projectRecords) || !Array.isArray(payload.projectMemories) ||
+        !Array.isArray(payload.projectArtifacts) || !Array.isArray(payload.projectConversations))) {
+      return this.rejectRestore('That backup is missing its project-memory records.');
+    }
+    const projectIds = new Set((payload.projectRecords ?? []).map((project) => project.id));
+    if ((payload.projectRecords ?? []).some((project) => !project.id || !project.conversation_id || !project.context || !project.goal) ||
+        (payload.projectMemories ?? []).some((memory) => !memory.id || !memory.content || !projectIds.has(memory.project_id)) ||
+        (payload.projectArtifacts ?? []).some((artifact) => !artifact.id || !projectIds.has(artifact.project_id))) {
+      return this.rejectRestore('That backup contains invalid project-memory references.');
+    }
 
     const backupRoot = join(dirname(this.vaultRoot), 'backups');
     const preRestore = this.exportTo(backupRoot);
     try {
       transact(this.db, () => {
+        if (payload.version === 2) {
+          this.db.prepare('DELETE FROM project_artifacts').run();
+          this.db.prepare('DELETE FROM project_memories').run();
+          this.db.prepare('DELETE FROM project_records').run();
+          const insertConversation = this.db.prepare(
+            `INSERT OR IGNORE INTO conversations (id, context, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
+          );
+          const indexConversation = this.db.prepare(
+            `INSERT INTO conversation_search(conversation_id, context, content)
+             SELECT ?, ?, ? WHERE NOT EXISTS (
+               SELECT 1 FROM conversation_search WHERE conversation_id = ?
+             )`
+          );
+          for (const conversation of payload.projectConversations ?? []) {
+            insertConversation.run(conversation.id, conversation.context, conversation.title, conversation.created_at, conversation.updated_at);
+            const searchableTitle = String(conversation.title ?? '').toLowerCase()
+              .replace(/\btic[\s-]+tac[\s-]+toe\b/g, 'tictactoe').replace(/[^a-z0-9]+/g, ' ').trim().slice(-24_000);
+            indexConversation.run(conversation.id, conversation.context, searchableTitle, conversation.id);
+          }
+          const insertProject = this.db.prepare(
+            `INSERT INTO project_records
+              (id, conversation_id, context, name, goal, summary, current_state, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          );
+          for (const project of payload.projectRecords ?? []) {
+            insertProject.run(
+              project.id, project.conversation_id, project.context, project.name, project.goal,
+              project.summary ?? '', project.current_state ?? '', project.status ?? 'active', project.created_at, project.updated_at,
+            );
+          }
+          const insertProjectMemory = this.db.prepare(
+            `INSERT INTO project_memories
+              (id, project_id, kind, content, source_task_id, provenance, verification_state, importance,
+               expires_at, vault_path, superseded_by, deleted_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
+          );
+          for (const memory of payload.projectMemories ?? []) {
+            insertProjectMemory.run(
+              memory.id, memory.project_id, memory.kind, memory.content, memory.source_task_id ?? null,
+              memory.provenance ?? 'restored-backup', memory.verification_state ?? 'manager', memory.importance ?? 'normal',
+              memory.expires_at ?? null, memory.superseded_by ?? null, memory.deleted_at ?? null,
+              memory.created_at, memory.updated_at,
+            );
+          }
+          const insertArtifact = this.db.prepare(
+            `INSERT INTO project_artifacts (id, project_id, task_id, kind, uri_or_path, summary, hash, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          );
+          for (const artifact of payload.projectArtifacts ?? []) {
+            insertArtifact.run(
+              artifact.id, artifact.project_id, artifact.task_id ?? null, artifact.kind, artifact.uri_or_path,
+              artifact.summary, artifact.hash ?? null, artifact.created_at,
+            );
+          }
+        }
         this.db.prepare("DELETE FROM memories WHERE namespace != 'jackson-private'").run();
         const insert = this.db.prepare(
           `INSERT INTO memories
@@ -603,9 +681,13 @@ export class MemoryService {
       appendEvent(this.db, {
         scopeType: 'memory', scopeId: hash, idempotencyKey: `restore:${hash}:${now}`, actor: 'will', domain: 'memory',
         phase: 'memory', plainLanguage: 'Restored and verified a local memory backup',
-        internalDetail: JSON.stringify({ path: resolvedRoot, hash, restored: payload.memories.length, preRestoreBackup: preRestore.path }),
+        internalDetail: JSON.stringify({
+          path: resolvedRoot, hash,
+          restored: payload.memories.length + (payload.projectMemories?.length ?? 0),
+          preRestoreBackup: preRestore.path,
+        }),
       });
-      return { restored: payload.memories.length, preRestoreBackup: preRestore.path, hash };
+      return { restored: payload.memories.length + (payload.projectMemories?.length ?? 0), preRestoreBackup: preRestore.path, hash };
     } catch (error) {
       const now = new Date().toISOString();
       this.db.prepare(

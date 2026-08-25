@@ -169,3 +169,15 @@ P7 implements accepted PlanningProposal 008 as an offline, evaluation-gated trai
 **What the next person should do:** Add project-scoped memory/outcome/artifact records and use them as the durable state that end-to-end project troubleshooting can replay against.
 
 **Any risks or weirdness:** Natural-language expected behavior is preserved as guidance but never treated as a machine pass condition. Exact automation begins only after Will approves a concrete replay output.
+
+## 2026-08-25 — scoped project memory and portable vault
+
+**What changed:** Added a generic project record for sustained work in every context, separate structured project memories for goals/requirements/decisions/outcomes/artifacts/next actions/status/notes, project-scoped full-text retrieval, human-readable Markdown vault notes, worker/Builder outcome capture, artifact records, correction/forget/expiry behavior, and a compact project overview in the conversation workspace. Backup format v2 now carries project records, minimal conversation identity, memories, artifacts, and vault notes; legacy profile-only restores preserve current project state.
+
+**What I verified:** All 85 deterministic tests and the rendered Electron smoke pass. Coverage proves project isolation, manager-created requirements, outcome/artifact separation, correction, external Markdown synchronization, expiry, backup/restore, restored conversation search, and legacy-backup safety. The profile memory table remains empty in the isolation scenario, confirming project history is not flattened into global facts.
+
+**What is still open:** Diagnostics need bounded retention/pinning. The authoritative live-manager smoke and latency measurements are stale because the current script still describes shadow behavior. A new portable Windows candidate still needs the current manager/runtime and final documentation.
+
+**What the next person should do:** Add retention rules that preserve open incidents and active regressions, then rewrite and run the live smoke through the complete authoritative lifecycle before attempting any behavior-preserving optimization.
+
+**Any risks or weirdness:** GitHub intentionally excludes the 1.83 GB prepared model and personal vault/database. `planning/GITHUB_HANDOFF.md` contains the exact cross-device runtime transfer and regeneration boundaries. The user-owned deletion of `JACKSON_START_HERE.md` remains unstaged.
