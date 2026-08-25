@@ -298,6 +298,14 @@ Low-level implementation decisions derived by builder sessions, with rationale a
 
 **Prediction (checked at this slice exit):** Two projects will retrieve only their own state; manager-created requirements, worker outcomes, and artifacts will remain distinct; edits and expiry will update the active index; backup/restore will preserve records, searchable conversation identity, artifacts, and vault notes without exposing `jackson-private`. **Result: confirmed by 85 deterministic checks and the rendered Electron smoke.**
 
+## 2026-08-25 — Troubleshooting retention pins unresolved and regression evidence
+
+**Decision:** Startup retention removes terminal manager flights older than 90 days only when they are not linked to an unresolved incident, a regression case, or a retained occurrence. Incident summaries and lifetime occurrence counts remain durable. Each incident keeps at least its newest three detailed occurrences, up to 20 recent occurrences, and each regression case keeps its newest 20 replay runs.
+
+**Why:** Daily use can generate thousands of repetitive latency traces and replay attempts. Keeping the unresolved source trace and approved regression evidence makes failures reproducible, while bounded occurrence/replay detail prevents the local database from becoming a second unbounded chat archive.
+
+**Prediction (checked at this slice exit):** A stale unpinned flight and its stages will be removed, unresolved and regression-linked flights will remain, a 25-occurrence incident will retain three old details plus its lifetime count, and a 25-run case will retain the newest 20. **Result: confirmed by 86 deterministic checks.**
+
 ## 2026-08-21 — Resume uses the checkpoint's recorded training profile
 
 **Decision:** When a resumable checkpoint exists, training pins LoRA rank, sequence length, accumulation, and evaluation limits from that run's manifest rather than selecting a new profile from the destination GPU. Fresh runs still select a hardware-appropriate profile automatically.

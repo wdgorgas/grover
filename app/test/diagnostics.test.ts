@@ -133,3 +133,68 @@ test('reported manager decision replays, promotes, and detects a later regressio
   assert.equal(diagnostics.recordReplay(replay.id, original, 70, 'MODEL_C'), 'failed');
   assert.equal((db.prepare('SELECT status FROM incidents WHERE id = ?').get(incidentId) as { status: string }).status, 'open');
 });
+
+test('retention prunes only unpinned traces and keeps bounded troubleshooting history', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-retention-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const diagnostics = new DiagnosticsService(db);
+  const old = '2025-01-01T00:00:00.000Z';
+  const now = new Date('2026-08-25T12:00:00.000Z');
+
+  const makeFlight = (title: string, slow = false): { taskId: string; flightId: string } => {
+    const conversationId = createConversation(db, 'general', title);
+    const taskId = createTask(db, 'ask', title, 'general');
+    addConversationMessage(db, conversationId, taskId, 'user', title);
+    const flightId = diagnostics.beginFlight({ taskId, conversationId, requestHash: 'd'.repeat(64) });
+    diagnostics.recordStage({
+      taskId, stage: 'route', inputRefs: { request_sha256: 'd'.repeat(64) },
+      replayInput: { request: title, current_context: 'general', current_conversation_summary: title },
+      output: { schema_version: '1.0', task: 'route', decision: {
+        destination: 'general', work_kind: 'ask', confidence: 'high', rationale_codes: ['general_request'],
+      } },
+      latencyMs: slow ? 4_000 : 100,
+    });
+    db.prepare(
+      "UPDATE manager_flights SET state = 'completed', completed_at = ?, updated_at = ? WHERE id = ?"
+    ).run(old, old, flightId);
+    db.prepare('UPDATE manager_stage_records SET created_at = ? WHERE flight_id = ?').run(old, flightId);
+    return { taskId, flightId };
+  };
+
+  const unpinned = makeFlight('unpinned old flight');
+  const openIncident = makeFlight('open incident flight', true);
+  const regression = makeFlight('regression flight');
+  const incidentId = diagnostics.reportProblem(
+    regression.taskId, 'wrong_route', 'Keep this regression trace.', 'Use General.',
+  );
+  diagnostics.updateIncidentStatus(incidentId, 'close');
+
+  const recurringId = diagnostics.recordIncident({
+    kind: 'other', summary: 'Repeated bounded issue', fingerprint: 'retention-recurring', occurrence: { sequence: 0 },
+  });
+  for (let index = 1; index < 25; index += 1) diagnostics.recordIncident({
+    kind: 'other', summary: 'Repeated bounded issue', fingerprint: 'retention-recurring', occurrence: { sequence: index },
+  });
+  db.prepare('UPDATE incident_occurrences SET created_at = ? WHERE incident_id = ?').run(old, recurringId);
+
+  const replayCase = db.prepare('SELECT id FROM regression_cases WHERE incident_id = ?').get(incidentId) as { id: string };
+  const replayOutput = { schema_version: '1.0', task: 'route', decision: {
+    destination: 'general', work_kind: 'ask', confidence: 'high', rationale_codes: ['general_request'],
+  } };
+  for (let index = 0; index < 25; index += 1) diagnostics.recordReplay(replayCase.id, replayOutput, index);
+
+  const result = diagnostics.pruneRetention({ now });
+  assert.deepEqual(result, { flights: 1, stages: 1, occurrences: 22, replays: 5 });
+  assert.equal(db.prepare('SELECT id FROM manager_flights WHERE id = ?').get(unpinned.flightId), undefined);
+  assert.ok(db.prepare('SELECT id FROM manager_flights WHERE id = ?').get(openIncident.flightId), 'open incident pins flight');
+  assert.ok(db.prepare('SELECT id FROM manager_flights WHERE id = ?').get(regression.flightId), 'regression pins flight');
+  assert.equal((db.prepare(
+    'SELECT COUNT(*) AS count FROM incident_occurrences WHERE incident_id = ?'
+  ).get(recurringId) as { count: number }).count, 3);
+  assert.equal((db.prepare(
+    'SELECT occurrence_count FROM incidents WHERE id = ?'
+  ).get(recurringId) as { occurrence_count: number }).occurrence_count, 25, 'lifetime count survives detail pruning');
+  assert.equal((db.prepare(
+    'SELECT COUNT(*) AS count FROM replay_runs WHERE case_id = ?'
+  ).get(replayCase.id) as { count: number }).count, 20);
+});

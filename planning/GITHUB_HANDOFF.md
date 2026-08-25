@@ -24,7 +24,7 @@ The learned manager is the semantic authority for meaningful requests. It owns r
 - Memory backup format v2 includes project records, project memories, artifacts, minimal project conversation identity, and Markdown vault notes.
 - Existing event-spine, policy, kill-switch, budget, backup/restore, project isolation, and Builder evidence protections remain active.
 
-Latest verified baseline at this writing: 85 deterministic tests plus the rendered Electron smoke. The current working branch may be ahead while the active slice is being completed; use `git log --oneline -12` and `planning/p7_progress.md` for the newest committed evidence.
+Latest verified baseline at this writing: 86 deterministic tests plus the rendered Electron smoke. The current working branch may be ahead while the active slice is being completed; use `git log --oneline -12` and `planning/p7_progress.md` for the newest committed evidence.
 
 ## Repository and local data boundaries
 
@@ -120,12 +120,11 @@ Use live/provider/Builder checks deliberately because they invoke actual local r
 
 ## Remaining work in required order
 
-1. Add bounded diagnostics retention: expire unpinned old flights/occurrences while preserving open incidents and active regressions.
-2. Measure per-stage live latency under the authoritative path. Add only behavior-proven optimizations such as exact cache reuse or consolidated calls; require regression/shadow parity and full-manager fallback.
-3. Rewrite the old live-manager shadow smoke as an authoritative lifecycle/flight smoke and capture screenshot/timing evidence.
-4. Update application/root READMEs and planning board to remove obsolete “shadow-only” wording.
-5. Bump the release candidate version, bundle or co-deliver the verified manager runtime/model, build the Windows portable executable, and run packaged plus live-manager smoke.
-6. Record final package hash/path, final test counts, Git commit, GitHub push, and five-line handoff here and in `planning/p7_progress.md`.
+1. Measure per-stage live latency under the authoritative path. Add only behavior-proven optimizations such as exact cache reuse or consolidated calls; require regression/shadow parity and full-manager fallback.
+2. Rewrite the old live-manager shadow smoke as an authoritative lifecycle/flight smoke and capture screenshot/timing evidence.
+3. Update application/root READMEs and planning board to remove obsolete “shadow-only” wording.
+4. Bump the release candidate version, bundle or co-deliver the verified manager runtime/model, build the Windows portable executable, and run packaged plus live-manager smoke.
+5. Record final package hash/path, final test counts, Git commit, GitHub push, and five-line handoff here and in `planning/p7_progress.md`.
 
 ## Safe resume procedure for the next developer
 
