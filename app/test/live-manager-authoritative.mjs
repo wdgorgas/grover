@@ -74,8 +74,8 @@ try {
   const assistant = snapshot.messages.find((message) => message.task_id === flight.task_id && message.role === 'assistant');
   assert.ok(assistant?.content, 'manager-controlled local answer was not rendered');
   assert.equal(snapshot.memories.length, 0, 'a greeting must not become a durable profile memory');
-  assert.ok(snapshot.incidents.some((incident) => incident.kind === 'wrong_memory'),
-    'the rejected manager memory should remain visible for troubleshooting');
+  assert.equal(snapshot.incidents.some((incident) => incident.kind === 'wrong_memory'), false,
+    'a correctly ephemeral greeting should not create a false memory incident');
   await page.locator('#chat-messages').getByText(assistant.content, { exact: true }).waitFor();
 
   const warmed = await submitAndWait('#context-request', 2);

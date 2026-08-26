@@ -1,7 +1,7 @@
 {
   "name": "grover",
   "private": true,
-  "version": "2.0.0-rc.3",
+  "version": "2.1.0-rc.1",
   "type": "module",
   "engines": {
     "node": ">=22.18"
@@ -19,8 +19,8 @@
     "test:coding-live": "node test/live-coding-project.mjs",
     "test:builder": "node test/live-builder-smoke.mjs",
     "test:builder-reliability": "node test/live-builder-reliability.mjs",
-    "dist": "electron-builder --win portable",
-    "pack": "electron-builder --dir"
+    "dist": "node scripts/build-portable.mjs",
+    "pack": "node scripts/build-portable.mjs --dir"
   },
   "build": {
     "appId": "com.will.grover",
@@ -32,6 +32,10 @@
       {
         "from": "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc",
         "to": "codex-runtime"
+      },
+      {
+        "from": ".package-staging/manager-inference",
+        "to": "manager-inference"
       }
     ],
     "files": [

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -9,7 +9,9 @@ import { openDb } from '../src/db.ts';
 import { EngineRouter, type ExecutionEngine } from '../src/engine.ts';
 import { addConversationMessage, createConversation, findConversationCandidates } from '../src/store.ts';
 import {
-  ManagerHttpClient, managerServerArgs, rawManagerPrompt, validateBriefDecision, validateClarifyDecision,
+  compactManagerReferences, defaultManagerRuntimeRoot, MANAGER_OUTPUT_TOKEN_CAPS, ManagerHttpClient, managerServerArgs,
+  rawManagerPrompt,
+  validateBriefDecision, validateClarifyDecision,
   validateContinuityDecision, validateExecutionDecision, validateMemoryDecision, validateRespondDecision,
   validateRetrievalDecision, validateRouteDecision, validateSuperviseDecision,
   type ContinuityDecision, type ManagerPlanner, type ManagerStatus, type RetrievalDecision, type RouteDecision,
@@ -28,8 +30,17 @@ test('manager server is loopback-only, authenticated outside argv, and has no br
   assert.ok(args.includes('--no-cors-credentials'));
   assert.ok(args.includes('--no-webui'));
   assert.ok(args.includes('--no-slots'));
+  assert.equal(args.includes('--cache-prompt'), false, 'cross-contract slot prefix state must not be reused');
   assert.ok(args.includes('--cache-ram') && args[args.indexOf('--cache-ram') + 1] === '0');
   assert.equal(args.some((arg) => /api.?key|bearer/i.test(arg)), false, 'API key must not appear in process arguments');
+});
+
+test('packaged manager resources take precedence over machine-local inference files', () => {
+  const resources = mkdtempSync(join(tmpdir(), 'grover-packaged-manager-root-'));
+  const bundled = join(resources, 'manager-inference');
+  mkdirSync(bundled);
+  writeFileSync(join(bundled, 'inference_manifest.json'), '{}');
+  assert.equal(defaultManagerRuntimeRoot(resources), bundled);
 });
 
 test('manager prompt preserves training format and deterministic key ordering', () => {
@@ -114,6 +125,37 @@ test('retrieval validation rejects IDs outside the warm-start candidates', () =>
     ),
     /unavailable memory_ids/,
   );
+});
+
+test('production UUID references are losslessly compacted without rewriting user text', () => {
+  const conversationId = '11111111-1111-4111-8111-111111111111';
+  const projectId = '22222222-2222-4222-8222-222222222222';
+  const memoryId = '33333333-3333-4333-8333-333333333333';
+  const request = `Discuss ${conversationId} literally without rewriting it.`;
+  const prepared = compactManagerReferences('retrieval', {
+    request,
+    context: 'coding',
+    candidates: {
+      conversations: [{ id: conversationId, title: 'Known project', context: 'coding', trusted: true }],
+      projects: [{ id: projectId, name: 'Known project', context: 'coding', trusted: true }],
+      memories: [{ id: memoryId, scope: `project:${projectId}`, summary: 'Known goal', trusted: true }],
+    },
+  });
+  assert.equal(prepared.input.request, request, 'ordinary user text must not be rewritten');
+  const candidates = prepared.input.candidates as Record<string, { id: string; scope?: string }[]>;
+  assert.equal(candidates.conversations[0].id, 'c1');
+  assert.equal(candidates.projects[0].id, 'p1');
+  assert.equal(candidates.memories[0].id, 'm1');
+  assert.equal(candidates.memories[0].scope, 'project:p1');
+  const restored = prepared.restore({
+    schema_version: '1.0', task: 'retrieval', decision: {
+      conversation_ids: ['c1'], project_ids: ['p1'], memory_ids: ['m1'], search_queries: [], untrusted_ids: [],
+      confidence: 'high', rationale_codes: ['known_project'],
+    },
+  }) as RetrievalDecision;
+  assert.deepEqual(restored.decision.conversation_ids, [conversationId]);
+  assert.deepEqual(restored.decision.project_ids, [projectId]);
+  assert.deepEqual(restored.decision.memory_ids, [memoryId]);
 });
 
 test('all trained manager lifecycle tasks validate only supplied application state', () => {
@@ -206,6 +248,8 @@ test('manager HTTP client authenticates backend requests and validates the respo
       const parsed = JSON.parse(body);
       assert.match(parsed.prompt, /TASK: route/);
       assert.equal(parsed.json_schema, undefined);
+      assert.equal(parsed.n_predict, MANAGER_OUTPUT_TOKEN_CAPS.route);
+      assert.equal(parsed.cache_prompt, false);
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ content: JSON.stringify(route) }));
     });
@@ -228,6 +272,14 @@ test('manager HTTP client authenticates backend requests and validates the respo
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+});
+
+test('production manager output ceilings accommodate UUID-rich validated decisions', () => {
+  assert.ok(MANAGER_OUTPUT_TOKEN_CAPS.continuity >= 192);
+  assert.ok(MANAGER_OUTPUT_TOKEN_CAPS.retrieval >= 768);
+  assert.ok(MANAGER_OUTPUT_TOKEN_CAPS.memory >= 384);
+  assert.ok(MANAGER_OUTPUT_TOKEN_CAPS.brief >= 768);
+  assert.ok(MANAGER_OUTPUT_TOKEN_CAPS.respond >= 768);
 });
 
 test('shadow manager records disagreement without changing the deterministic route', async () => {
@@ -261,6 +313,7 @@ test('shadow manager records disagreement without changing the deterministic rou
 test('managed submission makes valid manager route and continuity authoritative', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'grover-manager-authority-'));
   const db = openDb(join(dataDir, 'grover.db'));
+  let respondInput: Record<string, unknown> | null = null;
   const manager: ManagerPlanner = {
     status: () => ({ state: 'ready', detail: 'test', modelHash: 'AUTHORITY_HASH', lastLatencyMs: null }),
     inferRoute: async () => ({
@@ -304,13 +357,16 @@ test('managed submission makes valid manager route and continuity authoritative'
       },
       latencyMs: 9,
     }),
-    inferRespond: async () => ({
-      output: {
-        schema_version: '1.0', task: 'respond',
-        decision: { action: 'delegate', tool_ids: [], response: null, confidence: 'high', rationale_codes: ['worker_needed'] },
-      },
-      latencyMs: 10,
-    }),
+    inferRespond: async (input) => {
+      respondInput = input;
+      return {
+        output: {
+          schema_version: '1.0', task: 'respond',
+          decision: { action: 'delegate', tool_ids: [], response: null, confidence: 'high', rationale_codes: ['worker_needed'] },
+        },
+        latencyMs: 10,
+      };
+    },
     inferClarify: async () => ({
       output: {
         schema_version: '1.0', task: 'clarify',
@@ -356,6 +412,7 @@ test('managed submission makes valid manager route and continuity authoritative'
   assert.equal(result.context, 'coding');
   assert.equal(result.intent, 'work');
   assert.equal(result.conversationDisposition, 'created');
+  assert.deepEqual(respondInput?.local_state, {}, 'project goals are briefing context, not a local answer to the work request');
   const task = db.prepare('SELECT domain FROM task_state WHERE task_id = ?').get(result.taskId) as { domain: string };
   assert.equal(task.domain, 'coding');
   for (let attempt = 0; attempt < 20; attempt += 1) {

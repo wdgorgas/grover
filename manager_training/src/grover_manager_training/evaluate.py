@@ -16,15 +16,17 @@ from .training_data import balanced_sample, load_jsonl
 from .validate_dataset import validate_references
 
 OUTPUT_TOKEN_CAPS = {
-    "route": 64,
-    "continuity": 96,
-    "retrieval": 128,
-    "memory": 104,
-    "execution": 96,
-    "clarify": 96,
-    "brief": 160,
-    "supervise": 96,
-    "respond": 88,
+    # Leave room for bounded reference sets and textual outputs beyond the
+    # original sample shapes. Generation still stops at im_end.
+    "route": 96,
+    "continuity": 192,
+    "retrieval": 768,
+    "memory": 384,
+    "execution": 256,
+    "clarify": 384,
+    "brief": 768,
+    "supervise": 384,
+    "respond": 768,
 }
 
 

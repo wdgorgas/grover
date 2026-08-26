@@ -775,12 +775,12 @@ export class GroverCore extends EventEmitter {
       })),
     };
     const memoryResult = await this.inferBeforeFlight(text, 'memory', () => this.manager!.inferMemory!(memoryInput));
+    const localResponseMemories = selectedMemories.filter((memory) => !memory.category.startsWith('project:'));
     const respondInput = {
       request: text,
-      local_state: {
-        memories: selectedMemories.map((memory) => ({ id: memory.id, content: memory.content })),
-        project: project ?? null,
-      },
+      local_state: localResponseMemories.length ? {
+        memories: localResponseMemories.map((memory) => ({ id: memory.id, content: memory.content })),
+      } : {},
       tools: [
         { id: 'memory_search', available: true },
         { id: 'calendar_read', available: false },
