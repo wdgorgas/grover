@@ -1,8 +1,8 @@
 # Planning board → Build board
 
-**P0 APPROVED by Will, 2026-07-03. P1–P5 plus the P6 continuity core are mechanically green. P7 local-manager training setup is green and the unattended run is ready under accepted Proposal 008. GROVER 2.0.0-rc.3 remains the packaged daily-driver candidate.**
+**P0 APPROVED by Will, 2026-07-03. P1–P5 plus the P6 continuity core are mechanically green. P7's trained local manager is authoritative under accepted Proposal 009, with troubleshooting, replay/regression, project memory, bounded retention, and a behavior-preserving exact warm path implemented. GROVER 2.1.0-rc.1 is packaged and verified as a native Windows release candidate.**
 
-Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`.
+Workflow is a relay: pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`; `planning/GITHUB_HANDOFF.md` is the practical cross-device entry point.
 
 ## Phase status
 
@@ -14,8 +14,8 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | P3 | Builder reliability set (5 diverse requests) | **MECHANICAL EXIT PASSED (2026-08-18)** — live UI/backend/settings/persistence builds, pre-engine private-space refusal, accumulated regression suite, and restart recovery green |
 | P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
 | P5 | Hardening drills → v2.0 | **MECHANICAL EXIT PASSED (2026-08-18)** — 51 deterministic tests; policy, kill, budget, injection, verification-failure, crash, backup/restore, and recovery-card drills green |
-| P6 | Continuity coordinator → v2.1 | **MECHANICAL CORE GREEN / PACKAGING IN PROGRESS (2026-08-18)** — local branching/reopen, fast paths, bounded history, searchable automatic memory, isolated writable Coding projects, and tiered Sol/Terra routing pass; scheduler/history-management/learned-router/visual graph remain follow-on slices |
-| P7 | Learned local manager | **MANAGER-FIRST AUTHORITY APPROVED / IMPLEMENTATION ACTIVE (2026-08-25)** — checkpoint 750 completed all 2,700 protected cases with 100% schema validity, every scored capability above threshold, and zero authority-boundary violations. Proposal 009 accepts the 6.1792-second sustained p95 as the initial best-result baseline; all trained lifecycle tasks will be connected behind deterministic safety validation, with later replay-proven fast paths treated only as optimizations. |
+| P6 | Continuity coordinator → v2.1 | **MECHANICAL CORE GREEN (2026-08-25)** — fluid branching/reopen, bounded history, scoped profile/project memory and vault, isolated writable Coding projects, provider-neutral tiers, outcomes/artifacts, and backup/restore pass; scheduler/history-management/visual graph remain follow-on slices |
+| P7 | Learned local manager | **MANAGER-FIRST WINDOWS CANDIDATE GREEN (2026-08-26)** — checkpoint 750 completed all 2,700 protected cases with 100% schema validity, every scored capability above threshold, and zero authority-boundary violations. All nine trained capabilities are authoritative behind deterministic safety validation. Flight recording, result-linked incidents, replay/regression, retention, exact cache, manager/runtime packaging, and the exact portable smoke pass; novel full-chain latency remains the principal optimization target. |
 
 ## Open side-tracks
 
@@ -25,13 +25,13 @@ Workflow is a relay (see `JACKSON_START_HERE.md` §3): pull → create a slice b
 | Visual direction / UI design | **Will** | New direction pending; visual polish deferred until the local desktop application is functional | `design/` |
 | Build-technique intake (external lists → adopt/skip) | main thread | Standing rule + first pass done | `planning/build_techniques_assessment.md` |
 | Daily-driver product contract | **Will** | PlanningProposal 002 accepted 2026-08-18; implement front-door intent and progressive disclosure in the functional shell | `planning/proposals/proposal_002_daily_driver_contract.md` |
-| Local Windows delivery | **Codex** | Functional RC packaged and live-smoked 2026-08-18 | `planning/functional_candidate_handoff.md` |
+| Local Windows delivery | **Codex** | Manager-bundled 2.1.0-rc.1 built and exact portable smoke passed 2026-08-26 | `planning/GITHUB_HANDOFF.md` |
 | Provider-neutral agent manager | **Codex** | PlanningProposal 004 accepted 2026-08-18; Codex preferred, Claude fallback/checker | `planning/proposals/proposal_004_provider_neutral_agent_manager.md` |
 | Fluid context workspaces | **Codex** | PlanningProposal 005 accepted 2026-08-18; functional shell implemented and packaged | `planning/proposals/proposal_005_fluid_context_workspaces.md` |
 | Continuous functional delivery | **Codex** | PlanningProposal 006 accepted 2026-08-18; no routine phase pauses, final visual/human pass retained | `planning/proposals/proposal_006_continuous_functional_delivery.md` |
 | Continuity coordinator | **Codex** | PlanningProposal 007 accepted 2026-08-18; initial routing/memory/history slice mechanically green | `planning/proposals/proposal_007_continuity_coordinator.md` |
-| Local learned manager | **Codex** | PlanningProposal 008 accepted 2026-08-18; training setup active, live promotion evaluation-gated | `planning/proposals/proposal_008_local_manager_training.md` |
-| Manager-first troubleshooting loop | **Codex** | PlanningProposal 009 accepted 2026-08-25; authoritative lifecycle, flight recorder, incident replay, and project-memory integration active | `planning/proposals/proposal_009_manager_first_observability.md` |
+| Local learned manager | **Codex** | PlanningProposal 008 accepted 2026-08-18; checkpoint 750 trained, fully evaluated, prepared as exact-merged Q8, and authoritative through Proposal 009 | `planning/proposals/proposal_008_local_manager_training.md` |
+| Manager-first troubleshooting loop | **Codex** | PlanningProposal 009 accepted 2026-08-25; authoritative lifecycle, flight recorder, reports/incidents, replay/regression, retention, and project memory mechanically green | `planning/proposals/proposal_009_manager_first_observability.md` |
 
 ## Decisions locked by Will (do not reopen in any workstream)
 

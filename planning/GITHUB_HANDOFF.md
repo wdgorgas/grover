@@ -1,6 +1,6 @@
 # GROVER v2 — GitHub-only cross-device handoff
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
 This is the canonical practical handoff for continuing GROVER from another Windows computer using only the GitHub repository. Read `AGENTS.md` first; `planning/grover_v2_master_prompt.md` remains the binding product spec, and accepted `planning/proposals/proposal_009_manager_first_observability.md` governs the current manager-first implementation.
 
@@ -23,14 +23,29 @@ The learned manager is the semantic authority for meaningful requests. It owns r
 - Profile memory and project memory are separate. Project records retain goals, requirements, decisions, outcomes, artifacts, next actions, status, provenance, expiry, and human-readable vault files. Project state is warm-started into manager retrieval instead of being flattened into profile facts.
 - Memory backup format v2 includes project records, project memories, artifacts, minimal project conversation identity, and Markdown vault notes.
 - A 256-entry process-local exact cache reuses only already-validated manager outputs when the complete task/input hash is identical; any changed state runs full inference. Cache hits remain visible as zero-latency flight stages.
+- Production UUIDs are losslessly aliased only in typed manager reference fields and restored before validation/storage. Server prompt-prefix reuse is disabled because live repeated calls proved it could leak fields between contracts; user text is never rewritten.
+- Project goals and requirements remain retrieval/briefing context but are not mislabeled as local facts that can satisfy the work request. This keeps the trained respond contract authoritative instead of overriding a false local answer in code.
 - Non-durable manager memory proposals are refused and become linked `wrong_memory` incidents instead of polluting the vault.
 - Existing event-spine, policy, kill-switch, budget, backup/restore, project isolation, and Builder evidence protections remain active.
 
-Latest verified baseline at this writing: 86 deterministic tests, the rendered Electron smoke, 18 exact protected manager parity cases, and the rendered authoritative manager lifecycle smoke. The current working branch may be ahead while the active slice is being completed; use `git log --oneline -12` and `planning/p7_progress.md` for the newest committed evidence.
+Latest verified source baseline at this writing: 89 deterministic tests, 10 manager-training/runtime tests, the rendered Electron smoke, 18 exact protected manager parity cases, and the rendered authoritative manager lifecycle smoke. A real nine-stage Coding lifecycle completed in 8.738 seconds, and both the rebuilt unpacked application and the exact single-file candidate passed bundled-manager routing plus real supervised Codex file creation. Use `git log --oneline -12` and `planning/p7_progress.md` for the newest committed evidence.
+
+## Verified Windows release candidate
+
+- Fast everyday launch on this device: `app/release/win-unpacked/GROVER.exe`; keep its complete folder together.
+- Drag-and-drop transfer artifact: `app/release/GROVER-2.1.0-rc.1-portable.exe`.
+- Artifact size: 1,941,125,568 bytes (about 1.81 GiB).
+- Artifact SHA-256: `932FDDBEFF82FE614CFCC9D8E95BCA778F1605F9CAC6F9146813D00945545105`.
+- Embedded manager model SHA-256: `81B169E7862D63ED06A1D64E6864F0BA76A0222E0E87B9FCDBD6EA31F22EAEC0`.
+- Exact portable smoke: 228.686 seconds extraction/startup, 4.273 seconds manager greeting, and 78.235 seconds for a natural Coding request whose file bytes were independently verified after bundled Codex execution and manager supervision.
+- Candidate implementation commit: `ba207c1`.
+- Release tag: `v2.1.0-rc.1`.
+
+Generated packages are intentionally ignored by Git. The source, rebuild automation, audit, and next steps are carried by GitHub; the 1.81 GiB executable must be copied directly or attached to a release separately.
 
 ## Repository and local data boundaries
 
-GitHub contains source, tests, schemas, synthetic curriculum generators, configuration, and documentation. It intentionally does not contain personal database/vault data, secrets, downloaded model weights, CUDA binaries, Python environments, generated packages, or the 1.83 GB prepared manager model.
+GitHub contains source, tests, schemas, synthetic curriculum generators, package/rebuild automation, configuration, and documentation. It intentionally does not commit personal database/vault data, secrets, downloaded model weights, CUDA binaries, Python environments, generated packages, or the 1.83 GB prepared manager model. The locally generated RC.1 portable executable bundles the exact manager and runtime, but remains a release artifact rather than Git source.
 
 Default local application data:
 
@@ -69,9 +84,11 @@ npm start
 
 The app runs without the manager only when `GROVER_DISABLE_MANAGER=true` is deliberately set for tests/fallback diagnostics. Normal production use expects the prepared manager bundle.
 
+If you have the generated release artifact, no separate Node.js, Python, model, `llama.cpp`, or Codex runtime download is required to run it. Copy `GROVER-2.1.0-rc.1-portable.exe`, open it, and sign in to Codex from Settings when specialist work is needed. Windows may warn because this development candidate is not signed with a purchased public certificate.
+
 ## Moving the trained manager
 
-Fastest exact transfer: copy the complete `%LOCALAPPDATA%\GROVER\manager-inference` folder from the source computer to the identical location under the target Windows account. It contains the pinned CUDA `llama.cpp` runtime, inference manifest, and exact-NF4 merged Q8 GGUF candidate. The app verifies the manifest/model hash before launch.
+For a source/development checkout, the fastest exact transfer is to copy the complete `%LOCALAPPDATA%\GROVER\manager-inference` folder from the source computer to the identical location under the target Windows account. It contains the pinned CUDA `llama.cpp` runtime, inference manifest, and exact-NF4 merged Q8 GGUF candidate. The app verifies the manifest/model hash before launch. The RC.1 portable package embeds this same folder and prefers it over any machine-local manager.
 
 The prepared candidate is about 1.83 GB. GPU choice should affect latency, not learned decisions. Do not swap in a nominally “better” quantization: standard Q8 plus LoRA, exact-merged Q4, and multi-slot batching all changed behavior and were rejected.
 
@@ -86,6 +103,7 @@ From `app`:
 ```powershell
 npm test
 npm run test:desktop
+npm run test:manager-parity
 npm run test:manager-live
 npm run test:engine
 npm run test:coding-live
@@ -113,19 +131,36 @@ Use live/provider/Builder checks deliberately because they invoke actual local r
 ## Known limitations and honest risks
 
 - Full manager capability means several sequential local inferences. Accuracy/best-result behavior is the baseline; latency optimization must preserve replay parity and always fall back to the full manager.
-- Current real-laptop greeting evidence measured 5.402 seconds cold, 2.162 seconds after state warming, and 0.228 seconds for an exact request/state repeat. Novel full-chain sub-three-second behavior still needs a consolidated trained contract or smaller parity-proven student.
+- The final real-laptop greeting sweep measured 4.027 seconds cold (3.761 seconds recorded manager work), 1.592 seconds after state warming, and 0.160 seconds for an exact request/state repeat. A nine-stage Coding lifecycle measured 8.738 seconds. Novel full-chain sub-three-second behavior still needs a consolidated trained contract or smaller parity-proven student.
 - The protected 2,700-case manager report was excellent on schema/accuracy/authority, but sustained p95 was 6.1792 seconds. Interactive latency varies under laptop power/GPU pressure.
 - Exact replay currently targets manager stages. End-to-end specialist answer replay still needs bounded worker/artifact fixtures; a changed manager output is never automatically called fixed without explicit approval.
 - Calendar and other external account tools remain disconnected. Lifestyle scheduling is a later sub-app, not the product center.
 - Visual design is temporary by explicit direction.
-- Existing portable executables under `app/release` predate the current manager/diagnostics/project-memory work until the final package slice creates a new candidate.
-- GitHub alone does not include the trained model bytes or personal app data; transfer instructions above are required for identical local inference and continuity.
+- The exact single-file portable smoke took 228.686 seconds to extract/start on this laptop. `release/win-unpacked/GROVER.exe` is the faster-starting local form when the complete folder is kept together; the portable wrapper is primarily the drag-and-drop transfer form.
+- GitHub source alone does not include the trained model bytes or personal app data. Use the generated RC.1 artifact or the transfer instructions above for identical local inference; copy an app backup separately for personal continuity.
 
-## Remaining work in required order
+## Future project-navigation UX direction (not implemented)
 
-1. Update application/root/training READMEs and planning board to remove obsolete “shadow-only” wording.
-2. Bump the release candidate version, bundle or co-deliver the verified manager runtime/model, build the Windows portable executable, and run packaged plus live-manager smoke.
-3. Record final package hash/path, final test counts, Git commit, GitHub push, and five-line handoff here and in `planning/p7_progress.md`.
+Do not model every open project as a permanent tab, and do not require a full natural-language request merely to navigate. The recommended interaction model is one main project canvas plus a layered project switcher:
+
+- Make **project**, not conversation, the top-level navigation object. A project can present its overview, current/older conversations, artifacts, activity, and scoped memory inside one place, so background agent threads do not flood the global history.
+- A small left-side **working set** shows only pinned projects and the last few active projects, with status/activity markers. It is bounded and automatically ages inactive entries out; removing an entry never deletes or archives the project.
+- `Ctrl+K` or one visible launcher opens a glass-style **Project Shelf** over the current canvas. It combines fuzzy title search, semantic search over goals/outcomes/aliases, context/status filters, and keyboard navigation. Typing two or three identifying characters should normally be enough.
+- Exact title/alias matching, filters, recency, and pinning should query the local project index immediately without model latency. Invoke the manager only for genuinely semantic or ambiguous recall, then show its suggested match rather than forcing a new conversation.
+- With no query, the shelf leads with **Resume**, **Recently active**, **Pinned**, and **Needs attention**. Each result shows a compact preview: context, goal, latest outcome, next action, and last activity. A hover/Space quick-look previews it without navigating.
+- Normal Back/Forward navigation returns through recently viewed projects. An optional two-project split is useful for comparison, but unlimited persistent tabs are not.
+- Home may proactively show a few likely continuation cards based on recency and manager retrieval. Natural language remains available for ambiguous requests such as “reopen the investing bot,” but it is one access path, not the only one.
+- Archive, pin, alias, move, and status are durable organization controls. “Close” should only remove a project from the temporary working set, avoiding destructive tab semantics.
+
+The visual glass treatment should serve this layering—canvas, shelf, quick look—not be applied uniformly. Readability, keyboard access, reduced transparency, and low-GPU fallback matter more than blur effects.
+
+## Recommended next development order
+
+1. Use the app for real work and report incorrect results from the assistant message itself. Replay each implicated manager stage, approve the intended output once, and keep the resulting cases in the regression suite.
+2. Train and gate a consolidated lifecycle contract or smaller student against the accumulated exact regressions to bring novel manager requests under three seconds without demoting the manager or adding a competing semantic router.
+3. Add end-to-end specialist replay fixtures covering worker briefing, produced artifacts, and supervision—not merely the current exact manager-stage replay.
+4. Add conversation/history management and selected niche sub-apps only after real usage reveals the highest-value workflows. Calendar is one candidate, not the product center.
+5. Apply Will's new visual direction after the functional/UX findings stabilize.
 
 ## Safe resume procedure for the next developer
 
