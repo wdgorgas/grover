@@ -87,7 +87,7 @@ def main() -> None:
                     "n_predict": OUTPUT_TOKEN_CAPS[str(record["task"])],
                     "repeat_penalty": 1.0,
                     "stop": ["<|im_end|>"],
-                    "cache_prompt": True,
+                    "cache_prompt": False,
                 }
             else:
                 route = "/v1/chat/completions"

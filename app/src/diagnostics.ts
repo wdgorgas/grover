@@ -45,7 +45,7 @@ type IncidentInput = {
 };
 
 const PROMPT_VERSION = 'manager-v1';
-const APP_VERSION = '2.0.0-rc.3';
+const APP_VERSION = '2.1.0-rc.1';
 const INTERACTIVE_LATENCY_TARGET_MS = 3_000;
 const DEFAULT_RETENTION_DAYS = 90;
 const MIN_OCCURRENCES_PER_INCIDENT = 3;

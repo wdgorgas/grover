@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { spawn, execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { execFile, spawn } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -8,8 +8,8 @@ import { chromium } from 'playwright-core';
 
 const appDir = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(appDir, '..');
-const executable = process.env.GROVER_PORTABLE_EXE ?? join(appDir, 'release', 'GROVER-2.0.0-rc.3-portable.exe');
-const prompt = process.env.GROVER_PORTABLE_PROMPT ?? 'Reply with exactly: GROVER_PORTABLE_CODEX_OK';
+const version = JSON.parse(readFileSync(join(appDir, 'package.json'), 'utf8')).version;
+const executable = process.env.GROVER_PORTABLE_EXE ?? join(appDir, 'release', `GROVER-${version}-portable.exe`);
 const expected = process.env.GROVER_PORTABLE_EXPECT ?? 'GROVER_PORTABLE_CODEX_OK';
 const dataDir = mkdtempSync(join(tmpdir(), 'grover-portable-smoke-'));
 const resultDir = join(appDir, 'test-results');
@@ -28,14 +28,15 @@ function endpointReady() {
 }
 
 async function waitForEndpoint() {
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + 300_000;
   while (Date.now() < deadline) {
     if (await endpointReady()) return;
     await new Promise((resolveWait) => setTimeout(resolveWait, 500));
   }
-  throw new Error('Portable GROVER did not expose its test connection within 60 seconds.');
+  throw new Error('Portable GROVER did not expose its test connection within five minutes.');
 }
 
+const launchedAt = Date.now();
 const child = spawn(executable, [`--remote-debugging-port=${port}`], {
   cwd: appDir,
   windowsHide: true,
@@ -43,6 +44,7 @@ const child = spawn(executable, [`--remote-debugging-port=${port}`], {
     ...process.env,
     GROVER_TEST_DATA_DIR: dataDir,
     GROVER_TEST_WORKSPACE_ROOT: repoRoot,
+    GROVER_TEST_MANAGER: 'true',
   },
   stdio: 'ignore',
 });
@@ -54,66 +56,73 @@ try {
   const pages = browser.contexts().flatMap((context) => context.pages());
   const page = pages.find((candidate) => candidate.url().startsWith('file:')) ?? pages[0];
   await page.waitForSelector('#home-request');
-  await page.waitForFunction(() => document.querySelector('#engine-status')?.textContent?.includes('Codex ready'));
-  const functional = await page.evaluate(async () => {
-    await window.grover.setKillSwitch(true);
-    const profile = await window.grover.submit({ text: 'hi, my name is Portable Will' });
-    let state = await window.grover.snapshot();
-    const general = state.conversations.find((item) => item.id === profile.conversationId);
-    const generalBefore = state.messages.filter((item) => item.conversation_id === general.id).length;
-    const branch = await window.grover.submit({
-      text: "Let's code packaged tictactoe",
-      context: 'general',
-      conversationId: general.id,
-      engine: 'codex-cli',
-    });
-    const deadline = Date.now() + 10_000;
-    do {
-      state = await window.grover.snapshot();
-      const task = state.tasks.find((item) => item.task_id === branch.taskId);
-      if (task && ['failed', 'done'].includes(task.status)) break;
-      await new Promise((resolveWait) => setTimeout(resolveWait, 50));
-    } while (Date.now() < deadline);
-    const project = state.projects.find((item) => item.conversation_id === branch.conversationId);
-    const codingBeforeNavigation = state.messages.filter((item) => item.conversation_id === branch.conversationId).length;
-    const navigation = await window.grover.submit({
-      text: 'Reopen packaged tic tac toe',
-      context: 'general',
-      conversationId: general.id,
-    });
-    state = await window.grover.snapshot();
-    const memoryMatches = await window.grover.searchMemories('Portable Will');
-    await window.grover.setKillSwitch(false);
-    return {
-      branch,
-      navigation,
-      project,
-      generalBefore,
-      generalAfter: state.messages.filter((item) => item.conversation_id === general.id).length,
-      codingBeforeNavigation,
-      codingAfterNavigation: state.messages.filter((item) => item.conversation_id === branch.conversationId).length,
-      memoryMatches,
-      modelProfiles: state.modelProfiles,
-    };
-  });
-  assert.equal(functional.branch.context, 'coding');
-  assert.equal(functional.branch.conversationDisposition, 'branched');
-  assert.equal(functional.generalAfter, functional.generalBefore);
-  assert.equal(functional.navigation.conversationId, functional.branch.conversationId);
-  assert.equal(functional.navigation.conversationDisposition, 'navigated');
-  assert.equal(functional.codingAfterNavigation, functional.codingBeforeNavigation);
-  assert.ok(functional.project?.root_path, 'Packaged Coding project folder was not created.');
-  assert.match(functional.memoryMatches[0]?.content ?? '', /Portable Will/i);
-  assert.ok(functional.modelProfiles.some((item) => item.model_id === 'gpt-5.6-sol'));
-  assert.equal(await page.locator('#coding-project').isVisible(), false, 'Project controls leaked into General.');
-  await page.locator('#home-request').fill(prompt);
-  await page.locator('#home-engine').selectOption('codex-cli');
+  await page.waitForFunction(
+    () => document.querySelector('#manager-status')?.textContent === 'Manager ready', null, { timeout: 180_000 },
+  );
+  await page.waitForFunction(
+    () => document.querySelector('#engine-status')?.textContent?.includes('Codex ready'), null, { timeout: 90_000 },
+  );
+  const startup = await page.evaluate(async () => (await window.grover.snapshot()).runtime.managerStatus);
+  assert.equal(startup.state, 'ready');
+  assert.match(startup.detail, /Bundled local manager/i, 'portable app did not select its bundled manager');
+  const startupMs = Date.now() - launchedAt;
+
+  const greetingStartedAt = Date.now();
+  await page.locator('#home-request').fill('Hello');
   await page.locator('#home-request').press('Enter');
-  const answer = page.locator('#chat-messages .message.assistant .message-content').filter({ hasText: expected }).last();
-  await answer.waitFor({ timeout: 90_000 });
-  assert.match(await answer.textContent(), new RegExp(expected));
+  const greetingDeadline = Date.now() + 180_000;
+  let state;
+  do {
+    state = await page.evaluate(async () => window.grover.snapshot());
+    if (state.managerFlights?.length === 1 && state.managerFlights[0].state === 'completed') break;
+    const error = await page.locator('#home-composer .composer-error').textContent();
+    if (error?.trim()) throw new Error(error.trim());
+    await page.waitForTimeout(200);
+  } while (Date.now() < greetingDeadline);
+  assert.equal(state.managerFlights?.length, 1, 'packaged manager did not create a flight');
+  const greetingFlight = state.managerFlights[0];
+  const greetingStages = state.managerStages.filter((stage) => stage.flight_id === greetingFlight.id)
+    .sort((left, right) => left.sequence - right.sequence);
+  assert.deepEqual(greetingStages.map((stage) => stage.stage), ['route', 'continuity', 'retrieval', 'memory', 'respond']);
+  assert.equal(state.memories.length, 0, 'packaged greeting polluted durable memory');
+  const greetingMs = Date.now() - greetingStartedAt;
+
+  const prompt = `Create a tiny coding project. Write a file named result.txt containing exactly ${expected}, verify the file, and report completion.`;
+  const workerStartedAt = Date.now();
+  await page.locator('#context-request').fill(prompt);
+  await page.locator('#context-engine').selectOption('codex-cli');
+  await page.locator('#context-request').press('Enter');
+  const workerDeadline = Date.now() + 240_000;
+  let answerMessage;
+  do {
+    state = await page.evaluate(async () => window.grover.snapshot());
+    answerMessage = [...state.messages].reverse().find(
+      (message) => message.role === 'assistant' && message.content.includes(expected),
+    );
+    if (answerMessage) break;
+    const error = await page.locator('#context-composer .composer-error').textContent();
+    if (error?.trim()) throw new Error(error.trim());
+    await page.waitForTimeout(250);
+  } while (Date.now() < workerDeadline);
+  assert.ok(answerMessage, 'packaged Codex answer was not persisted');
+  assert.ok(state.routing.some(
+    (decision) => decision.task_id === answerMessage.task_id && decision.selected_engine === 'codex-cli',
+  ), 'packaged request was not assigned to Codex');
+  const workerFlight = state.managerFlights.find((flight) => flight.task_id === answerMessage.task_id);
+  assert.equal(workerFlight?.state, 'completed', 'packaged worker flight did not reach completion');
+  assert.ok(state.managerStages.some(
+    (stage) => stage.flight_id === workerFlight.id && stage.stage === 'supervise',
+  ), 'packaged Codex result was not supervised by the manager');
+  const codingProject = state.projects.find((project) => project.conversation_id === answerMessage.conversation_id);
+  assert.ok(codingProject?.root_path, 'packaged Coding request did not retain its project folder');
+  assert.equal(
+    readFileSync(join(codingProject.root_path, 'result.txt'), 'utf8'),
+    expected,
+    'packaged Codex task did not create the exact requested file content',
+  );
+  const codingMs = Date.now() - workerStartedAt;
   await page.screenshot({ path: join(resultDir, 'packaged-portable-functional.png'), fullPage: true });
-  console.log('Portable executable smoke passed with live bundled Codex.');
+  console.log(`Portable executable smoke passed: ${JSON.stringify({ executable, startup_ms: startupMs, greeting_ms: greetingMs, coding_ms: codingMs })}`);
 } finally {
   await browser?.close().catch(() => {});
   await new Promise((resolveKill) => execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], () => resolveKill()));

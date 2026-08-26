@@ -7,6 +7,169 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 
 export type ManagerTask = 'route' | 'continuity' | 'retrieval' | 'memory' | 'execution' | 'clarify' | 'brief' | 'supervise' | 'respond';
+
+// Production decisions can contain more bounded references or text than the original
+// evaluator samples. These are ceilings, not generation targets: the model still stops at
+// <|im_end|>, so valid short decisions keep the same output and latency.
+export const MANAGER_OUTPUT_TOKEN_CAPS: Record<ManagerTask, number> = {
+  route: 96,
+  continuity: 192,
+  retrieval: 768,
+  memory: 384,
+  execution: 256,
+  clarify: 384,
+  brief: 768,
+  supervise: 384,
+  respond: 768,
+};
+
+const UUID_REFERENCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type ManagerReferencePreparation = {
+  input: Record<string, unknown>;
+  restore: (output: unknown) => unknown;
+};
+
+function collectStrings(value: unknown, target: Set<string>): void {
+  if (typeof value === 'string') {
+    target.add(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectStrings(item, target);
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value as Record<string, unknown>)) collectStrings(item, target);
+  }
+}
+
+class ManagerReferenceCodec {
+  private readonly encoded = new Map<string, string>();
+  private readonly decoded = new Map<string, string>();
+  private readonly counters = new Map<string, number>();
+  private readonly reserved = new Set<string>();
+
+  constructor(input: Record<string, unknown>) {
+    collectStrings(input, this.reserved);
+  }
+
+  encode(value: unknown, prefix: 'c' | 'p' | 'm' | 'r'): unknown {
+    if (typeof value !== 'string' || !UUID_REFERENCE.test(value)) return value;
+    const existing = this.encoded.get(value);
+    if (existing) return existing;
+    let counter = this.counters.get(prefix) ?? 0;
+    let alias = '';
+    do {
+      counter += 1;
+      alias = `${prefix}${counter}`;
+    } while (this.reserved.has(alias));
+    this.counters.set(prefix, counter);
+    this.reserved.add(alias);
+    this.encoded.set(value, alias);
+    this.decoded.set(alias, value);
+    return alias;
+  }
+
+  encodeProjectScope(value: unknown): unknown {
+    if (typeof value !== 'string' || !value.startsWith('project:')) return value;
+    const projectId = value.slice('project:'.length);
+    const alias = this.encode(projectId, 'p');
+    return typeof alias === 'string' && alias !== projectId ? `project:${alias}` : value;
+  }
+
+  decode(value: unknown): unknown {
+    return typeof value === 'string' ? this.decoded.get(value) ?? value : value;
+  }
+
+  decodeProjectScope(value: unknown): unknown {
+    if (typeof value !== 'string' || !value.startsWith('project:')) return value;
+    const reference = value.slice('project:'.length);
+    const decoded = this.decode(reference);
+    return typeof decoded === 'string' && decoded !== reference ? `project:${decoded}` : value;
+  }
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function recordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item) => record(item)) as Record<string, unknown>[] : [];
+}
+
+/**
+ * The curriculum uses short opaque IDs while production state uses UUIDs. Encode only
+ * structured reference fields before inference, then restore only typed output reference
+ * fields before validation. User text and semantic output are never rewritten.
+ */
+export function compactManagerReferences(task: ManagerTask, original: Record<string, unknown>): ManagerReferencePreparation {
+  const input = structuredClone(original);
+  const codec = new ManagerReferenceCodec(input);
+  const encodeRecord = (value: unknown, idPrefix: 'c' | 'p' | 'm' | 'r', projectField?: string) => {
+    const item = record(value);
+    if (!item) return;
+    if ('id' in item) item.id = codec.encode(item.id, idPrefix);
+    if (projectField && projectField in item) item[projectField] = codec.encode(item[projectField], 'p');
+  };
+
+  if (task === 'continuity') {
+    encodeRecord(input.current_conversation, 'c', 'project_id');
+    for (const item of recordArray(input.candidate_conversations)) encodeRecord(item, 'c', 'project_id');
+  } else if (task === 'retrieval') {
+    const candidates = record(input.candidates);
+    for (const item of recordArray(candidates?.conversations)) encodeRecord(item, 'c');
+    for (const item of recordArray(candidates?.projects)) encodeRecord(item, 'p');
+    for (const item of recordArray(candidates?.memories)) {
+      encodeRecord(item, 'm');
+      if ('scope' in item) item.scope = codec.encodeProjectScope(item.scope);
+    }
+  } else if (task === 'memory') {
+    input.project_id = codec.encode(input.project_id, 'p');
+    for (const item of recordArray(input.existing_memories)) {
+      encodeRecord(item, 'm');
+      if ('scope' in item) item.scope = codec.encodeProjectScope(item.scope);
+    }
+  } else if (task === 'execution') {
+    input.project_id = codec.encode(input.project_id, 'p');
+  } else if (task === 'brief') {
+    for (const item of recordArray(input.available_refs)) encodeRecord(item, 'r');
+  } else if (task === 'respond') {
+    const localState = record(input.local_state);
+    for (const item of recordArray(localState?.memories)) encodeRecord(item, 'm');
+    const project = record(localState?.project);
+    if (project) {
+      if ('id' in project) project.id = codec.encode(project.id, 'p');
+      if ('conversationId' in project) project.conversationId = codec.encode(project.conversationId, 'c');
+    }
+  }
+
+  return {
+    input,
+    restore: (output: unknown) => {
+      const restored = structuredClone(output);
+      const envelope = record(restored);
+      const decision = record(envelope?.decision);
+      if (!decision) return restored;
+      if (task === 'continuity') {
+        if (Object.hasOwn(decision, 'target_conversation_id')) {
+          decision.target_conversation_id = codec.decode(decision.target_conversation_id);
+        }
+        if (Object.hasOwn(decision, 'target_project_id')) decision.target_project_id = codec.decode(decision.target_project_id);
+      } else if (task === 'retrieval') {
+        for (const field of ['conversation_ids', 'project_ids', 'memory_ids', 'untrusted_ids']) {
+          if (Array.isArray(decision[field])) decision[field] = (decision[field] as unknown[]).map((id) => codec.decode(id));
+        }
+      } else if (task === 'memory') {
+        if (Object.hasOwn(decision, 'target_memory_id')) decision.target_memory_id = codec.decode(decision.target_memory_id);
+        if (Object.hasOwn(decision, 'scope')) decision.scope = codec.decodeProjectScope(decision.scope);
+      } else if (task === 'brief' && Array.isArray(decision.context_refs)) {
+        decision.context_refs = (decision.context_refs as unknown[]).map((id) => codec.decode(id));
+      }
+      return restored;
+    },
+  };
+}
 export type ManagerState = 'unavailable' | 'starting' | 'ready' | 'error' | 'stopped';
 export type ManagerStatus = {
   state: ManagerState;
@@ -517,7 +680,7 @@ async function availablePort(): Promise<number> {
 export function managerServerArgs(model: string, port: number, contextLength: number): string[] {
   return [
     '-m', model, '-ngl', 'all', '-c', String(contextLength), '-np', '1', '-fa', 'on',
-    '--cache-prompt', '--cache-ram', '0', '--host', '127.0.0.1', '--port', String(port),
+    '--cache-ram', '0', '--host', '127.0.0.1', '--port', String(port),
     '--cors-origins', 'https://grover.invalid', '--no-cors-credentials', '--no-webui', '--no-slots', '-lv', '1',
   ];
 }
@@ -570,14 +733,14 @@ export class ManagerHttpClient {
 
   async inferRoute(input: Record<string, unknown>): Promise<ManagerInferenceResult<RouteDecision>> {
     return this.cached('route', input, async () => {
-      const result = await this.complete('route', input, 64);
+      const result = await this.complete('route', input);
       return { output: validateRouteDecision(result.parsed), latencyMs: result.latencyMs };
     });
   }
 
   async inferContinuity(input: Record<string, unknown>): Promise<ManagerInferenceResult<ContinuityDecision>> {
     return this.cached('continuity', input, async () => {
-      const result = await this.complete('continuity', input, 96);
+      const result = await this.complete('continuity', input);
       const current = input.current_conversation as { id?: unknown } | null;
       const candidates = Array.isArray(input.candidate_conversations) ? input.candidate_conversations as Record<string, unknown>[] : [];
       const allowedTargets = new Map<string, string | null>();
@@ -598,7 +761,7 @@ export class ManagerHttpClient {
 
   async inferRetrieval(input: Record<string, unknown>): Promise<ManagerInferenceResult<RetrievalDecision>> {
     return this.cached('retrieval', input, async () => {
-      const result = await this.complete('retrieval', input, 128);
+      const result = await this.complete('retrieval', input);
       const candidates = input.candidates as Record<string, unknown>;
       const records = (field: string) => Array.isArray(candidates?.[field]) ? candidates[field] as Record<string, unknown>[] : [];
       const conversations = records('conversations');
@@ -620,54 +783,56 @@ export class ManagerHttpClient {
 
   async inferMemory(input: Record<string, unknown>): Promise<ManagerInferenceResult<MemoryDecision>> {
     return this.cached('memory', input, async () => {
-      const result = await this.complete('memory', input, 104);
+      const result = await this.complete('memory', input);
       return { output: validateMemoryDecision(result.parsed, input), latencyMs: result.latencyMs };
     });
   }
 
   async inferExecution(input: Record<string, unknown>): Promise<ManagerInferenceResult<ExecutionDecision>> {
     return this.cached('execution', input, async () => {
-      const result = await this.complete('execution', input, 96);
+      const result = await this.complete('execution', input);
       return { output: validateExecutionDecision(result.parsed, input), latencyMs: result.latencyMs };
     });
   }
 
   async inferClarify(input: Record<string, unknown>): Promise<ManagerInferenceResult<ClarifyDecision>> {
     return this.cached('clarify', input, async () => {
-      const result = await this.complete('clarify', input, 96);
+      const result = await this.complete('clarify', input);
       return { output: validateClarifyDecision(result.parsed), latencyMs: result.latencyMs };
     });
   }
 
   async inferBrief(input: Record<string, unknown>): Promise<ManagerInferenceResult<BriefDecision>> {
     return this.cached('brief', input, async () => {
-      const result = await this.complete('brief', input, 160);
+      const result = await this.complete('brief', input);
       return { output: validateBriefDecision(result.parsed, input), latencyMs: result.latencyMs };
     });
   }
 
   async inferSupervise(input: Record<string, unknown>): Promise<ManagerInferenceResult<SuperviseDecision>> {
     return this.cached('supervise', input, async () => {
-      const result = await this.complete('supervise', input, 96);
+      const result = await this.complete('supervise', input);
       return { output: validateSuperviseDecision(result.parsed, input), latencyMs: result.latencyMs };
     });
   }
 
   async inferRespond(input: Record<string, unknown>): Promise<ManagerInferenceResult<RespondDecision>> {
     return this.cached('respond', input, async () => {
-      const result = await this.complete('respond', input, 88);
+      const result = await this.complete('respond', input);
       return { output: validateRespondDecision(result.parsed, input), latencyMs: result.latencyMs };
     });
   }
 
-  private async complete(task: ManagerTask, input: Record<string, unknown>, nPredict: number): Promise<{ parsed: unknown; latencyMs: number }> {
+  private async complete(task: ManagerTask, input: Record<string, unknown>): Promise<{ parsed: unknown; latencyMs: number }> {
     const started = performance.now();
+    const references = compactManagerReferences(task, input);
     const response = await fetch(`${this.endpoint}/completion`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt: rawManagerPrompt(task, input), temperature: 0, seed: 20260818, n_predict: nPredict,
-        repeat_penalty: 1.0, stop: ['<|im_end|>'], cache_prompt: true,
+        prompt: rawManagerPrompt(task, references.input), temperature: 0, seed: 20260818,
+        n_predict: MANAGER_OUTPUT_TOKEN_CAPS[task],
+        repeat_penalty: 1.0, stop: ['<|im_end|>'], cache_prompt: false,
       }),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
@@ -680,11 +845,13 @@ export class ManagerHttpClient {
     } catch {
       throw new Error('Local manager returned invalid JSON.');
     }
-    return { parsed, latencyMs: Math.round(performance.now() - started) };
+    return { parsed: references.restore(parsed), latencyMs: Math.round(performance.now() - started) };
   }
 }
 
-export function defaultManagerRuntimeRoot(): string {
+export function defaultManagerRuntimeRoot(resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath): string {
+  const packaged = resourcesPath ? join(resourcesPath, 'manager-inference') : null;
+  if (packaged && existsSync(join(packaged, 'inference_manifest.json'))) return packaged;
   const local = process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local');
   return join(local, 'GROVER', 'manager-inference');
 }
@@ -736,7 +903,8 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
         throw new Error('The local manager manifest is incompatible.');
       }
       const runtime = realpathSync(join(this.root, `llama-${manifest.runtime_version}`, 'llama-server.exe'));
-      const model = realpathSync(manifest.model);
+      const configuredModel = isAbsolute(manifest.model) ? manifest.model : join(this.root, manifest.model);
+      const model = realpathSync(configuredModel);
       const actualRoot = realpathSync(this.root);
       if (!pathWithin(actualRoot, runtime) || !pathWithin(actualRoot, model)) throw new Error('Manager runtime paths leave the approved local folder.');
       const modelHash = await sha256(model);
@@ -771,8 +939,12 @@ export class LocalManagerRuntime extends EventEmitter implements ManagerPlanner 
       while (Date.now() < deadline && child.exitCode === null) {
         if (await client.health()) {
           this.client = client;
+          const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+          const bundledRoot = resourcesPath ? join(resourcesPath, 'manager-inference') : null;
+          const bundled = Boolean(bundledRoot && resolve(bundledRoot) === resolve(this.root));
           this.setStatus({
-            state: 'ready', detail: 'Local manager is ready.', modelHash, lastLatencyMs: null,
+            state: 'ready', detail: bundled ? 'Bundled local manager is ready.' : 'Local manager is ready.',
+            modelHash, lastLatencyMs: null,
           });
           return;
         }
