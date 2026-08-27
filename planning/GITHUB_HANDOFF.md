@@ -1,6 +1,6 @@
 # GROVER v2 — GitHub-only cross-device handoff
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 This is the canonical practical handoff for continuing GROVER from another Windows computer using only the GitHub repository. Read `AGENTS.md` first; `planning/grover_v2_master_prompt.md` remains the binding product spec, and accepted `planning/proposals/proposal_009_manager_first_observability.md` governs the current manager-first implementation.
 
@@ -27,25 +27,32 @@ The learned manager is the semantic authority for meaningful requests. It owns r
 - Project goals and requirements remain retrieval/briefing context but are not mislabeled as local facts that can satisfy the work request. This keeps the trained respond contract authoritative instead of overriding a false local answer in code.
 - Non-durable manager memory proposals are refused and become linked `wrong_memory` incidents instead of polluting the vault.
 - Existing event-spine, policy, kill-switch, budget, backup/restore, project isolation, and Builder evidence protections remain active.
+- Manager validation now gives malformed JSON, wrong enums/contracts, and unavailable tool/workspace selections one bounded model-led repair. A repeated failure remains visible in the conversation and is linked to its Troubleshooting incident instead of surfacing as a raw desktop IPC exception.
+- Continuity performs one manager-led semantic review when a warm-started existing project is present but the first pass opens uncertain new scope. Explicit separate-new-project decisions remain distinct. The future curriculum now contains expansion-as-continuation families.
+- Manager-authorized Coding updates create/reuse one real local project folder. Legacy chat-only projects are reconstructed as the smallest same-language artifact from their own conversation history; worker scope rules prohibit unrelated framework/package scaffolding for narrow edits.
+- Clarification answers resume the pending original request rather than becoming standalone prompts.
+- Durable context actions save Will's exact text inside the manager-selected context partition before honestly disclosing unavailable external sync. This prevents lossy schedule summaries.
+- Worker supervision receives bounded, independently computed added/modified/deleted file evidence. Project goal corrections and direct vault edits stay synchronized with the durable project record, including startup repair of legacy mismatches.
+- Specialist and verifier runs are explicitly non-interactive. If user input is genuinely required, the worker returns one question for GROVER Manager to present; if a preferred runtime is unavailable, it performs bounded static verification and reports the limitation instead of attempting a hidden stdin exchange.
 
-Latest verified source baseline at this writing: 89 deterministic tests, 10 manager-training/runtime tests, the rendered Electron smoke, 18 exact protected manager parity cases, and the rendered authoritative manager lifecycle smoke. A real nine-stage Coding lifecycle completed in 8.738 seconds, and both the rebuilt unpacked application and the exact single-file candidate passed bundled-manager routing plus real supervised Codex file creation. Use `git log --oneline -12` and `planning/p7_progress.md` for the newest committed evidence.
+Latest verified source baseline at this writing: 102 deterministic tests, 11 manager-training/runtime tests, the rendered Electron smoke, 18 exact protected manager parity cases, the authoritative manager lifecycle smoke, and the literal three-prompt daily-recovery smoke. A signed-in real Codex run reopened the existing Guess and Check project, created the narrow Python artifact in its durable folder, passed file-grounded supervision, and retained the exact schedule in scoped local memory. Use `git log --oneline -12` and `planning/p7_progress.md` for the newest committed evidence.
 
 ## Verified Windows release candidate
 
 - Fast everyday launch on this device: `app/release/win-unpacked/GROVER.exe`; keep its complete folder together.
-- Drag-and-drop transfer artifact: `app/release/GROVER-2.1.0-rc.1-portable.exe`.
-- Artifact size: 1,941,125,568 bytes (about 1.81 GiB).
-- Artifact SHA-256: `932FDDBEFF82FE614CFCC9D8E95BCA778F1605F9CAC6F9146813D00945545105`.
+- Drag-and-drop transfer artifact: `app/release/GROVER-2.1.0-rc.2-portable.exe`.
+- Artifact size: 1,941,334,234 bytes (about 1.81 GiB).
+- Artifact SHA-256: `8795940D79DDFCF77A5AB2B27EDD049564F8B2DDB6CA5F993C0C4E80B35AF76A`.
 - Embedded manager model SHA-256: `81B169E7862D63ED06A1D64E6864F0BA76A0222E0E87B9FCDBD6EA31F22EAEC0`.
-- Exact portable smoke: 228.686 seconds extraction/startup, 4.273 seconds manager greeting, and 78.235 seconds for a natural Coding request whose file bytes were independently verified after bundled Codex execution and manager supervision.
-- Candidate implementation commit: `ba207c1`.
-- Release tag: `v2.1.0-rc.1`.
+- Exact unpacked smoke: 43.166 seconds startup, 4.622 seconds manager greeting, and 70.423 seconds for a natural Coding request whose file bytes were independently verified after bundled Codex execution and manager supervision.
+- Exact portable smoke: 269.280 seconds extraction/startup, 4.319 seconds manager greeting, and 80.892 seconds for the same bundled-manager and real-Codex workflow.
+- Release tag: `v2.1.0-rc.2`.
 
 Generated packages are intentionally ignored by Git. The source, rebuild automation, audit, and next steps are carried by GitHub; the 1.81 GiB executable must be copied directly or attached to a release separately.
 
 ## Repository and local data boundaries
 
-GitHub contains source, tests, schemas, synthetic curriculum generators, package/rebuild automation, configuration, and documentation. It intentionally does not commit personal database/vault data, secrets, downloaded model weights, CUDA binaries, Python environments, generated packages, or the 1.83 GB prepared manager model. The locally generated RC.1 portable executable bundles the exact manager and runtime, but remains a release artifact rather than Git source.
+GitHub contains source, tests, schemas, synthetic curriculum generators, package/rebuild automation, configuration, and documentation. It intentionally does not commit personal database/vault data, secrets, downloaded model weights, CUDA binaries, Python environments, generated packages, or the 1.83 GB prepared manager model. The locally generated RC.2 portable executable bundles the exact manager and runtime, but remains a release artifact rather than Git source.
 
 Default local application data:
 
@@ -84,11 +91,11 @@ npm start
 
 The app runs without the manager only when `GROVER_DISABLE_MANAGER=true` is deliberately set for tests/fallback diagnostics. Normal production use expects the prepared manager bundle.
 
-If you have the generated release artifact, no separate Node.js, Python, model, `llama.cpp`, or Codex runtime download is required to run it. Copy `GROVER-2.1.0-rc.1-portable.exe`, open it, and sign in to Codex from Settings when specialist work is needed. Windows may warn because this development candidate is not signed with a purchased public certificate.
+If you have the generated release artifact, no separate Node.js, Python, model, `llama.cpp`, or Codex runtime download is required to run it. Copy `GROVER-2.1.0-rc.2-portable.exe`, open it, and sign in to Codex from Settings when specialist work is needed. Windows may warn because this development candidate is not signed with a purchased public certificate.
 
 ## Moving the trained manager
 
-For a source/development checkout, the fastest exact transfer is to copy the complete `%LOCALAPPDATA%\GROVER\manager-inference` folder from the source computer to the identical location under the target Windows account. It contains the pinned CUDA `llama.cpp` runtime, inference manifest, and exact-NF4 merged Q8 GGUF candidate. The app verifies the manifest/model hash before launch. The RC.1 portable package embeds this same folder and prefers it over any machine-local manager.
+For a source/development checkout, the fastest exact transfer is to copy the complete `%LOCALAPPDATA%\GROVER\manager-inference` folder from the source computer to the identical location under the target Windows account. It contains the pinned CUDA `llama.cpp` runtime, inference manifest, and exact-NF4 merged Q8 GGUF candidate. The app verifies the manifest/model hash before launch. The RC.2 portable package embeds this same folder and prefers it over any machine-local manager.
 
 The prepared candidate is about 1.83 GB. GPU choice should affect latency, not learned decisions. Do not swap in a nominally “better” quantization: standard Q8 plus LoRA, exact-merged Q4, and multi-slot batching all changed behavior and were rejected.
 
@@ -136,8 +143,8 @@ Use live/provider/Builder checks deliberately because they invoke actual local r
 - Exact replay currently targets manager stages. End-to-end specialist answer replay still needs bounded worker/artifact fixtures; a changed manager output is never automatically called fixed without explicit approval.
 - Calendar and other external account tools remain disconnected. Lifestyle scheduling is a later sub-app, not the product center.
 - Visual design is temporary by explicit direction.
-- The exact single-file portable smoke took 228.686 seconds to extract/start on this laptop. `release/win-unpacked/GROVER.exe` is the faster-starting local form when the complete folder is kept together; the portable wrapper is primarily the drag-and-drop transfer form.
-- GitHub source alone does not include the trained model bytes or personal app data. Use the generated RC.1 artifact or the transfer instructions above for identical local inference; copy an app backup separately for personal continuity.
+- The exact RC.2 single-file portable smoke took 269.280 seconds to extract/start on this laptop; the unpacked RC.2 smoke started in 43.166 seconds. `release/win-unpacked/GROVER.exe` is the faster local form when the complete folder is kept together; the portable wrapper is primarily the drag-and-drop transfer form.
+- GitHub source alone does not include the trained model bytes or personal app data. Use the generated RC.2 artifact or the transfer instructions above for identical local inference; copy an app backup separately for personal continuity.
 
 ## Future project-navigation UX direction (not implemented)
 

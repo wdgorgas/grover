@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -21,6 +21,113 @@ const route: RouteDecision = {
   schema_version: '1.0', task: 'route',
   decision: { destination: 'coding', work_kind: 'work', confidence: 'high', rationale_codes: ['software_creation'] },
 };
+
+async function waitForTaskStatus(db: ReturnType<typeof openDb>, taskId: string, expected: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const task = db.prepare('SELECT status FROM task_state WHERE task_id = ?').get(taskId) as { status: string } | undefined;
+    if (task?.status === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  const task = db.prepare('SELECT status, plain_language FROM task_state WHERE task_id = ?').get(taskId);
+  assert.fail(`Task ${taskId} did not reach ${expected}: ${JSON.stringify(task)}`);
+}
+
+function codingManager(options: {
+  routeInputs?: Record<string, unknown>[];
+  superviseInputs?: Record<string, unknown>[];
+  supervise?: (call: number) => 'accept' | 'clarify';
+} = {}): ManagerPlanner {
+  let supervisionCalls = 0;
+  return {
+    status: () => ({ state: 'ready', detail: 'test', modelHash: 'TEST_HASH', lastLatencyMs: null }),
+    inferRoute: async (input) => {
+      options.routeInputs?.push(input);
+      return { output: route, latencyMs: 1 };
+    },
+    inferContinuity: async (input) => {
+      const current = input.current_conversation as { id: string; project_id?: string | null } | null;
+      const candidates = input.candidate_conversations as { id: string; project_id: string | null }[];
+      const target = current ?? candidates[0];
+      return {
+        output: {
+          schema_version: '1.0', task: 'continuity', decision: {
+            action: current ? 'continue' : 'reopen', target_conversation_id: target.id,
+            target_project_id: target.project_id ?? null, search_needed: false, confidence: 'high',
+            rationale_codes: ['known_project'],
+          },
+        }, latencyMs: 1,
+      };
+    },
+    inferRetrieval: async (input) => {
+      const candidates = input.candidates as Record<string, { id: string }[]>;
+      return {
+        output: {
+          schema_version: '1.0', task: 'retrieval', decision: {
+            conversation_ids: candidates.conversations.slice(0, 1).map((item) => item.id),
+            project_ids: candidates.projects.slice(0, 1).map((item) => item.id),
+            memory_ids: candidates.memories.map((item) => item.id), search_queries: [], untrusted_ids: [],
+            confidence: 'high', rationale_codes: ['known_project'],
+          },
+        }, latencyMs: 1,
+      };
+    },
+    inferMemory: async () => ({
+      output: {
+        schema_version: '1.0', task: 'memory', decision: {
+          operation: 'none', target_memory_id: null, scope: null, canonical_fact: null, sensitivity: null,
+          expires: false, confidence: 'high', rationale_codes: ['no_new_memory'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferRespond: async () => ({
+      output: {
+        schema_version: '1.0', task: 'respond', decision: {
+          action: 'delegate', tool_ids: [], response: null, confidence: 'high', rationale_codes: ['worker_needed'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferClarify: async () => ({
+      output: {
+        schema_version: '1.0', task: 'clarify', decision: {
+          needed: false, can_begin: true, question: null, missing_fields: [], confidence: 'high',
+          rationale_codes: ['safe_discovery_can_begin'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferExecution: async () => ({
+      output: {
+        schema_version: '1.0', task: 'execution', decision: {
+          response_mode: 'delegate', tool_ids: ['project_files'], worker_id: 'worker_frontier', tier: 'frontier',
+          workspace_id: 'workspace_project', permission_triggers: [], confidence: 'high',
+          rationale_codes: ['project_write_worker'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferBrief: async (input) => ({
+      output: {
+        schema_version: '1.0', task: 'brief', decision: {
+          objective: 'Continue the existing Coding project',
+          context_refs: (input.available_refs as { id: string }[]).map((item) => item.id),
+          constraints: ['inspect existing context first'], deliverables: ['working files'],
+          verification: ['check the changed file'], stop_conditions: ['stop before deployment'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferSupervise: async (input) => {
+      options.superviseInputs?.push(input);
+      const action = options.supervise?.(supervisionCalls++) ?? 'accept';
+      return {
+        output: {
+          schema_version: '1.0', task: 'supervise', decision: {
+            action, next_worker_id: null, missing_evidence: [],
+            question: action === 'clarify' ? 'Which local folder should I use?' : null,
+            confidence: 'high', rationale_codes: [action === 'clarify' ? 'location_needed' : 'verified_result'],
+          },
+        }, latencyMs: 1,
+      };
+    },
+  };
+}
 
 test('manager server is loopback-only, authenticated outside argv, and has no browser surface', () => {
   const args = managerServerArgs('model.gguf', 18123, 2048);
@@ -219,6 +326,14 @@ test('all trained manager lifecycle tasks validate only supplied application sta
     },
   };
   assert.deepEqual(validateSuperviseDecision(supervise, superviseInput), supervise);
+  assert.throws(() => validateSuperviseDecision({
+    ...supervise,
+    decision: { ...supervise.decision, action: 'verify', next_worker_id: 'codex-cli', missing_evidence: [] },
+  }, superviseInput), /without naming missing evidence/);
+  assert.throws(() => validateSuperviseDecision({
+    ...supervise,
+    decision: { ...supervise.decision, action: 'verify', next_worker_id: 'codex-cli', missing_evidence: ['changed_files'] },
+  }, { ...superviseInput, evidence: [{ kind: 'changed_files' }] }), /already supplied/);
 
   const respondInput = { tools: [{ id: 'memory_search', available: true }] };
   const respond = {
@@ -272,6 +387,456 @@ test('manager HTTP client authenticates backend requests and validates the respo
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+});
+
+test('manager client makes one bounded semantic repair after an invalid contract decision', async () => {
+  const key = 'repair-key';
+  const prompts: string[] = [];
+  const server = createServer((request, response) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => { body += chunk; });
+    request.on('end', () => {
+      const prompt = JSON.parse(body).prompt as string;
+      prompts.push(prompt);
+      const repaired = prompt.includes('manager_validation_repair');
+      const output = repaired ? {
+        schema_version: '1.0', task: 'continuity', decision: {
+          action: 'reopen', target_conversation_id: 'conv_known', target_project_id: 'proj_known',
+          search_needed: false, confidence: 'high', rationale_codes: ['repaired_existing_match'],
+        },
+      } : {
+        schema_version: '1.0', task: 'continuity', decision: {
+          action: 'answer_local', target_conversation_id: 'conv_known', target_project_id: 'proj_known',
+          search_needed: false, confidence: 'high', rationale_codes: ['wrong_contract'],
+        },
+      };
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ content: JSON.stringify(output) }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  try {
+    const client = new ManagerHttpClient(`http://127.0.0.1:${address.port}`, key);
+    const result = await client.inferContinuity({
+      request: 'Continue the pending project request using my answer.', resolved_destination: 'coding',
+      current_conversation: { id: 'conv_known', title: 'Known', context: 'coding', project_id: 'proj_known' },
+      candidate_conversations: [
+        { id: 'conv_known', title: 'Known', context: 'coding', project_id: 'proj_known', status: 'active' },
+      ],
+    });
+    assert.equal(prompts.length, 2);
+    assert.equal(result.output.decision.action, 'reopen');
+    assert.equal(result.recovery?.attempted, true);
+    assert.match(result.recovery?.validationError ?? '', /unknown enum value/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test('manager client makes the same bounded repair when the first output is invalid JSON', async () => {
+  let calls = 0;
+  const server = createServer((request, response) => {
+    calls += 1;
+    request.resume();
+    request.on('end', () => {
+      const content = calls === 1 ? '{broken json' : JSON.stringify(route);
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ content, timings: { predicted_ms: 2 } }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  try {
+    const client = new ManagerHttpClient(`http://127.0.0.1:${address.port}`, 'secret');
+    const result = await client.inferRoute({ request: 'code a game', current_context: 'general' });
+    assert.deepEqual(result.output, route);
+    assert.equal(result.recovery?.attempted, true);
+    assert.match(result.recovery?.validationError ?? '', /invalid JSON/);
+    assert.equal(calls, 2);
+  } finally {
+    server.close();
+  }
+});
+
+test('manager client repairs selection of an unavailable tool without enabling it', async () => {
+  const server = createServer((request, response) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => { body += chunk; });
+    request.on('end', () => {
+      const prompt = (JSON.parse(body).prompt as string);
+      const repaired = prompt.includes('manager_validation_repair');
+      const output = {
+        schema_version: '1.0', task: 'execution', decision: repaired ? {
+          response_mode: 'blocked', tool_ids: [], worker_id: null, tier: 'local', workspace_id: null,
+          permission_triggers: [], confidence: 'high', rationale_codes: ['unavailable_tool_blocked'],
+        } : {
+          response_mode: 'local', tool_ids: ['calendar_read'], worker_id: null, tier: 'local', workspace_id: null,
+          permission_triggers: [], confidence: 'high', rationale_codes: ['calendar_action'],
+        },
+      };
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ content: JSON.stringify(output) }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  try {
+    const client = new ManagerHttpClient(`http://127.0.0.1:${address.port}`, 'repair-key');
+    const result = await client.inferExecution({
+      goal: 'Set my daily schedule', context: 'general', project_id: null,
+      tools: [{ id: 'calendar_read', available: false, authority: 'read' }],
+      workers: [], workspaces: [], permissions: {},
+    });
+    assert.equal(result.output.decision.response_mode, 'blocked');
+    assert.deepEqual(result.output.decision.tool_ids, []);
+    assert.equal(result.recovery?.attempted, true);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test('an unrepaired manager failure remains visible as a linked retryable task', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-managed-visible-failure-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const conversationId = createConversation(db, 'coding', 'Visible manager failure');
+  const manager = codingManager();
+  manager.inferRoute = async () => { throw new Error('route schema remained invalid'); };
+  const core = new GroverCore({ db, dataDir, manager });
+
+  const result = await core.submitManaged({
+    text: 'Continue the existing project.', context: 'coding', conversationId,
+  });
+  await waitForTaskStatus(db, result.taskId, 'failed');
+  const incident = db.prepare('SELECT id, task_id FROM incidents ORDER BY last_seen_at DESC LIMIT 1').get() as
+    { id: string; task_id: string };
+  assert.equal(incident.task_id, result.taskId);
+  const answer = db.prepare(
+    "SELECT content FROM conversation_messages WHERE task_id = ? AND role = 'assistant'"
+  ).get(result.taskId) as { content: string };
+  assert.match(answer.content, new RegExp(incident.id));
+  assert.match(answer.content, /retry/i);
+});
+
+test('managed conversational navigation stops after continuity without tools or project creation', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-managed-navigation-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const conversationId = createConversation(db, 'coding', 'Guess and check game');
+  addConversationMessage(db, conversationId, null, 'user', 'Build a guess and check game.');
+  let downstreamCalls = 0;
+  let engineCalls = 0;
+  const manager: ManagerPlanner = {
+    status: () => ({ state: 'ready', detail: 'test', modelHash: 'TEST_HASH', lastLatencyMs: null }),
+    inferRoute: async () => ({ output: route, latencyMs: 1 }),
+    inferContinuity: async (input) => {
+      const target = (input.candidate_conversations as { id: string; project_id: string | null }[])[0];
+      return {
+        output: {
+          schema_version: '1.0', task: 'continuity', decision: {
+            action: 'reopen', target_conversation_id: target.id, target_project_id: target.project_id,
+            search_needed: false, confidence: 'high', rationale_codes: ['unique_existing_match'],
+          },
+        }, latencyMs: 1,
+      };
+    },
+    inferRetrieval: async () => { downstreamCalls += 1; throw new Error('retrieval should not run'); },
+    inferMemory: async () => { downstreamCalls += 1; throw new Error('memory should not run'); },
+    inferRespond: async () => { downstreamCalls += 1; throw new Error('respond should not run'); },
+    inferClarify: async () => { downstreamCalls += 1; throw new Error('clarify should not run'); },
+    inferExecution: async () => { downstreamCalls += 1; throw new Error('execution should not run'); },
+    inferBrief: async () => { downstreamCalls += 1; throw new Error('brief should not run'); },
+    inferSupervise: async () => { downstreamCalls += 1; throw new Error('supervise should not run'); },
+  };
+  const engine: ExecutionEngine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask', 'work', 'project'], available: true,
+    run: async () => { engineCalls += 1; return { answer: 'unexpected', costUsd: 0 }; }, cancel: () => false,
+  };
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+  const before = (db.prepare('SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ?')
+    .get(conversationId) as { count: number }).count;
+  const result = await core.submitManaged({ text: 'hey grover can you open up the guess and check project' });
+  assert.equal(result.conversationId, conversationId);
+  assert.equal(result.conversationDisposition, 'navigated');
+  assert.equal(downstreamCalls, 0);
+  assert.equal(engineCalls, 0);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM project_records').get() as { count: number }).count, 0);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM conversation_messages WHERE conversation_id = ?')
+    .get(conversationId) as { count: number }).count, before, 'navigation did not pollute project history');
+  assert.deepEqual(
+    (db.prepare('SELECT stage FROM manager_stage_records ORDER BY sequence').all() as { stage: string }[])
+      .map((row) => row.stage),
+    ['route', 'continuity'],
+  );
+});
+
+test('continuity gets one manager-led semantic review before duplicating a warm-started project', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-managed-continuity-review-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const conversationId = createConversation(db, 'coding', 'Guess and check game');
+  addConversationMessage(db, conversationId, null, 'user', 'Build a guess and check game for numbers 1-10.');
+  let continuityCalls = 0;
+  const manager = codingManager();
+  manager.inferContinuity = async (input) => {
+    continuityCalls += 1;
+    const candidates = input.candidate_conversations as { id: string; project_id: string | null }[];
+    const reviewed = Boolean(input.continuity_review);
+    return {
+      output: {
+        schema_version: '1.0', task: 'continuity', decision: {
+          action: reviewed ? 'reopen' : 'branch',
+          target_conversation_id: reviewed ? candidates[0].id : null,
+          target_project_id: reviewed ? candidates[0].project_id : null,
+          search_needed: false, confidence: 'high',
+          rationale_codes: [reviewed ? 'existing_project_update' : 'new_scope'],
+        },
+      }, latencyMs: 1,
+    };
+  };
+  const engine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask', 'work', 'project'], available: true,
+    run: async () => ({ answer: 'Updated existing project.', costUsd: 0 }), cancel: () => false,
+  } as ExecutionEngine;
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+
+  const result = await core.submitManaged({ text: 'Expand the guess and check game to numbers 1-15.' });
+  await waitForTaskStatus(db, result.taskId, 'done');
+  assert.equal(result.conversationId, conversationId);
+  assert.equal(continuityCalls, 2);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM conversations').get() as { count: number }).count, 1);
+  const refs = db.prepare(
+    `SELECT s.input_refs_json FROM manager_stage_records s JOIN manager_flights f ON f.id = s.flight_id
+     WHERE f.task_id = ? AND s.stage = 'continuity'`
+  ).get(result.taskId) as { input_refs_json: string };
+  assert.equal(JSON.parse(refs.input_refs_json).semantic_review_attempted, true);
+});
+
+test('an explicit manager decision to create a separate project bypasses continuity review', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-managed-explicit-new-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  createConversation(db, 'coding', 'Guess and check game');
+  let continuityCalls = 0;
+  const manager = codingManager();
+  manager.inferContinuity = async () => {
+    continuityCalls += 1;
+    return {
+      output: {
+        schema_version: '1.0', task: 'continuity', decision: {
+          action: 'branch', target_conversation_id: null, target_project_id: null,
+          search_needed: false, confidence: 'high', rationale_codes: ['explicit_new_project'],
+        },
+      }, latencyMs: 1,
+    };
+  };
+  const engine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask', 'work', 'project'], available: true,
+    run: async () => ({ answer: 'Created the separate project.', costUsd: 0 }), cancel: () => false,
+  } as ExecutionEngine;
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+
+  const result = await core.submitManaged({ text: 'Create a separate new Guess and check game project.' });
+  await waitForTaskStatus(db, result.taskId, 'done');
+  assert.equal(continuityCalls, 1);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM conversations').get() as { count: number }).count, 2);
+});
+
+test('manager project_files authority materializes and edits a legacy Coding project', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-managed-legacy-project-'));
+  const projectsRoot = join(dataDir, 'projects');
+  const db = openDb(join(dataDir, 'grover.db'));
+  const conversationId = createConversation(db, 'coding', 'Guess and check game');
+  const original = 'Build a Python guess and check game for numbers 1-10.';
+  addConversationMessage(db, conversationId, null, 'user', original);
+  addConversationMessage(db, conversationId, null, 'assistant', 'Use random.randint(1, 10).');
+  const engine: ExecutionEngine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask', 'work', 'project'], available: true,
+    run: async (input) => {
+      writeFileSync(join(input.cwd, 'guess_game.py'), 'MAX_NUMBER = 15\n', 'utf8');
+      return { answer: 'Updated guess_game.py to use numbers 1-15 and verified the file.', costUsd: 0 };
+    }, cancel: () => false,
+  };
+  const superviseInputs: Record<string, unknown>[] = [];
+  const core = new GroverCore({
+    db, dataDir, projectsRoot, manager: codingManager({ superviseInputs }), router: new EngineRouter([engine]),
+  });
+  const result = await core.submitManaged({ text: 'Broaden the guess and check range to numbers 1-15.' });
+  await waitForTaskStatus(db, result.taskId, 'done');
+  const project = db.prepare('SELECT root_path FROM projects WHERE conversation_id = ?').get(conversationId) as
+    { root_path: string };
+  assert.equal(readFileSync(join(project.root_path, 'guess_game.py'), 'utf8'), 'MAX_NUMBER = 15\n');
+  assert.ok((superviseInputs[0].evidence as { kind: string }[]).some((item) => item.kind === 'changed_files'));
+  const projectRecord = db.prepare('SELECT goal FROM project_records WHERE conversation_id = ?').get(conversationId) as
+    { goal: string };
+  assert.equal(projectRecord.goal, original, 'legacy project identity comes from its original request, not the update prompt');
+});
+
+test('manager verifier remains non-interactive when an execution runtime is unavailable', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-managed-noninteractive-verifier-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const conversationId = createConversation(db, 'coding', 'Guess and check game');
+  addConversationMessage(db, conversationId, null, 'user', 'Build a Python guess and check game for numbers 1-10.');
+  const manager = codingManager();
+  let supervisionCalls = 0;
+  manager.inferSupervise = async () => {
+    const verify = supervisionCalls++ === 0;
+    return {
+      output: {
+        schema_version: '1.0', task: 'supervise', decision: {
+          action: verify ? 'verify' : 'accept', next_worker_id: verify ? 'worker_frontier' : null,
+          missing_evidence: verify ? ['verification'] : [], question: null, confidence: 'high',
+          rationale_codes: [verify ? 'verification_needed' : 'verified_result'],
+        },
+      }, latencyMs: 1,
+    };
+  };
+  const workerPrompts: string[] = [];
+  const engine: ExecutionEngine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask', 'work', 'project'], available: true,
+    run: async (input) => {
+      workerPrompts.push(input.prompt);
+      if (workerPrompts.length === 1) {
+        writeFileSync(join(input.cwd, 'guess_game.py'), 'MAX_NUMBER = 15\n', 'utf8');
+        return { answer: 'Updated the range. Python is unavailable, so runtime verification was not possible.', costUsd: 0 };
+      }
+      assert.match(input.prompt, /This is a non-interactive worker run\. Never invoke interactive input\./);
+      assert.match(input.prompt, /perform the strongest safe static checks available/);
+      return { answer: 'Static inspection confirms guess_game.py contains MAX_NUMBER = 15.', costUsd: 0 };
+    }, cancel: () => false,
+  };
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+  const result = await core.submitManaged({
+    text: 'Expand the game from numbers 1-10 to 1-15.', context: 'coding', conversationId,
+  });
+  await waitForTaskStatus(db, result.taskId, 'done');
+  assert.equal(workerPrompts.length, 2);
+  db.close();
+});
+
+test('clarification answer resumes the blocked project request instead of becoming a standalone answer', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-managed-clarification-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const conversationId = createConversation(db, 'coding', 'Guess and check game');
+  addConversationMessage(db, conversationId, null, 'user', 'Build a Python guess and check game.');
+  const routeInputs: Record<string, unknown>[] = [];
+  const manager = codingManager({ routeInputs, supervise: (call) => call === 0 ? 'clarify' : 'accept' });
+  const workerPrompts: string[] = [];
+  const engine: ExecutionEngine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask', 'work', 'project'], available: true,
+    run: async (input) => {
+      workerPrompts.push(input.prompt);
+      writeFileSync(join(input.cwd, 'guess_game.py'), 'MAX_NUMBER = 15\n', 'utf8');
+      return { answer: 'Prepared the project files.', costUsd: 0 };
+    }, cancel: () => false,
+  };
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+  const first = await core.submitManaged({
+    text: 'Expand the game from numbers 1-10 to 1-15.', context: 'coding', conversationId,
+  });
+  await waitForTaskStatus(db, first.taskId, 'blocked');
+  const second = await core.submitManaged({
+    text: 'C drive is alright, or just whatever local directory you have',
+    context: 'coding', conversationId,
+  });
+  await waitForTaskStatus(db, second.taskId, 'done');
+  assert.match(String(routeInputs.at(-1)?.request), /Original request: Expand the game from numbers 1-10 to 1-15\./);
+  assert.match(String(routeInputs.at(-1)?.request), /Will's answer: C drive is alright/);
+  assert.match(workerPrompts.at(-1) ?? '', /Will's answer: C drive is alright/);
+  assert.match(workerPrompts.at(-1) ?? '', /Do not scaffold a new framework/);
+  const displayed = db.prepare(
+    "SELECT content FROM conversation_messages WHERE task_id = ? AND role = 'user'"
+  ).get(second.taskId) as { content: string };
+  assert.equal(displayed.content, 'C drive is alright, or just whatever local directory you have');
+  assert.equal((db.prepare('SELECT status FROM task_state WHERE task_id = ?').get(first.taskId) as { status: string }).status, 'cancelled');
+});
+
+test('manager-classified Lifestyle schedule writes complete locally without calendar sync', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-managed-local-schedule-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  let engineCalls = 0;
+  const manager: ManagerPlanner = {
+    status: () => ({ state: 'ready', detail: 'test', modelHash: 'TEST_HASH', lastLatencyMs: null }),
+    inferRoute: async () => ({
+      output: {
+        schema_version: '1.0', task: 'route', decision: {
+          destination: 'lifestyle', work_kind: 'act', confidence: 'high', rationale_codes: ['calendar_action'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferContinuity: async () => ({
+      output: {
+        schema_version: '1.0', task: 'continuity', decision: {
+          action: 'create', target_conversation_id: null, target_project_id: null, search_needed: false,
+          confidence: 'high', rationale_codes: ['new_schedule'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferRetrieval: async () => ({
+      output: {
+        schema_version: '1.0', task: 'retrieval', decision: {
+          conversation_ids: [], project_ids: [], memory_ids: [], search_queries: [], untrusted_ids: [],
+          confidence: 'high', rationale_codes: ['no_prior_schedule'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferMemory: async () => ({
+      output: {
+        schema_version: '1.0', task: 'memory', decision: {
+          operation: 'create', target_memory_id: null, scope: 'context:lifestyle',
+          canonical_fact: 'Daily schedule: gym 9-11, school 12-1 and 4-6, research 1-4, capstone 6-8.',
+          sensitivity: 'private', expires: false, confidence: 'high', rationale_codes: ['durable_schedule'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferRespond: async () => ({
+      output: {
+        schema_version: '1.0', task: 'respond', decision: {
+          action: 'delegate', tool_ids: [], response: null, confidence: 'high', rationale_codes: ['calendar_action'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferClarify: async () => ({
+      output: {
+        schema_version: '1.0', task: 'clarify', decision: {
+          needed: false, can_begin: true, question: null, missing_fields: [], confidence: 'high',
+          rationale_codes: ['complete_schedule'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferExecution: async () => ({
+      output: {
+        schema_version: '1.0', task: 'execution', decision: {
+          response_mode: 'blocked', tool_ids: [], worker_id: null, tier: 'local', workspace_id: null,
+          permission_triggers: [], confidence: 'high', rationale_codes: ['calendar_disconnected'],
+        },
+      }, latencyMs: 1,
+    }),
+    inferBrief: async () => { throw new Error('brief should not run'); },
+    inferSupervise: async () => { throw new Error('supervision should not run'); },
+  };
+  const engine: ExecutionEngine = {
+    id: 'codex-cli', displayName: 'Codex', capabilities: ['ask', 'work'], available: true,
+    run: async () => { engineCalls += 1; return { answer: 'unexpected', costUsd: 0 }; }, cancel: () => false,
+  };
+  const core = new GroverCore({ db, dataDir, manager, router: new EngineRouter([engine]) });
+  const result = await core.submitManaged({
+    text: 'Set my daily schedule with gym 9-11, school 12-1 and 4-6, research 1-4, and capstone 6-8.',
+  });
+  await waitForTaskStatus(db, result.taskId, 'done');
+  assert.equal(engineCalls, 0);
+  const memory = db.prepare(
+    "SELECT category, content FROM memories WHERE deleted_at IS NULL AND superseded_by IS NULL"
+  ).get() as { category: string; content: string };
+  assert.equal(memory.category, 'manager:context:lifestyle');
+  assert.match(memory.content, /gym 9-11/);
+  const answer = db.prepare(
+    "SELECT content FROM conversation_messages WHERE task_id = ? AND role = 'assistant'"
+  ).get(result.taskId) as { content: string };
+  assert.match(answer.content, /saved.*local Lifestyle vault/i);
+  assert.match(memory.content, /Set my daily schedule/);
 });
 
 test('production manager output ceilings accommodate UUID-rich validated decisions', () => {

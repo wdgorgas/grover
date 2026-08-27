@@ -55,6 +55,38 @@ test('project retrieval is isolated, correctable, externally editable, and expir
   assert.equal(service.hasMemory(expired), false);
 });
 
+test('project goal corrections and vault edits keep the durable project identity synchronized', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-project-goal-sync-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const service = new ProjectMemoryService(db, dataDir);
+  const project = service.ensureProject(
+    createConversation(db, 'coding', 'Guess and check'), 'coding', 'Guess and check', 'Use numbers 1-10.',
+  );
+  const goal = service.retrieve(project.id, 'numbers', 20).find((memory) => memory.category.endsWith(':goal'))!;
+  const replacement = service.correct(goal.id, 'Use numbers 1-15.', 'task-update');
+  assert.equal(service.get(project.id)?.goal, 'Use numbers 1-15.');
+
+  const note = db.prepare('SELECT vault_path FROM project_memories WHERE id = ?').get(replacement) as { vault_path: string };
+  writeFileSync(note.vault_path, readFileSync(note.vault_path, 'utf8').replace('Use numbers 1-15.', 'Use numbers 1-20.'), 'utf8');
+  assert.equal(service.syncVault(), 1);
+  assert.equal(service.get(project.id)?.goal, 'Use numbers 1-20.');
+});
+
+test('project memory startup repairs a legacy project record whose active goal diverged', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'grover-project-goal-reconcile-'));
+  const db = openDb(join(dataDir, 'grover.db'));
+  const service = new ProjectMemoryService(db, dataDir);
+  const project = service.ensureProject(
+    createConversation(db, 'coding', 'Legacy project'), 'coding', 'Legacy project', 'Old intake goal.',
+  );
+  const goal = service.retrieve(project.id, '', 20).find((memory) => memory.category.endsWith(':goal'))!;
+  service.correct(goal.id, 'Active corrected goal.', 'task-correction');
+  db.prepare('UPDATE project_records SET goal = ? WHERE id = ?').run('Stale record goal.', project.id);
+
+  const restarted = new ProjectMemoryService(db, dataDir);
+  assert.equal(restarted.get(project.id)?.goal, 'Active corrected goal.');
+});
+
 test('memory backup and restore includes project records, memories, artifacts, and vault notes', () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'grover-project-backup-'));
   const destination = mkdtempSync(join(tmpdir(), 'grover-project-export-'));

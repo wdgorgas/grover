@@ -1,7 +1,7 @@
 {
   "name": "grover",
   "private": true,
-  "version": "2.1.0-rc.1",
+  "version": "2.1.0-rc.2",
   "type": "module",
   "engines": {
     "node": ">=22.18"
@@ -15,6 +15,7 @@
     "test:engine": "node test/live-engine-smoke.mjs",
     "test:memory-live": "node test/live-memory-smoke.mjs",
     "test:manager-live": "node test/live-manager-authoritative.mjs",
+    "test:manager-recovery-live": "node test/live-manager-recovery.mjs",
     "test:manager-parity": "node test/live-manager-parity.mjs",
     "test:coding-live": "node test/live-coding-project.mjs",
     "test:builder": "node test/live-builder-smoke.mjs",

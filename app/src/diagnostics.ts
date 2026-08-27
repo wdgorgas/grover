@@ -302,6 +302,16 @@ export class DiagnosticsService {
     });
   }
 
+  attachIncidentToTask(incidentId: string, taskId: string): void {
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE incidents SET task_id = ?, updated_at = ? WHERE id = ?').run(taskId, now, incidentId);
+    this.db.prepare(
+      `UPDATE incident_occurrences SET task_id = ? WHERE id = (
+         SELECT id FROM incident_occurrences WHERE incident_id = ? ORDER BY created_at DESC LIMIT 1
+       )`
+    ).run(taskId, incidentId);
+  }
+
   captureProviderFailure(taskId: string, provider: string, error: unknown): string {
     const flight = this.db.prepare('SELECT id FROM manager_flights WHERE task_id = ?').get(taskId) as { id: string } | undefined;
     return this.recordIncident({

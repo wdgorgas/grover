@@ -211,7 +211,7 @@ function continuationRequested(text: string): boolean {
 }
 
 function navigationRequested(text: string): boolean {
-  return /^\s*(?:please\s+)?(?:open|reopen|show|go (?:back )?to|return to|take me (?:back )?to)\b/i.test(text);
+  return /^\s*(?:(?:hey|hi|hello)[,!\s]+grover[,!\s]*)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:open(?:\s+up)?|reopen|show|go (?:back )?to|return to|take me (?:back )?to)\b/i.test(text);
 }
 
 function pureNavigationRequested(text: string): boolean {

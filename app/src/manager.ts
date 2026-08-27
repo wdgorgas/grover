@@ -299,7 +299,13 @@ export type RespondDecision = {
   };
 };
 
-export type ManagerInferenceResult<T> = { output: T; latencyMs: number; cacheHit?: boolean };
+export type ManagerInferenceRecovery = { attempted: true; validationError: string };
+export type ManagerInferenceResult<T> = {
+  output: T;
+  latencyMs: number;
+  cacheHit?: boolean;
+  recovery?: ManagerInferenceRecovery;
+};
 
 export interface ManagerPlanner {
   status(): ManagerStatus;
@@ -626,6 +632,15 @@ export function validateSuperviseDecision(value: unknown, input: Record<string, 
   if (['verify', 'retry', 'fallback'].includes(String(decision.action)) && decision.next_worker_id === null) {
     throw new Error('Manager supervision action requires a worker.');
   }
+  if (['verify', 'retry', 'fallback'].includes(String(decision.action)) && decision.missing_evidence.length === 0) {
+    throw new Error('Manager supervision requested more work without naming missing evidence.');
+  }
+  const suppliedEvidence = new Set(recordsFrom(input, 'evidence')
+    .map((item) => item.kind).filter((kind): kind is string => typeof kind === 'string'));
+  if (['verify', 'retry', 'fallback'].includes(String(decision.action)) &&
+      decision.missing_evidence.length > 0 && decision.missing_evidence.every((kind) => suppliedEvidence.has(kind))) {
+    throw new Error('Manager supervision requested evidence that was already supplied.');
+  }
   if (decision.question !== null && (typeof decision.question !== 'string' || !decision.question.trim() || decision.question.length > 500)) {
     throw new Error('Manager supervision question is invalid.');
   }
@@ -712,7 +727,7 @@ export class ManagerHttpClient {
   private async cached<T>(
     task: ManagerTask,
     input: Record<string, unknown>,
-    produce: () => Promise<{ output: T; latencyMs: number }>,
+    produce: () => Promise<{ output: T; latencyMs: number; recovery?: ManagerInferenceRecovery }>,
   ): Promise<ManagerInferenceResult<T>> {
     const key = createHash('sha256').update(`${task}\n${sortedJson(input)}`, 'utf8').digest('hex');
     const cached = this.validatedCache.get(key) as T | undefined;
@@ -731,18 +746,82 @@ export class ManagerHttpClient {
     return { ...result, cacheHit: false };
   }
 
+  private async validated<T>(
+    task: ManagerTask,
+    input: Record<string, unknown>,
+    validate: (value: unknown) => T,
+  ): Promise<{ output: T; latencyMs: number; recovery?: ManagerInferenceRecovery }> {
+    let firstLatencyMs = 0;
+    try {
+      const first = await this.complete(task, input);
+      firstLatencyMs = first.latencyMs;
+      return { output: validate(first.parsed), latencyMs: first.latencyMs };
+    } catch (error) {
+      const validationError = String(error).replace(/^Error:\s*/, '').slice(0, 500);
+      let repairInput: Record<string, unknown> = {
+        ...input,
+        manager_validation_repair: {
+          failure: validationError,
+          instruction: `Return a corrected ${task} v1 decision. Use only IDs marked available in the original input.`,
+        },
+      };
+      if (task === 'supervise') {
+        const evidence = recordsFrom(input, 'evidence');
+        repairInput = {
+          ...repairInput,
+          original_goal: input.goal,
+          goal: [
+            'Review and correct an invalid supervision decision.',
+            `Original goal: ${String(input.goal ?? '')}`,
+            `Validation failure: ${validationError}`,
+            `Required evidence: ${sortedJson(input.required_evidence ?? [])}`,
+            `Supplied evidence kinds: ${sortedJson(evidence.map((item) => item.kind).filter((kind) => typeof kind === 'string'))}`,
+            'If the result has no concrete defect and no required evidence is missing, return action=accept. Never return verify, retry, or fallback with an empty missing_evidence list or for evidence already supplied.',
+          ].join('\n'),
+        };
+      }
+      try {
+        const repaired = await this.complete(task, repairInput);
+        return {
+          output: validate(repaired.parsed),
+          latencyMs: firstLatencyMs + repaired.latencyMs,
+          recovery: { attempted: true, validationError },
+        };
+      } catch (repairError) {
+        throw new Error(
+          `Manager ${task} output failed validation and one bounded repair attempt: ${validationError} ` +
+          `Repair error: ${String(repairError).replace(/^Error:\s*/, '').slice(0, 500)}`,
+        );
+      }
+    }
+  }
+
   async inferRoute(input: Record<string, unknown>): Promise<ManagerInferenceResult<RouteDecision>> {
-    return this.cached('route', input, async () => {
-      const result = await this.complete('route', input);
-      return { output: validateRouteDecision(result.parsed), latencyMs: result.latencyMs };
-    });
+    return this.cached('route', input, () => this.validated('route', input, validateRouteDecision));
   }
 
   async inferContinuity(input: Record<string, unknown>): Promise<ManagerInferenceResult<ContinuityDecision>> {
     return this.cached('continuity', input, async () => {
-      const result = await this.complete('continuity', input);
       const current = input.current_conversation as { id?: unknown } | null;
       const candidates = Array.isArray(input.candidate_conversations) ? input.candidate_conversations as Record<string, unknown>[] : [];
+      const review = input.continuity_review as {
+        initial_decision?: unknown;
+        instruction?: unknown;
+      } | undefined;
+      const inferenceInput = review ? {
+        ...input,
+        original_request: input.request,
+        request: [
+          'Review a prior continuity decision and return the final continuity v1 decision.',
+          'Decision examples:',
+          '- Request: "Expand the Alpha game from 1-10 to 1-15." Candidate: "Alpha game". Final action: reopen that candidate.',
+          '- Request: "Start a weather dashboard." Candidate: "Alpha game". Final action: create because it is genuinely distinct.',
+          `Original user request: ${String(input.request ?? '')}`,
+          `Supplied existing candidates: ${sortedJson(candidates)}`,
+          `Prior decision: ${sortedJson(review.initial_decision ?? null)}`,
+          `Review instruction: ${String(review.instruction ?? '')}`,
+        ].join('\n'),
+      } : input;
       const allowedTargets = new Map<string, string | null>();
       if (current && typeof current.id === 'string') allowedTargets.set(current.id, null);
       for (const candidate of candidates) {
@@ -750,18 +829,14 @@ export class ManagerHttpClient {
           allowedTargets.set(candidate.id, typeof candidate.project_id === 'string' ? candidate.project_id : null);
         }
       }
-      return {
-        output: validateContinuityDecision(
-          result.parsed, allowedTargets, current && typeof current.id === 'string' ? current.id : null,
-        ),
-        latencyMs: result.latencyMs,
-      };
+      return this.validated('continuity', inferenceInput, (value) => validateContinuityDecision(
+        value, allowedTargets, current && typeof current.id === 'string' ? current.id : null,
+      ));
     });
   }
 
   async inferRetrieval(input: Record<string, unknown>): Promise<ManagerInferenceResult<RetrievalDecision>> {
     return this.cached('retrieval', input, async () => {
-      const result = await this.complete('retrieval', input);
       const candidates = input.candidates as Record<string, unknown>;
       const records = (field: string) => Array.isArray(candidates?.[field]) ? candidates[field] as Record<string, unknown>[] : [];
       const conversations = records('conversations');
@@ -769,58 +844,37 @@ export class ManagerHttpClient {
       const memories = records('memories');
       const untrusted = [...conversations, ...projects, ...memories]
         .filter((candidate) => candidate.trusted === false && typeof candidate.id === 'string');
-      return {
-        output: validateRetrievalDecision(result.parsed, {
+      return this.validated('retrieval', input, (value) => validateRetrievalDecision(value, {
           conversations: new Set(conversations.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
           projects: new Set(projects.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
           memories: new Set(memories.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string')),
           untrusted: new Set(untrusted.map((candidate) => candidate.id as string)),
-        }),
-        latencyMs: result.latencyMs,
-      };
+        }));
     });
   }
 
   async inferMemory(input: Record<string, unknown>): Promise<ManagerInferenceResult<MemoryDecision>> {
-    return this.cached('memory', input, async () => {
-      const result = await this.complete('memory', input);
-      return { output: validateMemoryDecision(result.parsed, input), latencyMs: result.latencyMs };
-    });
+    return this.cached('memory', input, () => this.validated('memory', input, (value) => validateMemoryDecision(value, input)));
   }
 
   async inferExecution(input: Record<string, unknown>): Promise<ManagerInferenceResult<ExecutionDecision>> {
-    return this.cached('execution', input, async () => {
-      const result = await this.complete('execution', input);
-      return { output: validateExecutionDecision(result.parsed, input), latencyMs: result.latencyMs };
-    });
+    return this.cached('execution', input, () => this.validated('execution', input, (value) => validateExecutionDecision(value, input)));
   }
 
   async inferClarify(input: Record<string, unknown>): Promise<ManagerInferenceResult<ClarifyDecision>> {
-    return this.cached('clarify', input, async () => {
-      const result = await this.complete('clarify', input);
-      return { output: validateClarifyDecision(result.parsed), latencyMs: result.latencyMs };
-    });
+    return this.cached('clarify', input, () => this.validated('clarify', input, validateClarifyDecision));
   }
 
   async inferBrief(input: Record<string, unknown>): Promise<ManagerInferenceResult<BriefDecision>> {
-    return this.cached('brief', input, async () => {
-      const result = await this.complete('brief', input);
-      return { output: validateBriefDecision(result.parsed, input), latencyMs: result.latencyMs };
-    });
+    return this.cached('brief', input, () => this.validated('brief', input, (value) => validateBriefDecision(value, input)));
   }
 
   async inferSupervise(input: Record<string, unknown>): Promise<ManagerInferenceResult<SuperviseDecision>> {
-    return this.cached('supervise', input, async () => {
-      const result = await this.complete('supervise', input);
-      return { output: validateSuperviseDecision(result.parsed, input), latencyMs: result.latencyMs };
-    });
+    return this.cached('supervise', input, () => this.validated('supervise', input, (value) => validateSuperviseDecision(value, input)));
   }
 
   async inferRespond(input: Record<string, unknown>): Promise<ManagerInferenceResult<RespondDecision>> {
-    return this.cached('respond', input, async () => {
-      const result = await this.complete('respond', input);
-      return { output: validateRespondDecision(result.parsed, input), latencyMs: result.latencyMs };
-    });
+    return this.cached('respond', input, () => this.validated('respond', input, (value) => validateRespondDecision(value, input)));
   }
 
   private async complete(task: ManagerTask, input: Record<string, unknown>): Promise<{ parsed: unknown; latencyMs: number }> {

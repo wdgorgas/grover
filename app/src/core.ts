@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync, existsSync, type Dirent } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
@@ -11,13 +11,13 @@ import { appendEvent, appendEventInTransaction } from './events.ts';
 import { MemoryService, type IncidentalMemoryResult, type RetrievedMemory } from './memory.ts';
 import type {
   BriefDecision, ClarifyDecision, ContinuityDecision, ExecutionDecision, ManagerPlanner, MemoryDecision, RespondDecision,
-  RetrievalDecision, RouteDecision, SuperviseDecision,
+  RetrievalDecision, RouteDecision, SuperviseDecision, ManagerInferenceRecovery,
 } from './manager.ts';
 import { PolicyService, type PolicyOrigin } from './policy.ts';
 import { ProjectMemoryService, type ProjectRecord } from './project-memory.ts';
 import {
   addAcceptanceCheck, addConversationMessage, addEvidence, appendTaskProgress, checkBudget, closureReady, completeReceipt,
-  completeRoutingDecision, createBuild, createTask, engineRanking,
+  completeRoutingDecision, createBuild, createConversation, createTask, engineRanking,
   findConversationCandidates, getCodingProject, getEngineModelProfile, getSetting, inferContextDecision, inferIntent, linkCodingProject,
   moveConversation, rateTaskRouting, recordCommit, recordCost,
   recordConversationResolution, recordManagerShadow, recordRoutingDecision, resolveConversation, resolveManagerConversation,
@@ -31,7 +31,14 @@ const execFileAsync = promisify(execFile);
 
 type SubmitInput = { text: string; context?: Context; conversationId?: string; engine?: string };
 type ManagedRoute = Route & { decisionId: string; tier: ModelTier; profile: EngineModelProfile };
-type ManagerPlanStage<T> = { input: Record<string, unknown>; output: T; latencyMs: number; cacheHit?: boolean };
+type ManagerPlanStage<T> = {
+  input: Record<string, unknown>;
+  output: T;
+  latencyMs: number;
+  cacheHit?: boolean;
+  recovery?: ManagerInferenceRecovery;
+  semanticReview?: { reason: string; initialOutput: T };
+};
 type ManagerEntryPlan = {
   intent: Intent;
   conversation: ConversationResolution;
@@ -40,13 +47,25 @@ type ManagerEntryPlan = {
   selectedMemories: RetrievedMemory[];
   route: ManagerPlanStage<RouteDecision>;
   continuity: ManagerPlanStage<ContinuityDecision>;
-  retrieval: ManagerPlanStage<RetrievalDecision>;
+  retrieval?: ManagerPlanStage<RetrievalDecision>;
   memory?: ManagerPlanStage<MemoryDecision>;
   clarify?: ManagerPlanStage<ClarifyDecision>;
   execution?: ManagerPlanStage<ExecutionDecision>;
   brief?: ManagerPlanStage<BriefDecision>;
   respond?: ManagerPlanStage<RespondDecision>;
 };
+
+class ManagerPlanningError extends Error {
+  readonly stage: ManagerStage;
+  readonly incidentId: string;
+
+  constructor(stage: ManagerStage, incidentId: string, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'ManagerPlanningError';
+    this.stage = stage;
+    this.incidentId = incidentId;
+  }
+}
 
 function truncate(value: string, max = 180): string {
   const oneLine = value.replace(/\s+/g, ' ').trim();
@@ -70,7 +89,7 @@ function projectSlug(name: string): string {
 }
 
 function requestsProjectMutation(text: string): boolean {
-  return /\b(code|build|create|develop|implement|update|fix|debug|add|remove|refactor|write|ship|make)\b/i.test(text) ||
+  return /\b(code|build|create|develop|implement|update|expand|extend|modify|revise|fix|debug|add|remove|refactor|write|ship|make)\b/i.test(text) ||
     /^\s*(?:do it|go ahead|make it so|apply that|implement that|yes[, ]+do that)\b/i.test(text);
 }
 
@@ -83,7 +102,7 @@ function durableManagerMemoryRequest(text: string, scope: string | null, explici
   }
   if (scope.startsWith('context:')) {
     return !/\b(?:today|right now|at the moment|just this once)\b/i.test(text) &&
-      /\b(?:always|normally|usually|every\s+(?:day|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|i (?:prefer|like|take)|my (?:schedule|routine|habit|medication|income|salary|bank balance))\b/i.test(text);
+      /\b(?:always|normally|usually|every\s+(?:day|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|i (?:prefer|like|take)|my (?:(?:daily|weekly|monthly) )?(?:schedule|routine|habit)|my (?:medication|income|salary|bank balance))\b/i.test(text);
   }
   return false;
 }
@@ -541,7 +560,10 @@ export class GroverCore extends EventEmitter {
   private ensureCodingProject(conversationId: string, request: string): CodingProject {
     const current = getCodingProject(this.db, conversationId);
     if (current) return { ...current, rootPath: this.checkedProjectRoot(current.rootPath) };
-    const name = projectName(request);
+    const managed = this.projectMemory.getByConversation(conversationId);
+    const conversation = this.db.prepare('SELECT title FROM conversations WHERE id = ?').get(conversationId) as
+      { title: string } | undefined;
+    const name = managed?.name ?? conversation?.title ?? projectName(request);
     const base = projectSlug(name);
     let suffix = 1;
     let root = join(this.projectsRoot, base);
@@ -555,6 +577,38 @@ export class GroverCore extends EventEmitter {
     const project = linkCodingProject(this.db, conversationId, name, root, true);
     this.projectMemory.recordArtifact(project.id, null, 'folder', root, 'Coding project folder');
     return project;
+  }
+
+  private initialConversationRequest(conversationId: string, fallback: string): string {
+    const row = this.db.prepare(
+      `SELECT content FROM conversation_messages
+       WHERE conversation_id = ? AND role = 'user' ORDER BY rowid LIMIT 1`
+    ).get(conversationId) as { content: string } | undefined;
+    return row?.content.trim() || fallback;
+  }
+
+  private pendingClarification(conversationId?: string): {
+    taskId: string;
+    originalRequest: string;
+    question: string;
+  } | null {
+    if (!conversationId) return null;
+    const row = this.db.prepare(
+      `SELECT t.task_id, t.status, t.plain_language,
+         (SELECT content FROM conversation_messages
+          WHERE task_id = t.task_id AND role = 'user' ORDER BY rowid LIMIT 1) AS original_request,
+         (SELECT content FROM conversation_messages
+          WHERE task_id = t.task_id AND role = 'assistant' ORDER BY rowid DESC LIMIT 1) AS question
+       FROM conversation_route_log r JOIN task_state t ON t.task_id = r.task_id
+       WHERE r.target_conversation_id = ?
+       ORDER BY r.created_at DESC LIMIT 1`
+    ).get(conversationId) as {
+      task_id: string; status: string; plain_language: string;
+      original_request: string | null; question: string | null;
+    } | undefined;
+    if (!row || row.status !== 'blocked' || !/manager needs .*clarification/i.test(row.plain_language) ||
+        !row.original_request?.trim() || !row.question?.trim()) return null;
+    return { taskId: row.task_id, originalRequest: row.original_request.trim(), question: row.question.trim() };
   }
 
   linkProjectFolder(conversationId: string, root: string): CodingProject {
@@ -713,20 +767,78 @@ export class GroverCore extends EventEmitter {
     try {
       return await call();
     } catch (error) {
-      this.diagnostics.captureUnassignedManagerFailure(request, stage, error);
-      throw error;
+      const incidentId = this.diagnostics.captureUnassignedManagerFailure(request, stage, error);
+      throw new ManagerPlanningError(stage, incidentId, error);
     }
   }
 
   async submitManaged(input: SubmitInput): Promise<ReturnType<GroverCore['submit']>> {
+    const displayText = input.text?.trim();
+    if (!displayText) throw new Error('Type a request first.');
+    if (displayText.length > 10_000) throw new Error('Keep a single request under 10,000 characters.');
+    if (input.context && !['general', 'coding', 'research', 'finance', 'health', 'business', 'builder'].includes(input.context)) {
+      throw new Error('Unknown conversation workspace.');
+    }
     if (!this.manager?.inferContinuity || !this.manager.inferRetrieval || !this.manager.inferRespond ||
         !this.manager.inferMemory || !this.manager.inferClarify || !this.manager.inferExecution || !this.manager.inferBrief ||
         !this.manager.inferSupervise) {
-      throw new Error('The local manager is required for this request but is not available. Open Settings and repair the local manager.');
+      const error = new Error('The local manager is required for this request but is not available. Open Settings and repair the local manager.');
+      const incidentId = this.diagnostics.captureUnassignedManagerFailure(displayText, 'route', error);
+      return this.recordManagerPlanningFailure(input, displayText, new ManagerPlanningError('route', incidentId, error));
     }
-    const text = input.text?.trim();
-    if (!text) throw new Error('Type a request first.');
-    if (text.length > 10_000) throw new Error('Keep a single request under 10,000 characters.');
+    try {
+      return await this.submitManagedPlan(input, displayText);
+    } catch (error) {
+      if (!(error instanceof ManagerPlanningError)) throw error;
+      return this.recordManagerPlanningFailure(input, displayText, error);
+    }
+  }
+
+  private recordManagerPlanningFailure(
+    input: SubmitInput,
+    displayText: string,
+    error: ManagerPlanningError,
+  ): ReturnType<GroverCore['submit']> {
+    const current = input.conversationId ? this.db.prepare(
+      'SELECT id, context FROM conversations WHERE id = ?'
+    ).get(input.conversationId) as { id: string; context: Context } | undefined : undefined;
+    const context = current?.context ?? input.context ?? 'general';
+    const conversationId = current?.id ?? createConversation(this.db, context, displayText);
+    const taskId = createTask(this.db, 'ask', displayText, context);
+    const conversation: ConversationResolution = {
+      conversationId,
+      context,
+      disposition: current ? 'continued' : 'created',
+      reason: `GROVER kept the request visible because manager ${error.stage} planning stopped.`,
+      sourceConversationId: current?.id ?? null,
+      localNavigation: false,
+    };
+    recordConversationResolution(this.db, taskId, conversation, displayText);
+    addConversationMessage(this.db, conversationId, taskId, 'user', displayText);
+    this.diagnostics.attachIncidentToTask(error.incidentId, taskId);
+    const answer = `I could not safely finish manager ${error.stage} planning after one automatic repair attempt. ` +
+      `I kept this request here and saved incident ${error.incidentId} in Troubleshooting so it can be replayed and fixed. Please retry once; if it repeats, open that incident.`;
+    appendTaskProgress(this.db, taskId, 'failed', `Manager ${error.stage} planning needs recovery`, error.message);
+    this.addAssistantMessage(taskId, answer, 'failed');
+    this.changed();
+    return {
+      taskId, intent: 'ask', context, conversationId,
+      conversationDisposition: conversation.disposition,
+      routeReason: conversation.reason,
+    };
+  }
+
+  private async submitManagedPlan(
+    input: SubmitInput,
+    displayText: string,
+  ): Promise<ReturnType<GroverCore['submit']>> {
+    const pending = this.pendingClarification(input.conversationId);
+    const text = pending ? [
+      'Continue the pending request using Will\'s clarification answer. Do not answer the clarification as a standalone request.',
+      `Original request: ${pending.originalRequest}`,
+      `Clarification question: ${pending.question}`,
+      `Will's answer: ${displayText}`,
+    ].join('\n') : displayText;
     const current = input.conversationId ? this.db.prepare(
       'SELECT id, context, title FROM conversations WHERE id = ?'
     ).get(input.conversationId) as { id: string; context: Context; title: string } | undefined : undefined;
@@ -740,16 +852,61 @@ export class GroverCore extends EventEmitter {
     const directIntent = inferIntent(text);
     const intent = directIntent === 'remember' ? 'remember' : routeResult.output.decision.work_kind;
     const continuityState = this.managerContinuityCandidates(text, destination, input.conversationId);
-    const continuityResult = await this.inferBeforeFlight(text, 'continuity', () => this.manager!.inferContinuity!(continuityState.input));
+    let continuityInput = continuityState.input;
+    let continuityResult = await this.inferBeforeFlight(
+      text, 'continuity', () => this.manager!.inferContinuity!(continuityInput),
+    );
+    let continuityReview: ManagerPlanStage<ContinuityDecision>['semanticReview'];
+    const explicitlyNew = continuityResult.output.decision.rationale_codes.includes('explicit_new_project');
+    if (!input.conversationId && continuityState.candidates.length > 0 &&
+        ['create', 'branch'].includes(continuityResult.output.decision.action) && !explicitlyNew) {
+      const initial = continuityResult;
+      continuityInput = {
+        ...continuityState.input,
+        continuity_review: {
+          initial_decision: initial.output,
+          instruction: 'Re-evaluate whether this request names, continues, updates, expands, audits, or otherwise refers to a supplied existing conversation or project. Reopen the matching candidate when it does. Keep create or branch only when the work is genuinely a distinct new scope.',
+        },
+      };
+      const reviewed = await this.inferBeforeFlight(
+        text, 'continuity', () => this.manager!.inferContinuity!(continuityInput),
+      );
+      continuityResult = { ...reviewed, latencyMs: initial.latencyMs + reviewed.latencyMs };
+      continuityReview = {
+        reason: 'The first decision opened new scope despite a warm-started existing project candidate.',
+        initialOutput: initial.output,
+      };
+    }
     const conversation = resolveManagerConversation(
       this.db, text, destination, continuityResult.output.decision, input.conversationId,
     );
+    const routeStage: ManagerEntryPlan['route'] = {
+      input: routeInput, output: routeResult.output, latencyMs: routeResult.latencyMs,
+      cacheHit: routeResult.cacheHit, recovery: routeResult.recovery,
+    };
+    const continuityStage: ManagerEntryPlan['continuity'] = {
+      input: continuityInput, output: continuityResult.output, latencyMs: continuityResult.latencyMs,
+      cacheHit: continuityResult.cacheHit, recovery: continuityResult.recovery, semanticReview: continuityReview,
+    };
+    if (conversation.localNavigation) {
+      return this.submitWithPlan({ ...input, text }, {
+        intent,
+        conversation,
+        continuityCandidates: continuityState.candidates,
+        retrievalMemories: [],
+        selectedMemories: [],
+        route: routeStage,
+        continuity: continuityStage,
+      }, { displayText, resumedTaskId: pending?.taskId });
+    }
     const conversationTitle = (this.db.prepare('SELECT title FROM conversations WHERE id = ?').get(conversation.conversationId) as
       { title: string }).title;
     const existingManagedProject = this.projectMemory.getByConversation(conversation.conversationId);
     const managedProject = ['work', 'build'].includes(routeResult.output.decision.work_kind)
       ? this.projectMemory.ensureProject(
-        conversation.conversationId, conversation.context, conversationTitle, text, existingManagedProject?.id,
+        conversation.conversationId, conversation.context, conversationTitle,
+        existingManagedProject?.goal ?? this.initialConversationRequest(conversation.conversationId, text),
+        existingManagedProject?.id,
       )
       : existingManagedProject;
     const projectMemories = managedProject ? this.projectMemory.retrieve(managedProject.id, text, 8) : [];
@@ -804,15 +961,19 @@ export class GroverCore extends EventEmitter {
       };
       const clarifyResult = await this.inferBeforeFlight(text, 'clarify', () => this.manager!.inferClarify!(clarifyInput));
       clarify = {
-        input: clarifyInput, output: clarifyResult.output, latencyMs: clarifyResult.latencyMs, cacheHit: clarifyResult.cacheHit,
+        input: clarifyInput, output: clarifyResult.output, latencyMs: clarifyResult.latencyMs,
+        cacheHit: clarifyResult.cacheHit, recovery: clarifyResult.recovery,
       };
       const executionInput = this.managerExecutionState(text, conversation.context, conversation.conversationId);
       const executionResult = await this.inferBeforeFlight(text, 'execution', () => this.manager!.inferExecution!(executionInput));
       execution = {
-        input: executionInput, output: executionResult.output, latencyMs: executionResult.latencyMs, cacheHit: executionResult.cacheHit,
+        input: executionInput, output: executionResult.output, latencyMs: executionResult.latencyMs,
+        cacheHit: executionResult.cacheHit, recovery: executionResult.recovery,
       };
-      if (executionResult.output.decision.response_mode !== 'delegate') {
-        throw new Error('The local manager produced conflicting response and execution decisions. The request was stopped safely.');
+      if (executionResult.output.decision.response_mode === 'local') {
+        const error = new Error('The local manager produced conflicting response and execution decisions. The request was stopped safely.');
+        const incidentId = this.diagnostics.captureUnassignedManagerFailure(text, 'execution', error);
+        throw new ManagerPlanningError('execution', incidentId, error);
       }
       if (executionResult.output.decision.response_mode === 'delegate') {
         const briefInput = {
@@ -821,7 +982,10 @@ export class GroverCore extends EventEmitter {
           available_refs: this.managerAvailableRefs(conversation, retrievalResult.output, retrievalMemories),
         };
         const briefResult = await this.inferBeforeFlight(text, 'brief', () => this.manager!.inferBrief!(briefInput));
-        brief = { input: briefInput, output: briefResult.output, latencyMs: briefResult.latencyMs, cacheHit: briefResult.cacheHit };
+        brief = {
+          input: briefInput, output: briefResult.output, latencyMs: briefResult.latencyMs,
+          cacheHit: briefResult.cacheHit, recovery: briefResult.recovery,
+        };
       }
     }
     const plan: ManagerEntryPlan = {
@@ -830,22 +994,25 @@ export class GroverCore extends EventEmitter {
       continuityCandidates: continuityState.candidates,
       retrievalMemories,
       selectedMemories,
-      route: { input: routeInput, output: routeResult.output, latencyMs: routeResult.latencyMs, cacheHit: routeResult.cacheHit },
-      continuity: {
-        input: continuityState.input, output: continuityResult.output, latencyMs: continuityResult.latencyMs,
-        cacheHit: continuityResult.cacheHit,
-      },
+      route: routeStage,
+      continuity: continuityStage,
       retrieval: {
         input: retrievalInput, output: retrievalResult.output, latencyMs: retrievalResult.latencyMs,
-        cacheHit: retrievalResult.cacheHit,
+        cacheHit: retrievalResult.cacheHit, recovery: retrievalResult.recovery,
       },
-      memory: { input: memoryInput, output: memoryResult.output, latencyMs: memoryResult.latencyMs, cacheHit: memoryResult.cacheHit },
-      respond: { input: respondInput, output: respondResult.output, latencyMs: respondResult.latencyMs, cacheHit: respondResult.cacheHit },
+      memory: {
+        input: memoryInput, output: memoryResult.output, latencyMs: memoryResult.latencyMs,
+        cacheHit: memoryResult.cacheHit, recovery: memoryResult.recovery,
+      },
+      respond: {
+        input: respondInput, output: respondResult.output, latencyMs: respondResult.latencyMs,
+        cacheHit: respondResult.cacheHit, recovery: respondResult.recovery,
+      },
       clarify,
       execution,
       brief,
     };
-    return this.submitWithPlan(input, plan);
+    return this.submitWithPlan({ ...input, text }, plan, { displayText, resumedTaskId: pending?.taskId });
   }
 
   private recordManagerEntryPlan(taskId: string, text: string, context: Context, plan: ManagerEntryPlan): void {
@@ -858,8 +1025,9 @@ export class GroverCore extends EventEmitter {
       modelHash: this.manager?.status().modelHash,
     });
     const stages: [ManagerStage, ManagerPlanStage<unknown>][] = [
-      ['route', plan.route], ['continuity', plan.continuity], ['retrieval', plan.retrieval],
+      ['route', plan.route], ['continuity', plan.continuity],
     ];
+    if (plan.retrieval) stages.push(['retrieval', plan.retrieval]);
     if (plan.memory) stages.push(['memory', plan.memory]);
     if (plan.respond) stages.push(['respond', plan.respond]);
     if (plan.clarify) stages.push(['clarify', plan.clarify]);
@@ -890,7 +1058,17 @@ export class GroverCore extends EventEmitter {
               : []),
           };
       this.diagnostics.recordStage({
-        taskId, stage: managerTask, inputRefs: { ...input, cache_hit: Boolean(stage.cacheHit) }, output: stage.output,
+        taskId, stage: managerTask, inputRefs: {
+          ...input,
+          cache_hit: Boolean(stage.cacheHit),
+          repair_attempted: Boolean(stage.recovery?.attempted),
+          semantic_review_attempted: Boolean(stage.semanticReview),
+          ...(stage.recovery ? { repair_validation_error: stage.recovery.validationError } : {}),
+          ...(stage.semanticReview ? {
+            semantic_review_reason: stage.semanticReview.reason,
+            initial_output: stage.semanticReview.initialOutput,
+          } : {}),
+        }, output: stage.output,
         replayInput: stage.input, latencyMs: stage.latencyMs, modelHash: this.manager?.status().modelHash,
       });
       appendEvent(this.db, {
@@ -910,7 +1088,10 @@ export class GroverCore extends EventEmitter {
     const explicitDelete = /\b(?:forget|delete|remove)\b.{0,60}\b(?:memory|remember|fact|preference|name|goal|major)\b/i.test(text);
     const explicitCorrection = /\b(?:correct|change|update|actually|instead)\b/i.test(text);
     const sensitivity = memory.sensitivity === 'standard' ? 'private' : (memory.sensitivity ?? 'private');
-    const content = memory.canonical_fact?.trim() ?? '';
+    const canonicalContent = memory.canonical_fact?.trim() ?? '';
+    const content = intent === 'act' && memory.scope?.startsWith('context:')
+      ? text.trim()
+      : canonicalContent;
 
     if (memory.operation === 'delete') {
       if (!memory.target_memory_id || !explicitDelete) {
@@ -990,7 +1171,11 @@ export class GroverCore extends EventEmitter {
     return this.submitWithPlan(input);
   }
 
-  private submitWithPlan(input: SubmitInput, managerPlan?: ManagerEntryPlan): {
+  private submitWithPlan(
+    input: SubmitInput,
+    managerPlan?: ManagerEntryPlan,
+    continuation?: { displayText: string; resumedTaskId?: string },
+  ): {
     taskId: string;
     intent: Intent;
     context: Context;
@@ -1020,10 +1205,21 @@ export class GroverCore extends EventEmitter {
       intent = 'build';
     }
     const existingProject = context === 'coding' ? getCodingProject(this.db, conversationId) : null;
+    const managerProjectWrite = Boolean(
+      managerPlan?.execution?.output.decision.response_mode === 'delegate' &&
+      managerPlan.execution.output.decision.tool_ids.includes('project_files') &&
+      managerPlan.execution.output.decision.workspace_id === 'workspace_project'
+    );
     if (!managerPlan && context === 'coding' && existingProject && /^\s*(?:do it|go ahead|make it so|apply that|implement that|yes[, ]+do that)\b/i.test(text)) {
       intent = 'work';
     }
     const taskId = createTask(this.db, intent, text, context);
+    if (continuation?.resumedTaskId) {
+      appendTaskProgress(
+        this.db, continuation.resumedTaskId, 'cancelled',
+        'Clarification received; continuing in a linked task', `continued_by=${taskId}`,
+      );
+    }
     if (managerPlan) {
       this.recordManagerEntryPlan(taskId, text, context, managerPlan);
       this.managerMemoriesByTask.set(taskId, managerPlan.selectedMemories);
@@ -1047,9 +1243,9 @@ export class GroverCore extends EventEmitter {
         routeReason: conversation.reason,
       };
     }
-    addConversationMessage(this.db, conversationId, taskId, 'user', text);
+    addConversationMessage(this.db, conversationId, taskId, 'user', continuation?.displayText ?? text);
     let codingProject = existingProject;
-    if (context === 'coding' && intent === 'work' && requestsProjectMutation(text)) {
+    if (context === 'coding' && intent === 'work' && (managerProjectWrite || requestsProjectMutation(text))) {
       try {
         codingProject = this.ensureCodingProject(conversationId, text);
       } catch (error) {
@@ -1088,6 +1284,34 @@ export class GroverCore extends EventEmitter {
       this.changed();
       return { taskId, intent, context, conversationId, conversationDisposition: conversation.disposition, routeReason: conversation.reason };
     }
+    const incidentalMemory = managerPlan?.memory
+      ? this.applyManagerMemory(taskId, text, intent, managerPlan.memory.output)
+      : (intent !== 'remember' ? this.memory.considerIncidental(taskId, text) : null);
+
+    const localContextStateWrite = intent === 'act' && Boolean(incidentalMemory) &&
+      Boolean(managerPlan?.memory?.output.decision.scope?.startsWith('context:')) &&
+      ['create', 'update'].includes(managerPlan.memory.output.decision.operation) &&
+      ['saved', 'unchanged'].includes(incidentalMemory!.kind);
+    if (localContextStateWrite) {
+      const scope = managerPlan!.memory!.output.decision.scope!.slice('context:'.length);
+      const destination = managerPlan!.route.output.decision.destination;
+      const vault = destination === 'lifestyle'
+        ? 'Lifestyle'
+        : `${destination.slice(0, 1).toUpperCase()}${destination.slice(1)}`;
+      const answer = `I saved your exact request in the local ${vault} vault under ${scope}. ` +
+        'GROVER can use it for future planning on this computer; external account or calendar sync is still disconnected.';
+      const decisionId = recordRoutingDecision(
+        this.db, taskId, intent, 'grover-local', null,
+        'The local manager classified the request as durable context state, so GROVER stored the exact request locally without claiming an external account update.',
+        false,
+      );
+      appendTaskProgress(this.db, taskId, 'done', `Saved local ${vault} state`, answer);
+      this.addAssistantMessage(taskId, answer);
+      completeRoutingDecision(this.db, decisionId, 'passed:grover-local');
+      this.changed();
+      return { taskId, intent, context, conversationId, conversationDisposition: conversation.disposition, routeReason: conversation.reason };
+    }
+
     if (managerPlan?.execution?.output.decision.response_mode === 'blocked') {
       const triggers = managerPlan.execution.output.decision.permission_triggers;
       const detail = triggers.length
@@ -1098,9 +1322,6 @@ export class GroverCore extends EventEmitter {
       this.changed();
       return { taskId, intent, context, conversationId, conversationDisposition: conversation.disposition, routeReason: conversation.reason };
     }
-    const incidentalMemory = managerPlan?.memory
-      ? this.applyManagerMemory(taskId, text, intent, managerPlan.memory.output)
-      : (intent !== 'remember' ? this.memory.considerIncidental(taskId, text) : null);
 
     const managerLocalAnswer = managerPlan?.respond && managerPlan.respond.output.decision.action !== 'delegate'
       ? managerPlan.respond.output.decision.response
@@ -1167,7 +1388,7 @@ export class GroverCore extends EventEmitter {
       }
     } else {
       try {
-        const projectWritable = Boolean(codingProject && requestsProjectMutation(text));
+        const projectWritable = Boolean(codingProject && (managerProjectWrite || requestsProjectMutation(text)));
         const execution = managerPlan?.execution?.output.decision;
         const tier = execution && execution.tier !== 'local'
           ? execution.tier
@@ -1315,6 +1536,7 @@ export class GroverCore extends EventEmitter {
     latencyMs: number,
     input: Record<string, unknown>,
     cacheHit = false,
+    recovery?: ManagerInferenceRecovery,
   ): void {
     this.diagnostics.recordStage({
       taskId, stage: 'supervise', attempt: sequence,
@@ -1326,6 +1548,8 @@ export class GroverCore extends EventEmitter {
           ? (input.evidence as { kind?: unknown }[]).map((item) => item.kind).filter((kind) => typeof kind === 'string')
           : [],
         cache_hit: cacheHit,
+        repair_attempted: Boolean(recovery?.attempted),
+        ...(recovery ? { repair_validation_error: recovery.validationError } : {}),
       }, replayInput: input, output: decision, latencyMs,
       modelHash: this.manager?.status().modelHash,
     });
@@ -1364,7 +1588,9 @@ export class GroverCore extends EventEmitter {
     };
     try {
       const result = await this.manager.inferSupervise(input);
-      this.recordManagerSupervision(taskId, context, retryCount, result.output, result.latencyMs, input, Boolean(result.cacheHit));
+      this.recordManagerSupervision(
+        taskId, context, retryCount, result.output, result.latencyMs, input, Boolean(result.cacheHit), result.recovery,
+      );
       return result.output;
     } catch (error) {
       this.diagnostics.recordStage({
@@ -1389,6 +1615,50 @@ export class GroverCore extends EventEmitter {
     return tier === 'fast' ? 'worker_fast' : tier === 'frontier' ? 'worker_frontier' : 'worker_balanced';
   }
 
+  private projectFileSnapshot(root: string, limit = 2_000): Map<string, string> {
+    const snapshot = new Map<string, string>();
+    const ignored = new Set(['.git', 'node_modules', '.next', 'dist', 'build', 'coverage', '__pycache__']);
+    const pending = [root];
+    let visitedFolders = 0;
+    while (pending.length && snapshot.size < limit && visitedFolders < limit * 2) {
+      const folder = pending.pop()!;
+      visitedFolders += 1;
+      let entries: Dirent[];
+      try { entries = readdirSync(folder, { withFileTypes: true }); }
+      catch { continue; }
+      for (const entry of entries) {
+        if (ignored.has(entry.name) || entry.isSymbolicLink()) continue;
+        const path = join(folder, entry.name);
+        if (entry.isDirectory()) {
+          pending.push(path);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        const relativePath = relative(root, path).replace(/\\/g, '/');
+        try {
+          const stat = statSync(path);
+          const signature = stat.size <= 2 * 1024 * 1024
+            ? createHash('sha256').update(readFileSync(path)).digest('hex')
+            : `${stat.size}:${Math.trunc(stat.mtimeMs)}`;
+          snapshot.set(relativePath, signature);
+        } catch {
+          snapshot.set(relativePath, 'unreadable');
+        }
+        if (snapshot.size >= limit) break;
+      }
+    }
+    return snapshot;
+  }
+
+  private changedProjectFiles(root: string, before: Map<string, string>): string[] {
+    const after = this.projectFileSnapshot(root);
+    return [...new Set([...before.keys(), ...after.keys()])].sort().flatMap((path) => {
+      if (!before.has(path)) return [`added:${path}`];
+      if (!after.has(path)) return [`deleted:${path}`];
+      return before.get(path) === after.get(path) ? [] : [`modified:${path}`];
+    }).slice(0, 100);
+  }
+
   private async runConversation(
     taskId: string,
     intent: 'ask' | 'work',
@@ -1398,6 +1668,7 @@ export class GroverCore extends EventEmitter {
     projectWritable = false,
   ): Promise<void> {
     const root = project?.rootPath ?? this.projectsRoot;
+    const nonInteractiveWorkerBoundary = 'This is a non-interactive worker run. Never invoke interactive input. If user input is genuinely required, return the single question in your final result so GROVER Manager can present it. If a preferred verification runtime is unavailable, perform the strongest safe static checks available and report the runtime limitation.';
     this.guardBudget(taskId, null, 250_000);
     recordCost(this.db, taskId, null, 'estimate', 250_000, `${intent} estimate`);
     appendTaskProgress(
@@ -1408,13 +1679,14 @@ export class GroverCore extends EventEmitter {
       project ? project.rootPath : '',
     );
     this.changed();
+    const projectFilesBefore = projectWritable ? this.projectFileSnapshot(root) : new Map<string, string>();
     const prompt = project && projectWritable
-      ? `Work directly in the local Coding project folder provided as your working directory. Inspect the existing project first, implement the user's request, and run the most relevant available checks. You may create and edit files inside this project folder. Do not access or modify the GROVER application repository unless it is inside this project folder (GROVER prevents that overlap). Do not perform external account actions or spend money. Return a concise summary of changed files and verification.${this.managerBriefContext(taskId)}${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
+      ? `Work directly in the local Coding project folder provided as your working directory. Inspect the existing project first, implement the user's request, and run the most relevant available checks. Scale the implementation to the narrowest change that satisfies the current request and existing project history. If this is a legacy chat-only project whose folder is empty, reconstruct only the smallest necessary artifact in the same language and style shown in conversation history. Do not scaffold a new framework, initialize a package manager, install dependencies, or redesign the project unless the user explicitly requests it. You may create and edit files inside this project folder. Do not access or modify the GROVER application repository unless it is inside this project folder (GROVER prevents that overlap). Do not perform external account actions or spend money. ${nonInteractiveWorkerBoundary} Return a concise summary of changed files and verification.${this.managerBriefContext(taskId)}${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
       : project
-      ? `Answer or analyze the request using the local Coding project folder provided as your working directory. You may inspect its files but may not modify files or external state. Return a concrete project-grounded result.${this.managerBriefContext(taskId)}${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
+      ? `Answer or analyze the request using the local Coding project folder provided as your working directory. You may inspect its files but may not modify files or external state. ${nonInteractiveWorkerBoundary} Return a concrete project-grounded result.${this.managerBriefContext(taskId)}${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
       : intent === 'ask'
-      ? `Answer the user's request clearly and directly. Do not inspect unrelated local files and do not modify files or external state.${this.managerBriefContext(taskId)}${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
-      : `Produce the requested analysis or written artifact. Do not inspect unrelated local files and do not modify files or external state. Return a finished result.${this.managerBriefContext(taskId)}${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`;
+      ? `Answer the user's request clearly and directly. Do not inspect unrelated local files and do not modify files or external state. ${nonInteractiveWorkerBoundary}${this.managerBriefContext(taskId)}${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`
+      : `Produce the requested analysis or written artifact. Do not inspect unrelated local files and do not modify files or external state. ${nonInteractiveWorkerBoundary} Return a finished result.${this.managerBriefContext(taskId)}${this.conversationContext(taskId)}${this.memoryContext(taskId, text)}\n\nUser request:\n${text}`;
     let selected = route.selected;
     let actualProfile = route.profile;
     let result: EngineResult;
@@ -1442,10 +1714,15 @@ export class GroverCore extends EventEmitter {
     const requiredEvidence = projectWritable ? ['worker_result', 'changed_files', 'verification'] : ['worker_result'];
     const supervisionContext = (this.db.prepare('SELECT domain FROM task_state WHERE task_id = ?').get(taskId) as
       { domain: Context | null } | undefined)?.domain ?? 'general';
+    const changedFiles = projectWritable ? this.changedProjectFiles(root, projectFilesBefore) : [];
+    const initialEvidence = [
+      { kind: 'worker_result', summary: result.answer.trim() ? 'Worker returned a result.' : 'Worker result was empty.' },
+      ...(changedFiles.length ? [{ kind: 'changed_files', summary: changedFiles.join(', ') }] : []),
+    ];
     let supervision = await this.inferSupervision(
       taskId, supervisionContext,
       text, this.managerWorkerId(selected.id, route.tier), result.answer, requiredEvidence,
-      [{ kind: 'worker_result', summary: result.answer.trim() ? 'Worker returned a result.' : 'Worker result was empty.' }], 0,
+      initialEvidence, 0,
     );
     if (supervision && ['verify', 'retry', 'fallback'].includes(supervision.decision.action)) {
       const action = supervision.decision.action;
@@ -1460,6 +1737,7 @@ export class GroverCore extends EventEmitter {
         action === 'verify'
           ? 'Independently verify the worker result below against the local workspace. Do not modify files. Return a concise verdict and concrete evidence.'
           : 'Retry the request once, correcting the gaps identified by the local manager. Stay within the same permissions and workspace.',
+        nonInteractiveWorkerBoundary,
         `Missing evidence or issue: ${supervision.decision.missing_evidence.join('; ') || 'unspecified'}`,
         '', 'Original request:', text,
         '', 'Worker result:', result.answer,
@@ -1471,8 +1749,10 @@ export class GroverCore extends EventEmitter {
         onUpdate: (update) => this.handleEngineUpdate(taskId, null, update),
       });
       totalCostUsd += followup.costUsd;
+      const followupChangedFiles = projectWritable ? this.changedProjectFiles(root, projectFilesBefore) : changedFiles;
       const followupEvidence = [
         { kind: 'worker_result', summary: result.answer.trim() ? 'Initial worker returned a result.' : 'Initial result was empty.' },
+        ...(followupChangedFiles.length ? [{ kind: 'changed_files', summary: followupChangedFiles.join(', ') }] : []),
         { kind: action === 'verify' ? 'verification' : 'manager_directed_retry', summary: truncate(followup.answer, 500) },
       ];
       const second = await this.inferSupervision(

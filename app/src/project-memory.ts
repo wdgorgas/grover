@@ -77,8 +77,25 @@ export class ProjectMemoryService {
     this.db = db;
     this.vaultRoot = join(dataDir, 'vault', 'will-private', 'projects');
     mkdirSync(this.vaultRoot, { recursive: true });
+    this.reconcileProjectGoals();
     this.rebuildIndex();
     this.pruneExpired();
+  }
+
+  private reconcileProjectGoals(): void {
+    const now = new Date().toISOString();
+    const rows = this.db.prepare(
+      `SELECT r.id, r.goal,
+         (SELECT m.content FROM project_memories m
+          WHERE m.project_id = r.id AND m.kind = 'goal' AND m.deleted_at IS NULL AND m.superseded_by IS NULL
+            AND (m.expires_at IS NULL OR m.expires_at > ?)
+          ORDER BY m.updated_at DESC LIMIT 1) AS memory_goal
+       FROM project_records r`
+    ).all(now) as { id: string; goal: string; memory_goal: string | null }[];
+    const update = this.db.prepare('UPDATE project_records SET goal = ?, updated_at = ? WHERE id = ?');
+    for (const row of rows) {
+      if (row.memory_goal?.trim() && row.memory_goal !== row.goal) update.run(row.memory_goal, now, row.id);
+    }
   }
 
   getByConversation(conversationId: string): ProjectRecord | null {
@@ -194,6 +211,12 @@ export class ProjectMemoryService {
     );
     this.db.prepare('UPDATE project_memories SET superseded_by = ?, updated_at = ? WHERE id = ?')
       .run(replacement, new Date().toISOString(), id);
+    if (row.kind === 'goal') {
+      const replacementRow = this.db.prepare('SELECT content FROM project_memories WHERE id = ?').get(replacement) as
+        { content: string };
+      this.db.prepare('UPDATE project_records SET goal = ?, updated_at = ? WHERE id = ?')
+        .run(replacementRow.content, new Date().toISOString(), row.project_id);
+    }
     this.index(id);
     this.writeNote(id);
     return replacement;
@@ -296,11 +319,15 @@ export class ProjectMemoryService {
       for (const file of readdirSync(folder).filter((name) => name.endsWith('.md'))) {
         const parsed = parseNote(readFileSync(join(folder, file), 'utf8'));
         if (!parsed?.metadata.id || parsed.metadata.project_id !== project.name || !parsed.content) continue;
-        const current = this.db.prepare('SELECT content FROM project_memories WHERE id = ?').get(parsed.metadata.id) as
-          { content: string } | undefined;
+        const current = this.db.prepare('SELECT content, kind, project_id FROM project_memories WHERE id = ?').get(parsed.metadata.id) as
+          { content: string; kind: ProjectMemoryKind; project_id: string } | undefined;
         if (!current || current.content === parsed.content) continue;
         this.db.prepare('UPDATE project_memories SET content = ?, updated_at = ? WHERE id = ?')
           .run(parsed.content, new Date().toISOString(), parsed.metadata.id);
+        if (current.kind === 'goal') {
+          this.db.prepare('UPDATE project_records SET goal = ?, updated_at = ? WHERE id = ?')
+            .run(parsed.content, new Date().toISOString(), current.project_id);
+        }
         this.index(parsed.metadata.id);
         changed += 1;
       }

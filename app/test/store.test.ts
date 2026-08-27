@@ -69,6 +69,17 @@ test('context branching preserves General and named continuation reopens the exi
   assert.equal(navigate.conversationId, branch.conversationId);
   assert.equal(navigate.disposition, 'navigated');
   assert.equal(navigate.localNavigation, true);
+
+  const conversationalNavigate = resolveConversation(
+    db,
+    'hey grover can you open up the tic tac toe project',
+    { context: 'general', explicit: false, reason: 'No specialist signal.' },
+    general,
+    'general',
+  );
+  assert.equal(conversationalNavigate.conversationId, branch.conversationId);
+  assert.equal(conversationalNavigate.disposition, 'navigated');
+  assert.equal(conversationalNavigate.localNavigation, true);
 });
 
 test('conversations persist messages and remain grouped by context', () => {

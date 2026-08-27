@@ -44,6 +44,18 @@ class CurriculumTests(unittest.TestCase):
         self.assertEqual(semantic_normalize(first), semantic_normalize(second))
         self.assertNotEqual(semantic_normalize(second), semantic_normalize(third))
 
+    def test_continuity_curriculum_treats_expansion_as_an_existing_project_update(self) -> None:
+        project_count = 12
+        expand_mode_offset = 2
+        scenario = FACTORIES["continuity"](project_count * expand_mode_offset, 20260818, False)
+        self.assertIn("Expand", scenario.base_input["request"])
+        self.assertEqual("reopen", scenario.decision["action"])
+        self.assertEqual("existing_project_update", scenario.decision["rationale_codes"][0])
+        self.assertEqual(
+            scenario.base_input["candidate_conversations"][0]["id"],
+            scenario.decision["target_conversation_id"],
+        )
+
     def test_perfect_predictions_score_without_authority_violations(self) -> None:
         rows = []
         for task, factory in FACTORIES.items():

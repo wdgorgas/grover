@@ -206,10 +206,9 @@ def route_scenario(index: int, seed: int, review: bool = False) -> Scenario:
 def continuity_scenario(index: int, seed: int, review: bool = False) -> Scenario:
     rng = random.Random(f"{seed}:continuity:{index}:{review}")
     project_slug, base_title, context = PROJECTS[index % len(PROJECTS)]
-    mode = ("same", "unique", "missing", "new", "ambiguous", "archived", "navigate", "generic")[
-        (index // len(PROJECTS)) % 8
-    ]
-    state_index = index // (len(PROJECTS) * 8)
+    modes = ("same", "unique", "expand", "missing", "new", "ambiguous", "archived", "navigate", "generic")
+    mode = modes[(index // len(PROJECTS)) % len(modes)]
+    state_index = index // (len(PROJECTS) * len(modes))
     feature = FEATURES[state_index % len(FEATURES)]
     history = HISTORY_SUMMARIES[(state_index // len(FEATURES)) % len(HISTORY_SUMMARIES)]
     title = f"{base_title}: {feature.title()}"
@@ -235,6 +234,10 @@ def continuity_scenario(index: int, seed: int, review: bool = False) -> Scenario
         action, search_needed, rationale = "continue", False, "current_project_context"
     elif mode == "unique":
         candidates = [match, {"id": "conv_other", "title": history.title(), "context": "general", "project_id": None, "status": "active"}]
+    elif mode == "expand":
+        candidates = [match]
+        request = f"Expand {title} from numbers 1-10 to numbers 1-15"
+        rationale = "existing_project_update"
     elif mode == "missing":
         candidates = []
         request = f"Let's start {title}"

@@ -1,6 +1,6 @@
 # Planning board → Build board
 
-**P0 APPROVED by Will, 2026-07-03. P1–P5 plus the P6 continuity core are mechanically green. P7's trained local manager is authoritative under accepted Proposal 009, with troubleshooting, replay/regression, project memory, bounded retention, and a behavior-preserving exact warm path implemented. GROVER 2.1.0-rc.1 is packaged and verified as a native Windows release candidate.**
+**P0 APPROVED by Will, 2026-07-03. P1–P5 plus the P6 continuity core are mechanically green. P7's trained local manager is authoritative under accepted Proposal 009, with troubleshooting, replay/regression, project memory, bounded retention, and a behavior-preserving exact warm path implemented. GROVER 2.1.0-rc.2 is packaged and verified as a native Windows release candidate.**
 
 Workflow is a relay: pull → create a slice branch → build or verify a small slice → push → leave the five-line handoff. Update this board whenever phase status changes. Sessions are governed by the repo-root `AGENTS.md` plus any client-specific contract such as `CLAUDE.md`; `planning/GITHUB_HANDOFF.md` is the practical cross-device entry point.
 
@@ -15,7 +15,7 @@ Workflow is a relay: pull → create a slice branch → build or verify a small 
 | P4 | Minimal memory core (10 tests + no-migration test) | **MECHANICAL EXIT PASSED (2026-08-18)** — 45 deterministic tests, 20-case relevance eval, vault sync/export, and live restart recall green |
 | P5 | Hardening drills → v2.0 | **MECHANICAL EXIT PASSED (2026-08-18)** — 51 deterministic tests; policy, kill, budget, injection, verification-failure, crash, backup/restore, and recovery-card drills green |
 | P6 | Continuity coordinator → v2.1 | **MECHANICAL CORE GREEN (2026-08-25)** — fluid branching/reopen, bounded history, scoped profile/project memory and vault, isolated writable Coding projects, provider-neutral tiers, outcomes/artifacts, and backup/restore pass; scheduler/history-management/visual graph remain follow-on slices |
-| P7 | Learned local manager | **MANAGER-FIRST WINDOWS CANDIDATE GREEN (2026-08-26)** — checkpoint 750 completed all 2,700 protected cases with 100% schema validity, every scored capability above threshold, and zero authority-boundary violations. All nine trained capabilities are authoritative behind deterministic safety validation. Flight recording, result-linked incidents, replay/regression, retention, exact cache, manager/runtime packaging, and the exact portable smoke pass; novel full-chain latency remains the principal optimization target. |
+| P7 | Learned local manager | **DAILY-RECOVERY RC.2 VERIFIED (2026-08-27)** — checkpoint 750 remains exact on all 18 protected parity cases. All nine trained capabilities stay authoritative behind deterministic safety/evidence validation. The three reported navigation/project-update/schedule workflows pass with scoped memory, resumable clarification, bounded model repair, fail-visible incidents, non-interactive specialist boundaries, and real Codex file-grounded supervision. Both unpacked and single-file RC.2 packages pass the complete bundled-manager/Codex smoke. |
 
 ## Open side-tracks
 
@@ -25,7 +25,7 @@ Workflow is a relay: pull → create a slice branch → build or verify a small 
 | Visual direction / UI design | **Will** | New direction pending; visual polish deferred until the local desktop application is functional | `design/` |
 | Build-technique intake (external lists → adopt/skip) | main thread | Standing rule + first pass done | `planning/build_techniques_assessment.md` |
 | Daily-driver product contract | **Will** | PlanningProposal 002 accepted 2026-08-18; implement front-door intent and progressive disclosure in the functional shell | `planning/proposals/proposal_002_daily_driver_contract.md` |
-| Local Windows delivery | **Codex** | Manager-bundled 2.1.0-rc.1 built and exact portable smoke passed 2026-08-26 | `planning/GITHUB_HANDOFF.md` |
+| Local Windows delivery | **Codex** | Manager-bundled 2.1.0-rc.2 built; unpacked and exact portable smokes passed 2026-08-27 | `planning/GITHUB_HANDOFF.md` |
 | Provider-neutral agent manager | **Codex** | PlanningProposal 004 accepted 2026-08-18; Codex preferred, Claude fallback/checker | `planning/proposals/proposal_004_provider_neutral_agent_manager.md` |
 | Fluid context workspaces | **Codex** | PlanningProposal 005 accepted 2026-08-18; functional shell implemented and packaged | `planning/proposals/proposal_005_fluid_context_workspaces.md` |
 | Continuous functional delivery | **Codex** | PlanningProposal 006 accepted 2026-08-18; no routine phase pauses, final visual/human pass retained | `planning/proposals/proposal_006_continuous_functional_delivery.md` |
